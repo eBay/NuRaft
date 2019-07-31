@@ -1,0 +1,15 @@
+.vscode/
+debug/
+Debug/
+.vs/
+*.user
+asio/
+nbproject/
+*.obj
+*.o
+**/*.opendb
+**/*.db
+*.pdb
+*.exe
+*.ilk
+*.lib

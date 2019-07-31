@@ -1,0 +1,398 @@
+/************************************************************************
+Modifications Copyright 2017-2019 eBay Inc.
+Author/Developer(s): Jung-Sang Ahn
+
+Original Copyright:
+See URL: https://github.com/datatechnology/cornerstone
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+**************************************************************************/
+
+#ifndef _RAFT_PARAMS_HXX_
+#define _RAFT_PARAMS_HXX_
+
+#include "basic_types.hxx"
+#include "pp_util.hxx"
+
+#include <algorithm>
+
+namespace nuraft {
+
+struct raft_params {
+public:
+    enum return_method_type {
+        // `append_entries()` will be a blocking call,
+        // and will return after it is committed in leader node.
+        blocking = 0x0,
+
+        // `append_entries()` will return immediately,
+        // and callback function (i.e., handler) will be
+        // invoked after it is committed in leader node.
+        async_handler = 0x1,
+    };
+
+    raft_params()
+        : election_timeout_upper_bound_(500)
+        , election_timeout_lower_bound_(250)
+        , heart_beat_interval_(125)
+        , rpc_failure_backoff_(50)
+        , log_sync_batch_size_(1000)
+        , log_sync_stop_gap_(99999)
+        , snapshot_distance_(0)
+        , snapshot_block_size_(0)
+        , max_append_size_(100)
+        , reserved_log_items_(100000)
+        , client_req_timeout_(3000)
+        , fresh_log_gap_(200)
+        , stale_log_gap_(2000)
+        , custom_commit_quorum_size_(0)
+        , custom_election_quorum_size_(0)
+        , leadership_expiry_(0)
+        , auto_forwarding_(false)
+        , return_method_(blocking)
+        {}
+
+    __nocopy__(raft_params);
+
+public:
+    /**
+     * Election timeout upper bound in milliseconds
+     *
+     * @param timeout
+     * @return self
+     */
+    raft_params& with_election_timeout_upper(int32 timeout) {
+        election_timeout_upper_bound_ = timeout;
+        return *this;
+    }
+
+    /**
+     * Election timeout lower bound in milliseconds
+     *
+     * @param timeout
+     * @return self
+     */
+    raft_params& with_election_timeout_lower(int32 timeout) {
+        election_timeout_lower_bound_ = timeout;
+        return *this;
+    }
+
+    /**
+     * heartbeat interval in milliseconds
+     *
+     * @param hb_interval
+     * @return self
+     */
+    raft_params& with_hb_interval(int32 hb_interval) {
+        heart_beat_interval_ = hb_interval;
+        return *this;
+    }
+
+    /**
+     * Rpc failure backoff in milliseconds
+     *
+     * @param backoff
+     * @return self
+     */
+    raft_params& with_rpc_failure_backoff(int32 backoff) {
+        rpc_failure_backoff_ = backoff;
+        return *this;
+    }
+
+    /**
+     * The maximum log entries could be attached to an appendEntries call
+     *
+     * @param size
+     * @return self
+     */
+    raft_params& with_max_append_size(int32 size) {
+        max_append_size_ = size;
+        return *this;
+    }
+
+    /**
+     * For new member that just joined the cluster, we will use
+     * log sync to ask it to catch up, and this parameter is to
+     * specify how many log entries to pack for each sync request.
+     *
+     * @param batch_size
+     * @return self
+     */
+    raft_params& with_log_sync_batch_size(int32 batch_size) {
+        log_sync_batch_size_ = batch_size;
+        return *this;
+    }
+
+    /**
+     * For new member that just joined the cluster, we will use
+     * log sync to ask it to catch up, and this parameter is to
+     * tell when to stop using log sync but appendEntries for the
+     * new server.
+     * When `leaderCommitIndex - indexCaughtUp < logSyncStopGap`,
+     * then appendEntries will be used.
+     *
+     * @param gap
+     * @return self
+     */
+    raft_params& with_log_sync_stopping_gap(int32 gap) {
+        log_sync_stop_gap_ = gap;
+        return *this;
+    }
+
+    /**
+     * Enable log compact and snapshot with the commit distance
+     *
+     * @param commit_distance
+     *     Log distance to compact between two snapshots.
+     * @return self
+     */
+    raft_params& with_snapshot_enabled(int32 commit_distance) {
+        snapshot_distance_ = commit_distance;
+        return *this;
+    }
+
+    /**
+     * The TCP block size for syncing the snapshots.
+     *
+     * @param size
+     * @return self
+     */
+    raft_params& with_snapshot_sync_block_size(int32 size) {
+        snapshot_block_size_ = size;
+        return *this;
+    }
+
+    /**
+     * The number of reserved log items when doing log compaction.
+     *
+     * @param number_of_logs Number of log items.
+     * @return self
+     */
+    raft_params& with_reserved_log_items(int number_of_logs) {
+        reserved_log_items_ = number_of_logs;
+        return *this;
+    }
+
+    /**
+     * Timeout of the execution of client request (in ms).
+     *
+     * @param timeout
+     * @return self
+     */
+    raft_params& with_client_req_timeout(int timeout) {
+        client_req_timeout_ = timeout;
+        return *this;
+    }
+
+    /**
+     * Enable auto-forwarding, so that non-leader node re-directs client
+     * request to the current leader.
+     *
+     * @param enable
+     * @return self
+     */
+    raft_params& with_auto_forwarding(bool enable) {
+        auto_forwarding_ = enable;
+        return *this;
+    }
+
+    /**
+     * If this node is considered as stale and the gap between this node's committed
+     * log index and the leader's committed log index is smaller than this threshold,
+     * this node becomes fresh.
+     *
+     * @param new_gap New threshold.
+     * @return self
+     */
+    raft_params& with_fresh_log_gap(int32 new_gap) {
+        fresh_log_gap_ = new_gap;
+        return *this;
+    }
+
+    /**
+     * If this node is considered as fresh and the gap between this node's committed
+     * log index and the leader's committed log index is larger than this threshold,
+     * this node becomes stale.
+     *
+     * @param new_gap New threshold.
+     * @return self
+     */
+    raft_params& with_stale_log_gap(int32 new_gap) {
+        stale_log_gap_ = new_gap;
+        return *this;
+    }
+
+    /**
+     * If this is set to positive non-zero value, commiting
+     * a log will be based on this quorum size. Leader election
+     * will not be affected.
+     *
+     * If set to zero, the default quorum size will be used:
+     * `ceil{ (N+1) / 2 }`, where N is the number of nodes including
+     * the leader.
+     *
+     * If this is set to wrong value, Raft will use the default
+     * quorum size.
+     *
+     * @param new_size New custom commit quorum size.
+     * @return self
+     */
+    raft_params& with_custom_commit_quorum_size(int32 new_size) {
+        custom_commit_quorum_size_ = new_size;
+        return *this;
+    }
+
+    /**
+     * If this is set to positive non-zero value, electing a
+     * new leader will be based on this quorum size. Committing
+     * a log will not be affected.
+     *
+     * If set to zero, the default quorum size will be used:
+     * `ceil{ (N+1) / 2 }`, where N is the number of nodes including
+     * the leader.
+     *
+     * If this is set to wrong value, Raft will use the default
+     * quorum size.
+     *
+     * @param new_size New custom election quorum size.
+     * @return self
+     */
+    raft_params& with_custom_election_quorum_size(int32 new_size) {
+        custom_election_quorum_size_ = new_size;
+        return *this;
+    }
+
+    /**
+     * Set the expiration time of leadership.
+     *
+     * @param expiry_ms New leadership expiration in millisecond.
+     * @return self
+     */
+    raft_params& with_leadership_expiry(int32 expiry_ms) {
+        leadership_expiry_ = expiry_ms;
+        return *this;
+    }
+
+    /**
+     * Return heartbeat interval.
+     * If given heartbeat interval is smaller than a specific value
+     * based on election timeout, return it instead.
+     *
+     * @return Heartbeat interval in millisecond.
+     */
+    int max_hb_interval() const {
+        return std::max
+               ( heart_beat_interval_,
+                 election_timeout_lower_bound_ - (heart_beat_interval_ / 2) );
+    }
+
+    raft_params* copy_to() const {
+        raft_params* ret = new raft_params();
+        ret->election_timeout_upper_bound_ = election_timeout_upper_bound_;
+        ret->election_timeout_lower_bound_ = election_timeout_lower_bound_;
+        ret->heart_beat_interval_ = heart_beat_interval_;
+        ret->rpc_failure_backoff_ = rpc_failure_backoff_;
+        ret->log_sync_batch_size_ = log_sync_batch_size_;
+        ret->log_sync_stop_gap_ = log_sync_stop_gap_;
+        ret->snapshot_distance_ = snapshot_distance_;
+        ret->snapshot_block_size_ = snapshot_block_size_;
+        ret->max_append_size_ = max_append_size_;
+        ret->reserved_log_items_ = reserved_log_items_;
+        ret->client_req_timeout_ = client_req_timeout_;
+        ret->fresh_log_gap_ = fresh_log_gap_;
+        ret->stale_log_gap_ = stale_log_gap_;
+        ret->custom_commit_quorum_size_ = custom_commit_quorum_size_;
+        ret->custom_election_quorum_size_ = custom_election_quorum_size_;
+        ret->auto_forwarding_ = auto_forwarding_;
+        ret->return_method_ = return_method_;
+        return ret;
+    }
+
+public:
+    // Upper bound of election timer, in millisecond.
+    int32 election_timeout_upper_bound_;
+
+    // Lower bound of election timer, in millisecond.
+    int32 election_timeout_lower_bound_;
+
+    // Heartbeat interval, in millisecond.
+    int32 heart_beat_interval_;
+
+    // Backoff time when RPC failure happens, in millisecond.
+    int32 rpc_failure_backoff_;
+
+    // Max number of logs that can be packed in a RPC
+    // for catch-up of joining an empty node.
+    int32 log_sync_batch_size_;
+
+    // Log gap (the number of logs) to stop catch-up of
+    // joining a new node. Once this condition meets,
+    // that newly joinned node is added to peer list
+    // and starts to receive heartbeat from leader.
+    int32 log_sync_stop_gap_;
+
+    // Log gap (the number of logs) to create a Raft snapshot.
+    int32 snapshot_distance_;
+
+    // (Deprecated).
+    int32 snapshot_block_size_;
+
+    // Max number of logs that can be packed in a RPC
+    // for append entry request.
+    int32 max_append_size_;
+
+    // Minimum number of logs that will be preserved
+    // (i.e., protected from log compaction) since the
+    // last Raft snapshot.
+    int32 reserved_log_items_;
+
+    // Client request timeout in millisecond.
+    int32 client_req_timeout_;
+
+    // Log gap (compared to the leader's latest log)
+    // for treating this node as fresh.
+    int32 fresh_log_gap_;
+
+    // Log gap (compared to the leader's latest log)
+    // for treating this node as stale.
+    int32 stale_log_gap_;
+
+    // Custom quorum size for commit.
+    // If set to zero, the default quorum size will be used.
+    int32 custom_commit_quorum_size_;
+
+    // Custom quorum size for leader election.
+    // If set to zero, the default quorum size will be used.
+    int32 custom_election_quorum_size_;
+
+    // Expiration time of leadership in millisecond.
+    // If more than quorum nodes do not respond within
+    // this time, the current leader will immediately
+    // yield its leadership and become follower.
+    // If 0, it is automatically set to `heartbeat * 20`.
+    // If negative number, leadership will never be expired
+    // (the same as the original Raft logic).
+    int32 leadership_expiry_;
+
+    // If true, follower node will forward client request
+    // to the current leader.
+    // Otherwise, it will return error to client immediately.
+    bool  auto_forwarding_;
+
+    // To choose blocking call or asynchronous call.
+    return_method_type return_method_;
+};
+
+}
+
+#endif //_RAFT_PARAMS_HXX_
