@@ -19,6 +19,7 @@ limitations under the License.
 #include "buffer_serializer.hxx"
 
 #include <cstring>
+#include <stdexcept>
 
 #define put16l(val, ptr) {          \
     ptr[0] = (val >>  0) & 0xff;    \

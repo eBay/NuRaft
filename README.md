@@ -4,7 +4,7 @@ NuRaft
 ------
 Raft implementation derived from [cornerstone](https://github.com/datatechnology/cornerstone) project, which is a very lightweight C++ implementation with minimum dependencies, originally written by [Andy Chen](https://github.com/andy-yx-chen).
 
-New features that are not described in the [original paper](https://raft.github.io/raft.pdf), but required for use cases in eBay, have been added. We believe those features are useful for other cases outside eBay as well.
+New features that are not described in the [original paper](https://raft.github.io/raft.pdf), but required for the real-world use cases in eBay, have been added. We believe those features are useful for others outside eBay as well.
 
 
 Features
@@ -21,7 +21,7 @@ Features
 #### New features added in this project ####
 * [SSL/TLS support](docs/enabling_ssl.md)
 * [Pre-vote protocol](docs/prevote_protocol.md)
-* [Leadership Expiration](docs/leadership_expiration.md)
+* [Leadership expiration](docs/leadership_expiration.md)
 * [Priority-based semi-deterministic leader election](docs/leader_election_priority.md)
 * [Read-only member (learner)](docs/readonly_member.md)
 * [Object-based logical snapshot](docs/snapshot_transmission.md)
@@ -50,6 +50,10 @@ And then fetch [Asio](https://github.com/chriskohlhoff/asio) library:
 $ ./prepare.sh
 ```
 
+* Windows
+    * Download and install [CMake](https://cmake.org/download/).
+    * Clone [Asio](https://github.com/chriskohlhoff/asio) in project directory.
+
 Below command will build the static library and all example implementations:
 ```sh
 $ mkdir build
@@ -61,6 +65,19 @@ build$ make
 Run unit tests
 ```sh
 build$ ./runtests.sh
+```
+
+On Windows:
+```sh
+C:\NuRaft> mkdir build
+C:\NuRaft> cd build
+C:\NuRaft\build> cmake -G "NMake Makefiles" ..\
+C:\NuRaft\build> nmake
+```
+
+You may need to run `vcvars` script first in your `build` directory. For example (it depends on how you installed MSVC):
+```sh
+C:\NuRaft\build> c:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat
 ```
 
 
