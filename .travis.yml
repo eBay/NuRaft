@@ -1,0 +1,27 @@
+matrix:
+  include:
+    # works on Precise and Trusty
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-5
+      env:
+         - MATRIX_EVAL="CC=gcc-5 && CXX=g++-5"
+
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install -y cmake openssl libssl-dev
+
+install:
+  - ./prepare.sh
+
+script:
+  - rm -rf build
+  - mkdir build
+  - cd build
+  - cmake -DCMAKE_BUILD_TYPE=Debug -DADDRESS_SANITIZER=1 ../
+  - make -j2
+  - ./runtests.sh
