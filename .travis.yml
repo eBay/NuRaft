@@ -10,6 +10,7 @@ matrix:
             - g++-5
       env:
          - MATRIX_EVAL="CC=gcc-5 && CXX=g++-5"
+         - CODECOV_TOKEN="c29e0ca9-762f-47fd-9072-aa4d1156eda8"
 
 before_install:
   - sudo apt-get update
@@ -19,9 +20,4 @@ install:
   - ./prepare.sh
 
 script:
-  - rm -rf build
-  - mkdir build
-  - cd build
-  - cmake -DCMAKE_BUILD_TYPE=Debug -DADDRESS_SANITIZER=1 ../
-  - make -j2
-  - ./runtests.sh
+  - ./travis_build.sh
