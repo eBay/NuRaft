@@ -1,7 +1,8 @@
-
-
 NuRaft
-------
+======
+
+[![Build Status](https://travis-ci.org/eBay/NuRaft.svg?branch=master)](https://travis-ci.org/eBay/NuRaft)
+
 Raft implementation derived from [cornerstone](https://github.com/datatechnology/cornerstone) project, which is a very lightweight C++ implementation with minimum dependencies, originally written by [Andy Chen](https://github.com/andy-yx-chen).
 
 New features that are not described in the [original paper](https://raft.github.io/raft.pdf), but required for the real-world use cases in eBay, have been added. We believe those features are useful for others outside eBay as well.
