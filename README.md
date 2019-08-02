@@ -1,3 +1,4 @@
+
 NuRaft
 ======
 
@@ -10,7 +11,7 @@ New features that are not described in the [original paper](https://raft.github.
 
 Features
 --------
-#### In the original cornerstone ####
+### In the original cornerstone ###
 * Core Raft algorithm
     * Log replication & compaction
     * Leader election
@@ -19,7 +20,7 @@ Features
 * Group commit & pipelined write
 * User-defined log store & state machine support
 
-#### New features added in this project ####
+### New features added in this project ###
 * [SSL/TLS support](docs/enabling_ssl.md)
 * [Pre-vote protocol](docs/prevote_protocol.md)
 * [Leadership expiration](docs/leadership_expiration.md)
@@ -32,7 +33,7 @@ Features
 
 How to Build
 ------------
-First of all, you need to install `cmake` and `openssl`:
+#### 1. Install `cmake` and `openssl`: ####
 
 * Ubuntu
 ```sh
@@ -45,17 +46,22 @@ $ sudo apt-get install openssl libssl-dev
 $ brew install cmake
 $ brew install openssl
 ```
+* Windows
+    * Download and install [CMake](https://cmake.org/download/).
+    * Currently we do not support SSL for Windows.
 
-And then fetch [Asio](https://github.com/chriskohlhoff/asio) library:
+#### 2. Fetch [Asio](https://github.com/chriskohlhoff/asio) library: ####
+
+* Linux & OSX
 ```sh
 $ ./prepare.sh
 ```
-
 * Windows
-    * Download and install [CMake](https://cmake.org/download/).
-    * Clone [Asio](https://github.com/chriskohlhoff/asio) in project directory.
+    * Clone [Asio](https://github.com/chriskohlhoff/asio) into project directory.
 
-Below command will build the static library and all example implementations:
+#### 3. Build static library, tests, and examples: ####
+
+* Linux & OSX
 ```sh
 $ mkdir build
 $ cd build
@@ -68,7 +74,7 @@ Run unit tests
 build$ ./runtests.sh
 ```
 
-On Windows:
+* Windows:
 ```sh
 C:\NuRaft> mkdir build
 C:\NuRaft> cd build
@@ -134,13 +140,8 @@ Unless required by applicable law or agreed to in writing, software distributed 
 3rd Party Code
 --------------
 1. URL: https://github.com/datatechnology/cornerstone<br>
-License: https://github.com/datatechnology/cornerstone/blob/master/LICENSE
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
-
-https://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+License: https://github.com/datatechnology/cornerstone/blob/master/LICENSE<br>
+Originally licensed under the Apache 2.0 license.
 
 2. URL: https://github.com/stbrumme/crc32<br>
 Original Copyright 2011-2016 Stephan Brumme<br>
