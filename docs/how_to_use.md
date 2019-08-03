@@ -11,10 +11,10 @@ If you are in a hurry, go to [Quick Start Guide](quick_start_guide.md).
 
 Modules
 -------
-It basically consists of 5 modules: Raft server, Asio, log store, state machine, and state manager. Raft server and Asio are provided by this library, while users should implement their own implementations of log store, state machine, and state manager.
+It basically consists of 5 modules: Raft server, Asio layer, log store, state machine, and state manager. Raft server and Asio are provided by this library, while users should implement their own implementations of log store, state machine, and state manager.
 * Raft server: coordinating all incoming requests and responses from users and other nodes.
-* Asio: dealing with network communication and timer, as well as thread pool management.
-* Log store: managing read, write, and compact of Raft logs.
+* Asio layer: dealing with network communication and timer, as well as thread pool management.
+* Log store: managing read, write, and compact operations of Raft logs.
     * [Interface](../include/log_store.hxx)
     * [Example - in-memory log store](../examples/in_memory_log_store.cxx)
 * State machine: executing commit (optionally pre-commit and rollback), and managing snapshots.

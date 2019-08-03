@@ -48,7 +48,7 @@ Threads can be categorized into two groups.
     * Reading/writing snapshot chunks, via below APIs:
         * `state_machine::read_logical_snp_obj`
         * `state_machine::save_logical_snp_obj`
-* Background commit thread: it keeps running in background and do commit. It will invoke
+* Background commit thread: it keeps running in background and doing commit. It will invoke
     * Log store operations.
     * State machine's commit.
     * Snapshot creation, by `state_machine::create_snapshot`.
