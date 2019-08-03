@@ -22,7 +22,6 @@ Features
 * User-defined log store & state machine support
 
 ### New features added in this project ###
-* [SSL/TLS support](docs/enabling_ssl.md)
 * [Pre-vote protocol](docs/prevote_protocol.md)
 * [Leadership expiration](docs/leadership_expiration.md)
 * [Priority-based semi-deterministic leader election](docs/leader_election_priority.md)
@@ -30,6 +29,7 @@ Features
 * [Object-based logical snapshot](docs/snapshot_transmission.md)
 * [Custom/separate quorum size for commit & leader election](docs/custom_quorum_size.md)
 * [Asynchronous replication](docs/async_replication.md)
+* [SSL/TLS support](docs/enabling_ssl.md)
 
 
 How to Build

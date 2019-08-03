@@ -14,7 +14,7 @@ S1----S4
 S2----S5
 ```
 
-Since `S5` cannot receive heartbeat from `S1`, it will initiate leader election with newer term. Since `S5` can reach quorum, it may become next leader. After that, `S1` cannot receive heartbeat from the new leader `S5`, thus it attempts to initiate another leader election. This series of events will eventually disrupt each other continuously.
+Since `S5` cannot receive heartbeat from `S1`, it will initiate leader election with newer term. `S5` can reach quorum so that it may become next leader. After that, `S1` cannot receive heartbeat from the new leader `S5`, thus it attempts to initiate another leader election. This series of events will eventually disrupt each other continuously.
 
 Note that even though `S2, S3, and S4` reject the vote request from either `S1` or `S5`, it is still problematic since vote request increases their terms which causes the denial of `append_entries` request from current leader. Once leader realizes that newer term exists, it immediately becomes follower which results in another leader election.
 

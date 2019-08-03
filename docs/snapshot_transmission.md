@@ -1,8 +1,23 @@
+
+Snapshot
+========
+
+File-Based Snapshot vs. Object-Based Snapshot
+---------------------------------------------
+The notion of "*Snapshot*" in the original paper is more like a physical file consists of multiple chunks. However, that is not practical in real-world deployment; if you are using back-end database as a state machine, most likely each snapshot will be huge so that sending and installing snapshot takes long time. Then we will end up with one of below issues:
+
+* The database file cannot be modified while you are transferring the file itself, which blocks the commit of the state machine. OR,
+* A snapshot can be a separate physical clone of the state machine. In such case, taking a snapshot becomes a super expensive operation. Moreover, each snapshot occupies disk space as big as the original state machine.
+
+If back-end database supports its own logical snapshot and proper isolation, we are happily willing to use it. To support such concept, we provide more generalized form of snapshot, i.e., object-based snapshot.
+
+In this library, a snapshot consists of one or more logical objects, where each object has unique object ID that starts from 0. The definition of an object depends on how you define a snapshot; a snapshot may have a single object, or many. Note that object ID does not need to be consecutive or even ordered, but object ID 0 should always exist, as a starting point.
+
+You can still support a physical file-based snapshot by using the object-based snapshot: just associate each chunk with an object.
+
+
 Snapshot Transmission
 ---------------------
-
-In this library, a Raft snapshot consists of one or more logical objects, where each object has unique object ID that starts from 0. The definition of an object depends on how you define a snapshot; a snapshot may have a single object, or many. Note that object ID does not need to be consecutive or even ordered, but object ID 0 should always exist.
-
 Below diagram shows the overall protocol of snapshot transmission:
 ```
 Leader      Follower

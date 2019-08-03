@@ -20,10 +20,10 @@ The default value of both parameters is 0, which follows the original algorithm.
 Those parameters are dynamically adjustable; you can change the size of quorum without shutting down Raft server:
 
 ```C++
-raft_params* params = raftServer->get_current_params();
+raft_params* params = server->get_current_params();
 params->custom_commit_quorum_size_ = 2;
 params->custom_election_quorum_size_ = 4;
-raftServer->update_params(params);
+server->update_params(params);
 ```
 
 Note that it is also possible to set those quorum sizes without intersection: {2, 2} out of 5 servers for example. In such case, data loss or log diverging is inevitable and resolving those problems is your responsibility.
