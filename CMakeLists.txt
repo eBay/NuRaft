@@ -59,7 +59,7 @@ endif ()
 # === Includes ===
 include_directories(BEFORE ./)
 include_directories(BEFORE ${ASIO_INCLUDE_DIR})
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
+include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include/libnuraft)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples/calculator)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples/echo)
