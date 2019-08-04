@@ -59,6 +59,16 @@ public:
         cb_func_ = cb_func(func);
     }
 
+    ptr<raft_params> get_params() const {
+        std::lock_guard<std::mutex> l(lock_);
+        return params_;
+    }
+
+    void set_params(raft_params* to) {
+        std::lock_guard<std::mutex> l(lock_);
+        params_ = std::shared_ptr<raft_params>(to);
+    }
+
     __nocopy__(context);
 
 public:
@@ -81,13 +91,13 @@ public:
     ptr<delayed_task_scheduler> scheduler_;
 
     // Raft parameters.
-    std::unique_ptr<raft_params> params_;
+    std::shared_ptr<raft_params> params_;
 
     // Callback function for hooking the operation.
     cb_func cb_func_;
 
     // Lock.
-    std::mutex lock_;
+    mutable std::mutex lock_;
 };
 
 }

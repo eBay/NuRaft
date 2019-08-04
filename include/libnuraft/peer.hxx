@@ -29,6 +29,8 @@ limitations under the License.
 #include "snapshot_sync_ctx.hxx"
 #include "srv_config.hxx"
 
+#include <atomic>
+
 namespace nuraft {
 
 class snapshot;
@@ -62,10 +64,10 @@ public:
         : config_(config)
         , scheduler_(ctx.scheduler_)
         , rpc_( ctx.rpc_cli_factory_->create_client(config->get_endpoint()) )
-        , current_hb_interval_(ctx.params_->heart_beat_interval_)
-        , hb_interval_(ctx.params_->heart_beat_interval_)
-        , rpc_backoff_(ctx.params_->rpc_failure_backoff_)
-        , max_hb_interval_(ctx.params_->max_hb_interval())
+        , current_hb_interval_( ctx.get_params()->heart_beat_interval_ )
+        , hb_interval_( ctx.get_params()->heart_beat_interval_ )
+        , rpc_backoff_( ctx.get_params()->rpc_failure_backoff_ )
+        , max_hb_interval_( ctx.get_params()->max_hb_interval() )
         , next_log_idx_(0)
         , matched_idx_(0)
         , busy_flag_(false)
@@ -307,7 +309,7 @@ private:
     std::mutex rpc_protector_;
 
     // Current heartbeat interval after adding back-off.
-    int32 current_hb_interval_;
+    std::atomic<int32> current_hb_interval_;
 
     // Original heartbeat interval.
     int32 hb_interval_;

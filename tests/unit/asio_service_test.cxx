@@ -152,11 +152,15 @@ int leader_election_test() {
     s2->raftServer->shutdown();
     s3->raftServer->shutdown();
     TestSuite::sleep_sec(1, "shutting down");
-    SimpleLogger::shutdown();
 
+    s1->stopAsio();
+    s2->stopAsio();
+    s3->stopAsio();
     delete s1;
     delete s2;
     delete s3;
+
+    SimpleLogger::shutdown();
     return 0;
 }
 
@@ -199,8 +203,10 @@ int ssl_test() {
 static bool dbg_print_ctx = false;
 static std::unordered_map<std::string, std::string> req_map;
 static std::unordered_map<std::string, std::string> resp_map;
+static std::mutex req_map_lock;
+static std::mutex resp_map_lock;
 
-std::string test_write_req_meta( size_t* count,
+std::string test_write_req_meta( std::atomic<size_t>* count,
                                  const asio_service::meta_cb_params& params )
 {
     static std::mutex lock;
@@ -212,7 +218,9 @@ std::string test_write_req_meta( size_t* count,
             (size_t)params.log_idx_);
 
     std::string value = "req_" + std::to_string( std::rand() );
-    req_map[key] = value;
+    {   std::lock_guard<std::mutex> l(req_map_lock);
+        req_map[key] = value;
+    }
 
     if (dbg_print_ctx) {
         _msg("%10s %s %20s\n", "write req", key, value.c_str());
@@ -222,7 +230,7 @@ std::string test_write_req_meta( size_t* count,
     return value;
 }
 
-bool test_read_req_meta( size_t* count,
+bool test_read_req_meta( std::atomic<size_t>* count,
                          const asio_service::meta_cb_params& params,
                          const std::string& meta )
 {
@@ -239,7 +247,10 @@ bool test_read_req_meta( size_t* count,
         _msg("%10s %s %20s\n", "read req", key, meta.c_str());
     }
 
-    std::string META = req_map[key];
+    std::string META;
+    {   std::lock_guard<std::mutex> l(req_map_lock);
+        META = req_map[key];
+    }
     if (META != meta) {
         CHK_EQ( META, meta );
         return false;
@@ -248,7 +259,7 @@ bool test_read_req_meta( size_t* count,
     return true;
 }
 
-std::string test_write_resp_meta( size_t* count,
+std::string test_write_resp_meta( std::atomic<size_t>* count,
                                   const asio_service::meta_cb_params& params )
 {
     static std::mutex lock;
@@ -260,7 +271,9 @@ std::string test_write_resp_meta( size_t* count,
             (size_t)params.log_idx_);
 
     std::string value = "resp_" + std::to_string( std::rand() );
-    resp_map[key] = value;
+    {   std::lock_guard<std::mutex> l(resp_map_lock);
+        resp_map[key] = value;
+    }
 
     if (dbg_print_ctx) {
         _msg("%10s %s %20s\n", "write resp", key, value.c_str());
@@ -270,7 +283,7 @@ std::string test_write_resp_meta( size_t* count,
     return value;
 }
 
-bool test_read_resp_meta( size_t* count,
+bool test_read_resp_meta( std::atomic<size_t>* count,
                           const asio_service::meta_cb_params& params,
                           const std::string& meta )
 {
@@ -286,7 +299,10 @@ bool test_read_resp_meta( size_t* count,
         _msg("%10s %s %20s\n", "read resp", key, meta.c_str());
     }
 
-    std::string META = resp_map[key];
+    std::string META;
+    {   std::lock_guard<std::mutex> l(resp_map_lock);
+        META = resp_map[key];
+    }
     if (META != meta) {
         CHK_EQ( META, meta );
         return false;
@@ -307,10 +323,10 @@ int message_meta_test() {
     RaftAsioPkg s3(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
-    size_t read_req_cb_count = 0;
-    size_t write_req_cb_count = 0;
-    size_t read_resp_cb_count = 0;
-    size_t write_resp_cb_count = 0;
+    std::atomic<size_t> read_req_cb_count(0);
+    std::atomic<size_t> write_req_cb_count(0);
+    std::atomic<size_t> read_resp_cb_count(0);
+    std::atomic<size_t> write_resp_cb_count(0);
 
     _msg("launching asio-raft servers with meta callback\n");
     for (RaftAsioPkg* rr: pkgs) {
@@ -354,14 +370,14 @@ int message_meta_test() {
     TestSuite::sleep_sec(1, "wait for replication");
 
     // Callback functions for meta should have been called.
-    CHK_GT(read_req_cb_count, 0);
-    CHK_GT(write_req_cb_count, 0);
-    CHK_GT(read_resp_cb_count, 0);
-    CHK_GT(write_resp_cb_count, 0);
+    CHK_GT(read_req_cb_count.load(), 0);
+    CHK_GT(write_req_cb_count.load(), 0);
+    CHK_GT(read_resp_cb_count.load(), 0);
+    CHK_GT(write_resp_cb_count.load(), 0);
     _msg( "read req callback %zu, write req callback %zu\n",
-          read_req_cb_count, write_req_cb_count );
+          read_req_cb_count.load(), write_req_cb_count.load() );
     _msg( "read resp callback %zu, write resp callback %zu\n",
-          read_resp_cb_count, write_resp_cb_count );
+          read_resp_cb_count.load(), write_resp_cb_count.load() );
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
@@ -373,14 +389,14 @@ int message_meta_test() {
 }
 
 
-std::string test_write_empty_meta( size_t* count,
+std::string test_write_empty_meta( std::atomic<size_t>* count,
                                    const asio_service::meta_cb_params& params )
 {
     if (count) (*count)++;
     return std::string();
 }
 
-bool test_read_empty_meta( size_t* count,
+bool test_read_empty_meta( std::atomic<size_t>* count,
                            const asio_service::meta_cb_params& params,
                            const std::string& meta )
 {
@@ -405,10 +421,10 @@ int empty_meta_test(bool always_invoke_cb) {
     RaftAsioPkg s3(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
-    size_t read_req_cb_count = 0;
-    size_t write_req_cb_count = 0;
-    size_t read_resp_cb_count = 0;
-    size_t write_resp_cb_count = 0;
+    std::atomic<size_t> read_req_cb_count(0);
+    std::atomic<size_t> write_req_cb_count(0);
+    std::atomic<size_t> read_resp_cb_count(0);
+    std::atomic<size_t> write_resp_cb_count(0);
 
     _msg("launching asio-raft servers with meta callback\n");
     for (RaftAsioPkg* rr: pkgs) {
@@ -453,19 +469,19 @@ int empty_meta_test(bool always_invoke_cb) {
 
     if (always_invoke_cb) {
         // Callback functions for meta should have been called.
-        CHK_GT(read_req_cb_count, 0);
-        CHK_GT(read_resp_cb_count, 0);
+        CHK_GT(read_req_cb_count.load(), 0);
+        CHK_GT(read_resp_cb_count.load(), 0);
     } else {
         // Callback will not be invoked on empty meta, should be 0.
-        CHK_Z(read_req_cb_count);
-        CHK_Z(read_resp_cb_count);
+        CHK_Z(read_req_cb_count.load());
+        CHK_Z(read_resp_cb_count.load());
     }
     CHK_GT(write_req_cb_count, 0);
     CHK_GT(write_resp_cb_count, 0);
     _msg( "read req callback %zu, write req callback %zu\n",
-          read_req_cb_count, write_req_cb_count );
+          read_req_cb_count.load(), write_req_cb_count.load() );
     _msg( "read resp callback %zu, write resp callback %zu\n",
-          read_resp_cb_count, write_resp_cb_count );
+          read_resp_cb_count.load(), write_resp_cb_count.load() );
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();

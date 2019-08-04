@@ -73,7 +73,7 @@ void raft_server::commit(ulong target_idx) {
             ulong leader_idx = leader_commit_index_.load();
             ulong local_idx = sm_commit_index_.load();
             if (!data_fresh_.load() &&
-                leader_idx < local_idx + ctx_->params_->fresh_log_gap_) {
+                leader_idx < local_idx + ctx_->get_params()->fresh_log_gap_) {
                 data_fresh_.store(true);
                 cb_func::Param param(id_, leader_);
                 (void) ctx_->cb_func_.call(cb_func::BecomeFresh, &param);
@@ -147,13 +147,16 @@ void raft_server::commit_in_bg() {
         if (role_ == srv_role::follower) {
             ulong leader_idx = leader_commit_index_.load();
             ulong local_idx = sm_commit_index_.load();
+            ptr<raft_params> params = ctx_->get_params();
+
             if (data_fresh_.load() &&
-                leader_idx > local_idx + ctx_->params_->stale_log_gap_) {
+                leader_idx > local_idx + params->stale_log_gap_) {
                 data_fresh_.store(false);
                 cb_func::Param param(id_, leader_);
                 (void) ctx_->cb_func_.call(cb_func::BecomeStale, &param);
+
             } else if (!data_fresh_.load() &&
-                       leader_idx < local_idx + ctx_->params_->fresh_log_gap_) {
+                       leader_idx < local_idx + params->fresh_log_gap_) {
                 data_fresh_.store(true);
                 cb_func::Param param(id_, leader_);
                 (void) ctx_->cb_func_.call(cb_func::BecomeFresh, &param);
@@ -194,7 +197,7 @@ void raft_server::commit_app_log(ptr<log_entry>& le) {
             p_dv("notify cb %ld %p",
                  sm_commit_index_.load(), &elem->awaiter_);
 
-            switch (ctx_->params_->return_method_) {
+            switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
             default:
                 // Blocking mode: invoke waiting function.
@@ -259,9 +262,10 @@ void raft_server::commit_conf(ptr<log_entry>& le) {
 }
 
 void raft_server::snapshot_and_compact(ulong committed_idx) {
-    if ( ctx_->params_->snapshot_distance_ == 0 ||
+    ptr<raft_params> params = ctx_->get_params();
+    if ( params->snapshot_distance_ == 0 ||
          ( committed_idx - log_store_->start_index() + 1 ) <
-               (ulong)ctx_->params_->snapshot_distance_ ) {
+               (ulong)params->snapshot_distance_ ) {
         // snapshot is disabled or the log store is not long enough
         return;
     }
@@ -276,7 +280,7 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
     ptr<snapshot> local_snp = get_last_snapshot();
     if ( ( !local_snp ||
            ( committed_idx - local_snp->get_last_log_idx() ) >=
-                 (ulong)ctx_->params_->snapshot_distance_ ) &&
+                 (ulong)params->snapshot_distance_ ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
     {
         snapshot_in_action = true;
@@ -369,10 +373,11 @@ void raft_server::on_snapshot_completed
 
         ptr<snapshot> new_snp = state_machine_->last_snapshot();
         set_last_snapshot(new_snp);
+        ptr<raft_params> params = ctx_->get_params();
         if ( new_snp->get_last_log_idx() >
-                 (ulong)ctx_->params_->reserved_log_items_ ) {
+                 (ulong)params->reserved_log_items_ ) {
             ulong compact_upto = new_snp->get_last_log_idx() -
-                                     (ulong)ctx_->params_->reserved_log_items_;
+                                     (ulong)params->reserved_log_items_;
             p_db("log_store_ compact upto %ld", compact_upto);
             log_store_->compact(compact_upto);
         }

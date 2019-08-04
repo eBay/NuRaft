@@ -38,6 +38,7 @@ limitations under the License.
 #include <atomic>
 #include <ctime>
 #include <fstream>
+#include <list>
 #include <queue>
 #include <thread>
 #include <regex>
@@ -170,7 +171,8 @@ private:
     std::atomic<uint8_t> stopping_status_;
     std::mutex stopping_lock_;
     std::condition_variable stopping_cv_;
-    std::atomic<uint32_t> active_workers_;
+    std::atomic<uint32_t> num_active_workers_;
+    std::list< ptr<std::thread> > worker_handles_;
     asio_service::options my_opt_;
     friend asio_service;
 };
@@ -1300,7 +1302,7 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt)
     , stopping_status_(0)
     , stopping_lock_()
     , stopping_cv_()
-    , active_workers_(0)
+    , num_active_workers_(0)
     , my_opt_(_opt)
 {
     if (my_opt_.enable_ssl_) {
@@ -1345,8 +1347,9 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt)
     }
 
     for (unsigned int i = 0; i < cpu_cnt; ++i) {
-        std::thread t(std::bind(&asio_service_impl::worker_entry, this));
-        t.detach();
+        ptr<std::thread> t =
+            cs_new<std::thread>( std::bind(&asio_service_impl::worker_entry, this) );
+        worker_handles_.push_back(t);
     }
 }
 
@@ -1366,9 +1369,9 @@ std::string asio_service_impl::get_password
 
 void asio_service_impl::worker_entry() {
     try {
-        active_workers_.fetch_add(1);
+        num_active_workers_.fetch_add(1);
         io_svc_.run();
-        active_workers_.fetch_sub(1);
+        num_active_workers_.fetch_sub(1);
     } catch (...) {
         // ignore all exceptions
     }
@@ -1413,6 +1416,12 @@ void asio_service_impl::stop() {
     while (!io_svc_.stopped()) {
         std::this_thread::yield();
     }
+
+    for (ptr<std::thread>& t: worker_handles_) {
+        if (t && t->joinable()) {
+            t->join();
+        }
+    }
 }
 
 asio_service::asio_service(const options& _opt, ptr<logger> _l)
@@ -1453,7 +1462,7 @@ void asio_service::stop() {
 }
 
 uint32_t asio_service::get_active_workers() {
-    return impl_->active_workers_.load();
+    return impl_->num_active_workers_.load();
 }
 
 ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {

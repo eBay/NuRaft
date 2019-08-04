@@ -89,8 +89,9 @@ raft_server::raft_server(context* ctx)
     char temp_buf[4096];
     std::string print_msg;
 
-    if (ctx_->params_->stale_log_gap_ < ctx_->params_->fresh_log_gap_) {
-        ctx_->params_->stale_log_gap_ = ctx_->params_->fresh_log_gap_;
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->stale_log_gap_ < params->fresh_log_gap_) {
+        params->stale_log_gap_ = params->fresh_log_gap_;
     }
 
     log_current_params();
@@ -212,16 +213,14 @@ raft_server::raft_server(context* ctx)
     print_msg += temp_buf;
     p_in(print_msg.c_str());
 
-    std::thread bg_commit_thread =
-            std::thread(std::bind(&raft_server::commit_in_bg, this));
-    bg_commit_thread.detach();
+    bg_commit_thread_ = std::thread(std::bind(&raft_server::commit_in_bg, this));
 
     p_in("wait for HB, for %d + [%d, %d] ms",
-         ctx_->params_->rpc_failure_backoff_,
-         ctx_->params_->election_timeout_lower_bound_,
-         ctx_->params_->election_timeout_upper_bound_);
+         params->rpc_failure_backoff_,
+         params->election_timeout_lower_bound_,
+         params->election_timeout_upper_bound_);
     std::this_thread::sleep_for( std::chrono::milliseconds
-                                 (ctx_->params_->rpc_failure_backoff_) );
+                                 (params->rpc_failure_backoff_) );
     restart_election_timer();
     p_db("server %d started", id_);
 }
@@ -239,21 +238,23 @@ raft_server::~raft_server() {
 }
 
 void raft_server::update_rand_timeout() {
+    ptr<raft_params> params = ctx_->get_params();
     uint seed = (uint)( std::chrono::system_clock::now()
                            .time_since_epoch().count() * id_ );
     std::default_random_engine engine(seed);
     std::uniform_int_distribution<int32>
-        distribution( ctx_->params_->election_timeout_lower_bound_,
-                      ctx_->params_->election_timeout_upper_bound_ );
+        distribution( params->election_timeout_lower_bound_,
+                      params->election_timeout_upper_bound_ );
     rand_timeout_ = std::bind(distribution, engine);
     p_in("new timeout range: %d -- %d",
-         ctx_->params_->election_timeout_lower_bound_,
-         ctx_->params_->election_timeout_upper_bound_);
+         params->election_timeout_lower_bound_,
+         params->election_timeout_upper_bound_);
 }
 
 void raft_server::update_params(raft_params* new_params) {
     recur_lock(lock_);
-    ctx_->params_ = std::unique_ptr<raft_params>(new_params);
+    ctx_->set_params(new_params);
+    ptr<raft_params> ptr_new_params = ctx_->get_params();
     log_current_params();
 
     update_rand_timeout();
@@ -262,12 +263,13 @@ void raft_server::update_params(raft_params* new_params) {
     }
     for (auto& entry: peers_) {
         peer* p = entry.second.get();
-        p->set_hb_interval(ctx_->params_->heart_beat_interval_);
+        p->set_hb_interval(ptr_new_params->heart_beat_interval_);
         p->resume_hb_speed();
     }
 }
 
 void raft_server::log_current_params() {
+    ptr<raft_params> params = ctx_->get_params();
     p_in( "parameters: "
           "timeout %d - %d, heartbeat %d, "
           "leadership expiry %d, "
@@ -276,24 +278,24 @@ void raft_server::log_current_params() {
           "auto forwarding %s, API call type %s, "
           "custom commit quorum size %d, "
           "custom election quorum size %d",
-          ctx_->params_->election_timeout_lower_bound_,
-          ctx_->params_->election_timeout_upper_bound_,
-          ctx_->params_->heart_beat_interval_,
+          params->election_timeout_lower_bound_,
+          params->election_timeout_upper_bound_,
+          params->heart_beat_interval_,
           get_leadership_expiry(),
-          ctx_->params_->max_append_size_,
-          ctx_->params_->rpc_failure_backoff_,
-          ctx_->params_->snapshot_distance_,
-          ctx_->params_->reserved_log_items_,
-          ctx_->params_->client_req_timeout_,
-          ( ctx_->params_->auto_forwarding_ ? "ON" : "OFF" ),
-          ( ctx_->params_->return_method_ == raft_params::blocking
+          params->max_append_size_,
+          params->rpc_failure_backoff_,
+          params->snapshot_distance_,
+          params->reserved_log_items_,
+          params->client_req_timeout_,
+          ( params->auto_forwarding_ ? "ON" : "OFF" ),
+          ( params->return_method_ == raft_params::blocking
             ? "BLOCKING" : "ASYNC" ),
-          ctx_->params_->custom_commit_quorum_size_,
-          ctx_->params_->custom_election_quorum_size_ );
+          params->custom_commit_quorum_size_,
+          params->custom_election_quorum_size_ );
 }
 
 raft_params* raft_server::get_current_params() const {
-    return ctx_->params_->copy_to();
+    return ctx_->get_params()->copy_to();
 }
 
 void raft_server::stop_server() {
@@ -334,6 +336,11 @@ void raft_server::shutdown() {
         ctx_->rpc_cli_factory_.reset();
         ctx_->scheduler_.reset();
     }
+
+    // Wait for BG commit thread.
+    if (bg_commit_thread_.joinable()) {
+        bg_commit_thread_.join();
+    }
 }
 
 // Number of nodes that are able to vote, including leader itself.
@@ -352,28 +359,31 @@ int32 raft_server::get_num_voting_members() {
 //       EXCLUDING the leader.
 //       e.g.) 7 nodes, quorum 4: return 3.
 int32 raft_server::get_quorum_for_election() {
+    ptr<raft_params> params = ctx_->get_params();
     int32 num_voting_members = get_num_voting_members();
-    if ( ctx_->params_->custom_election_quorum_size_ <= 0 ||
-         ctx_->params_->custom_election_quorum_size_ > num_voting_members ) {
+    if ( params->custom_election_quorum_size_ <= 0 ||
+         params->custom_election_quorum_size_ > num_voting_members ) {
         return num_voting_members / 2;
     }
-    return ctx_->params_->custom_election_quorum_size_ - 1;
+    return params->custom_election_quorum_size_ - 1;
 }
 
 int32 raft_server::get_quorum_for_commit() {
+    ptr<raft_params> params = ctx_->get_params();
     int32 num_voting_members = get_num_voting_members();
-    if ( ctx_->params_->custom_commit_quorum_size_ <= 0 ||
-         ctx_->params_->custom_commit_quorum_size_ > num_voting_members ) {
+    if ( params->custom_commit_quorum_size_ <= 0 ||
+         params->custom_commit_quorum_size_ > num_voting_members ) {
         return num_voting_members / 2;
     }
-    return ctx_->params_->custom_commit_quorum_size_ - 1;
+    return params->custom_commit_quorum_size_ - 1;
 }
 
 int32 raft_server::get_leadership_expiry() {
-    int expiry = ctx_->params_->leadership_expiry_;
+    ptr<raft_params> params = ctx_->get_params();
+    int expiry = params->leadership_expiry_;
     if (expiry == 0) {
         // If 0, default expiry: 20x of heartbeat.
-        expiry = ctx_->params_->heart_beat_interval_ * peer::RESPONSE_LIMIT;
+        expiry = params->heart_beat_interval_ * peer::RESPONSE_LIMIT;
     }
     return expiry;
 }
@@ -613,6 +623,8 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
 }
 
 void raft_server::send_reconnect_request() {
+    recur_lock(lock_);
+
     if (leader_ == id_) {
         p_er("this node %d is leader, "
              "cannot send reconnect request",
@@ -903,7 +915,7 @@ void raft_server::handle_ext_resp_err(rpc_exception& err) {
     }
     if (!p) return;
 
-    if (p->get_current_hb_interval() >= ctx_->params_->max_hb_interval()) {
+    if (p->get_current_hb_interval() >= ctx_->get_params()->max_hb_interval()) {
         handle_join_leave_rpc_err(t_msg, p);
 
     } else {

@@ -22,17 +22,19 @@ limitations under the License.
 
 #include "test_common.h"
 
+#include <atomic>
+
 using namespace nuraft;
 
 namespace timer_test {
 
-void timer_invoke_handler(size_t* counter) {
+void timer_invoke_handler(std::atomic<size_t>* counter) {
     if (counter) (*counter)++;
 }
 
 int timer_basic_test() {
     asio_service svc;
-    size_t counter = 0;
+    std::atomic<size_t> counter(0);
     timer_task<void>::executor handler = std::bind( timer_invoke_handler,
                                                     &counter );
     ptr<delayed_task> task = cs_new< timer_task<void> >( handler );
@@ -57,7 +59,7 @@ int timer_basic_test() {
 
 int timer_cancel_test() {
     asio_service svc;
-    size_t counter = 0;
+    std::atomic<size_t> counter(0);
     timer_task<void>::executor handler = std::bind( timer_invoke_handler,
                                                     &counter );
     ptr<delayed_task> task = cs_new< timer_task<void> >( handler );

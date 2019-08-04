@@ -4,7 +4,7 @@ Snapshot
 
 File-Based Snapshot vs. Object-Based Snapshot
 ---------------------------------------------
-The notion of "*Snapshot*" in the original paper is more like a physical file consists of multiple chunks. However, that is not practical in real-world deployment; if you are using back-end database as a state machine, most likely each snapshot will be huge so that sending and installing snapshot takes long time. Then we will end up with one of below issues:
+The notion of "*Snapshot*" in the original paper is close to a physical file consists of multiple chunks. However, that is not practical in real-world deployment; if you are using back-end database as a state machine, most likely each snapshot will be huge so that sending and installing snapshot take long time. Then we will end up with one of two issues:
 
 * The database file cannot be modified while you are transferring the file itself, which blocks the commit of the state machine. OR,
 * A snapshot can be a separate physical clone of the state machine. In such case, taking a snapshot becomes a super expensive operation. Moreover, each snapshot occupies disk space as big as the original state machine.
