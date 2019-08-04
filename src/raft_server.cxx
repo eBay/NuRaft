@@ -251,10 +251,9 @@ void raft_server::update_rand_timeout() {
          params->election_timeout_upper_bound_);
 }
 
-void raft_server::update_params(raft_params* new_params) {
+void raft_server::update_params(ptr<raft_params>& new_params) {
     recur_lock(lock_);
     ctx_->set_params(new_params);
-    ptr<raft_params> ptr_new_params = ctx_->get_params();
     log_current_params();
 
     update_rand_timeout();
@@ -263,7 +262,7 @@ void raft_server::update_params(raft_params* new_params) {
     }
     for (auto& entry: peers_) {
         peer* p = entry.second.get();
-        p->set_hb_interval(ptr_new_params->heart_beat_interval_);
+        p->set_hb_interval(new_params->heart_beat_interval_);
         p->resume_hb_speed();
     }
 }
@@ -294,8 +293,8 @@ void raft_server::log_current_params() {
           params->custom_election_quorum_size_ );
 }
 
-raft_params* raft_server::get_current_params() const {
-    return ctx_->get_params()->copy_to();
+ptr<raft_params> raft_server::get_current_params() const {
+    return ptr<raft_params>( ctx_->get_params()->copy_to() );
 }
 
 void raft_server::stop_server() {

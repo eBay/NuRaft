@@ -19,6 +19,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+// LCOV_EXCL_START
+
 #include "crc32.hxx"
 
 #include <stdlib.h>
@@ -380,4 +382,6 @@ uint32_t crc32_8_last8(const void* data, size_t len, uint32_t prev_value) {
 #endif
     return crc32_8(src, min, prev_value);
 }
+
+// LCOV_EXCL_STOP
 

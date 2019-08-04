@@ -325,22 +325,18 @@ public:
     /**
      * Update Raft parameters.
      *
-     * WARNING: Given `new_params` will be converted to `shared_ptr`
-     *          internally and then directly used, so that caller SHOULD NOT
-     *          free the memory of `new_params`.
-     *
      * @param new_params Parameters to set.
      */
-    void update_params(raft_params* new_params);
+    void update_params(ptr<raft_params>& new_params);
 
     /**
      * Get the current Raft parameters.
-     * It will allocate a new memory and the caller is responsible for
-     * deallocating the returned address.
+     * Returned instance is the clone of the original one,
+     * so that user can modify its contents.
      *
-     * @return Raft parameters.
+     * @return Clone of Raft parameters.
      */
-    raft_params* get_current_params() const;
+    ptr<raft_params> get_current_params() const;
 
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;

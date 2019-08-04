@@ -64,9 +64,9 @@ public:
         return params_;
     }
 
-    void set_params(raft_params* to) {
+    void set_params(ptr<raft_params>& to) {
         std::lock_guard<std::mutex> l(lock_);
-        params_ = std::shared_ptr<raft_params>(to);
+        params_ = to;
     }
 
     __nocopy__(context);
