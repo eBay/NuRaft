@@ -34,9 +34,21 @@ struct ExecArgs : TestSuite::ThreadArgs {
         , stopSignal(false)
         , msgToWrite(nullptr)
         {}
+
+    void setMsg(ptr<buffer>& to) {
+        std::lock_guard<std::mutex> l(msgToWriteLock);
+        msgToWrite = to;
+    }
+
+    ptr<buffer> getMsg() {
+        std::lock_guard<std::mutex> l(msgToWriteLock);
+        return msgToWrite;
+    }
+
     RaftPkg* leader;
     std::atomic<bool> stopSignal;
     ptr<buffer> msgToWrite;
+    std::mutex msgToWriteLock;
     EventAwaiter eaExecuter;
 };
 
@@ -48,10 +60,14 @@ int fake_executer(TestSuite::ThreadArgs* _args) {
         args->eaExecuter.wait_ms(10000);
         args->eaExecuter.reset();
         if (args->stopSignal) break;
-        if (!args->msgToWrite) continue;
 
-        ptr<buffer> msg = args->msgToWrite;
-        args->msgToWrite.reset();
+        ptr<buffer> msg = nullptr;
+        {   std::lock_guard<std::mutex> l(args->msgToWriteLock);
+            if (!args->msgToWrite) continue;
+            msg = args->msgToWrite;
+            args->msgToWrite.reset();
+        }
+
         args->leader->dbgLog(" --- append ---");
         args->leader->raftServer->append_entries( {msg} );
     }
@@ -106,13 +122,17 @@ int make_group_test() {
     std::string test_msg = "test";
     ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
     msg->put(test_msg);
-    exec_args.msgToWrite = msg;
+    {   std::lock_guard<std::mutex> l(exec_args.msgToWriteLock);
+        exec_args.msgToWrite = msg;
+    }
     exec_args.eaExecuter.invoke();
 
     // Wait for executer thread.
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
-    CHK_NULL( exec_args.msgToWrite.get() );
+    {   std::lock_guard<std::mutex> l(exec_args.msgToWriteLock);
+        CHK_NULL( exec_args.msgToWrite.get() );
+    }
     // Packet for pre-commit.
     s1.fNet->execReqResp();
     // Packet for commit.
@@ -554,13 +574,13 @@ int follower_reconnect_test() {
     std::string test_msg = "test";
     ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
     msg->put(test_msg);
-    exec_args.msgToWrite = msg;
+    exec_args.setMsg(msg);
     exec_args.eaExecuter.invoke();
 
     // Wait for executer thread.
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
-    CHK_NULL( exec_args.msgToWrite.get() );
+    CHK_NULL( exec_args.getMsg().get() );
     // Packet for pre-commit.
     s1.fNet->execReqResp();
     // Packet for commit.
@@ -619,13 +639,13 @@ int snapshot_basic_test() {
         std::string test_msg = "test" + std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        exec_args.msgToWrite = msg;
+        exec_args.setMsg(msg);
         exec_args.eaExecuter.invoke();
 
         // Wait for executer thread.
         TestSuite::sleep_ms(COMMIT_TIME_MS);
 
-        CHK_NULL( exec_args.msgToWrite.get() );
+        CHK_NULL( exec_args.getMsg().get() );
 
         // NOTE: Send it to S2 only, S3 will be lagging behind.
         s1.fNet->execReqResp("S2"); // replication.
@@ -689,13 +709,13 @@ int join_empty_node_test() {
         std::string test_msg = "test" + std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        exec_args.msgToWrite = msg;
+        exec_args.setMsg(msg);
         exec_args.eaExecuter.invoke();
 
         // Wait for executer thread.
         TestSuite::sleep_ms(COMMIT_TIME_MS);
 
-        CHK_NULL( exec_args.msgToWrite.get() );
+        CHK_NULL( exec_args.getMsg().get() );
 
         // NOTE: Send it to S2 only, S3 will be lagging behind.
         s1.fNet->execReqResp("S2"); // replication.

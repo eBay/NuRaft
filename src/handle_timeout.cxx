@@ -190,7 +190,7 @@ void raft_server::handle_election_timeout() {
 
     int time_ms = last_election_timer_reset_.get_us() / 1000;
     if ( serving_req_ ||
-         time_ms < ctx_->params_->election_timeout_lower_bound_ ) {
+         time_ms < ctx_->get_params()->election_timeout_lower_bound_ ) {
         // Handling appending entries is now taking long time,
         // so that server keeps skipping sending heartbeat.
         // It doesn't mean server is gone. Just ignore.

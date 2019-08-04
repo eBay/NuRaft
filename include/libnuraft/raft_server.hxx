@@ -325,7 +325,7 @@ public:
     /**
      * Update Raft parameters.
      *
-     * WARNING: Given `new_params` will be converted to `unique_ptr`
+     * WARNING: Given `new_params` will be converted to `shared_ptr`
      *          internally and then directly used, so that caller SHOULD NOT
      *          free the memory of `new_params`.
      *
@@ -467,6 +467,10 @@ protected:
 protected:
     static const int default_snapshot_sync_block_size;
 
+    // (Read-only)
+    // Background thread for commit and snapshot.
+    std::thread bg_commit_thread_;
+
     // `true` if this server is ready to serve operation.
     std::atomic<bool> initialized_;
 
@@ -557,7 +561,7 @@ protected:
     // `true` if this server is creating a snapshot.
     std::atomic<bool> snp_in_progress_;
 
-    // (Read-only)
+    // (Read-only, but its contents will change)
     // Server context.
     std::unique_ptr<context> ctx_;
 

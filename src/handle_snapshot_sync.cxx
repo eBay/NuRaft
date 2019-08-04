@@ -36,7 +36,7 @@ limitations under the License.
 namespace nuraft {
 
 int32 raft_server::get_snapshot_sync_block_size() const {
-    int32 block_size = ctx_->params_->snapshot_block_size_;
+    int32 block_size = ctx_->get_params()->snapshot_block_size_;
     return block_size == 0 ? default_snapshot_sync_block_size : block_size;
 }
 

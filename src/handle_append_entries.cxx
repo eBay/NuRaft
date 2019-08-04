@@ -55,17 +55,19 @@ void raft_server::request_append_entries() {
 }
 
 bool raft_server::request_append_entries(ptr<peer> p) {
-    cb_func::Param param(id_, leader_, p->get_id());
-    CbReturnCode rc = ctx_->cb_func_.call(cb_func::RequestAppendEntries, &param);
+    cb_func::Param cb_param(id_, leader_, p->get_id());
+    CbReturnCode rc = ctx_->cb_func_.call(cb_func::RequestAppendEntries, &cb_param);
     if (rc == CbReturnCode::ReturnNull) {
         p_wn("by callback, abort request_append_entries");
         return true;
     }
 
+    ptr<raft_params> params = ctx_->get_params();
+
     bool need_to_reconnect = p->need_to_reconnect();
     int32 last_active_time_ms = p->get_active_timer_us() / 1000;
     if ( last_active_time_ms >
-             ctx_->params_->heart_beat_interval_ * peer::RECONNECT_LIMIT ) {
+             params->heart_beat_interval_ * peer::RECONNECT_LIMIT ) {
         p_wn( "connection to peer %d is not active long time: %zu ms, "
               "force re-connect",
               p->get_id(),
@@ -121,7 +123,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     p_db("Server %d is busy, skip the request", p->get_id());
 
     int32 last_ts_ms = p->get_ls_timer_us() / 1000;
-    if ( last_ts_ms > ctx_->params_->heart_beat_interval_ ) {
+    if ( last_ts_ms > params->heart_beat_interval_ ) {
         // Waiting time becomes longer than HB interval, warning.
         p->inc_long_pause_warnings();
         if (p->get_long_puase_warnings() < peer::WARNINGS_LIMIT) {
@@ -135,7 +137,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         }
 
         // For resiliency, free busy flag once to send heartbeat to the peer.
-        if ( last_ts_ms > ctx_->params_->heart_beat_interval_ *
+        if ( last_ts_ms > params->heart_beat_interval_ *
                           peer::BUSY_FLAG_LIMIT ) {
             p_wn("probably something went wrong. "
                  "temporarily free busy flag for peer %d", p->get_id());
@@ -207,7 +209,8 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
 
     ulong last_log_term = term_for_log(last_log_idx);
     ulong end_idx = std::min( cur_nxt_idx,
-                              last_log_idx + 1 + ctx_->params_->max_append_size_ );
+                              last_log_idx + 1 +
+                                  ctx_->get_params()->max_append_size_ );
     // NOTE: If this is a retry, probably the follower is down.
     //       Send just one log until it comes back
     //       (i.e., max_append_size_ = 1).
@@ -476,7 +479,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     resp->accept(req.get_last_log_idx() + req.log_entries().size() + 1);
 
     int32 time_ms = tt.get_us() / 1000;
-    if (time_ms >= ctx_->params_->heart_beat_interval_) {
+    if (time_ms >= ctx_->get_params()->heart_beat_interval_) {
         // Append entries took longer than HB interval. Warning.
         p_wn("appending entries from peer %d took long time (%d ms)\n"
              "req type: %d, req term: %ld, "

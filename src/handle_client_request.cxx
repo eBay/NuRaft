@@ -81,7 +81,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         {   auto_lock(commit_ret_elems_lock_);
             commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
 
-            switch (ctx_->params_->return_method_) {
+            switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
             default:
                 // Blocking call: set callback function waiting for the result.
@@ -122,7 +122,7 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
     p_dv("commit_ret_cv %lu %p sleep\n", elem->idx_, &elem->awaiter_);
 
     // Will wake up after timeout.
-    elem->awaiter_.wait_ms(ctx_->params_->client_req_timeout_);
+    elem->awaiter_.wait_ms(ctx_->get_params()->client_req_timeout_);
 
     uint64_t idx = 0;
     uint64_t elapsed_us = 0;
@@ -166,7 +166,7 @@ ptr< cmd_result< ptr<buffer> > >
 void raft_server::drop_all_pending_commit_elems() {
     // Blocking mode:
     //   Invoke all awaiting requests to return `CANCELLED`.
-    if (ctx_->params_->return_method_ == raft_params::blocking) {
+    if (ctx_->get_params()->return_method_ == raft_params::blocking) {
         auto_lock(commit_ret_elems_lock_);
         for (auto& entry: commit_ret_elems_) {
             ptr<commit_ret_elem>& elem = entry.second;

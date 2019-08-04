@@ -46,6 +46,7 @@ public:
     ~TestSm() {}
 
     ptr<buffer> commit(const ulong log_idx, buffer& data) {
+        std::lock_guard<std::mutex> ll(dataLock);
         commits[log_idx] = buffer::copy(data);
 
         ptr<buffer> ret = buffer::alloc(sizeof(ulong));
@@ -55,6 +56,7 @@ public:
     }
 
     ptr<buffer> pre_commit(const ulong log_idx, buffer& data) {
+        std::lock_guard<std::mutex> ll(dataLock);
         preCommits[log_idx] = buffer::copy(data);
 
         ptr<buffer> ret = buffer::alloc(sizeof(ulong));
@@ -188,6 +190,7 @@ public:
     }
 
     ulong last_commit_index() {
+        std::lock_guard<std::mutex> ll(dataLock);
         auto entry = commits.rbegin();
         if (entry == commits.rend()) return 0;
         return entry->first;
@@ -207,6 +210,17 @@ public:
     }
 
     bool isSame(const TestSm& with, bool check_precommit = false) {
+        // NOTE:
+        //   To avoid false alarm by TSAN (regarding lock order inversion),
+        //   always grab lock of the smaller address one first.
+        if (this < &with) {
+            std::lock_guard<std::mutex> ll_mine(dataLock);
+            std::lock_guard<std::mutex> ll_with(with.dataLock);
+        } else {
+            std::lock_guard<std::mutex> ll_with(with.dataLock);
+            std::lock_guard<std::mutex> ll_mine(dataLock);
+        }
+
         if (check_precommit) {
             if (preCommits.size() != with.preCommits.size()) return false;
             for (auto& e1: preCommits) {
@@ -245,6 +259,7 @@ public:
     }
 
     ulong isCommitted(const std::string& msg) {
+        std::lock_guard<std::mutex> ll(dataLock);
         for (auto& entry: commits) {
             ptr<buffer> bb = entry.second;
             bb->pos(0);
@@ -258,12 +273,14 @@ public:
     }
 
     ulong getLastCommittedIdx() const {
+        std::lock_guard<std::mutex> ll(dataLock);
         auto entry = commits.rbegin();
         if (entry == commits.rend()) return 0;
         return entry->first;
     }
 
     ptr<buffer> getData(ulong log_idx) const {
+        std::lock_guard<std::mutex> ll(dataLock);
         auto entry = commits.find(log_idx);
         if (entry == commits.end()) return nullptr;
         return entry->second;
@@ -273,9 +290,10 @@ private:
     std::map<uint64_t, ptr<buffer>> preCommits;
     std::map<uint64_t, ptr<buffer>> commits;
     std::map<uint64_t, ptr<buffer>> rollbacks;
+    mutable std::mutex dataLock;
 
     ptr<snapshot> lastSnapshot;
-    std::mutex lastSnapshotLock;
+    mutable std::mutex lastSnapshotLock;
 
     SimpleLogger* myLog;
 };

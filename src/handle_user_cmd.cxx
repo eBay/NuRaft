@@ -131,7 +131,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
         }
         return ret;
     }
-    if (!ctx_->params_->auto_forwarding_) {
+    if (!ctx_->get_params()->auto_forwarding_) {
         // Auto-forwarding is disabled, return error.
         ptr< cmd_result< ptr<buffer> > > ret =
             cs_new< cmd_result< ptr<buffer> > >(result);
