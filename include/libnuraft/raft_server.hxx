@@ -327,7 +327,7 @@ public:
      *
      * @param new_params Parameters to set.
      */
-    void update_params(ptr<raft_params>& new_params);
+    void update_params(const raft_params& new_params);
 
     /**
      * Get the current Raft parameters.
@@ -336,7 +336,7 @@ public:
      *
      * @return Clone of Raft parameters.
      */
-    ptr<raft_params> get_current_params() const;
+    raft_params get_current_params() const;
 
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;

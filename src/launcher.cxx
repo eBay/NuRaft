@@ -37,14 +37,13 @@ ptr<raft_server> raft_launcher::init(ptr<state_machine> sm,
     ptr<delayed_task_scheduler> scheduler = asio_svc_;
     ptr<rpc_client_factory> rpc_cli_factory = asio_svc_;
 
-    raft_params* params = params_given.copy_to();
     context* ctx = new context( smgr,
                                 sm,
                                 asio_listener_,
                                 lg,
                                 rpc_cli_factory,
                                 scheduler,
-                                params );
+                                params_given );
     raft_instance_ = cs_new<raft_server>(ctx);
     asio_listener_->listen( raft_instance_ );
     return raft_instance_;

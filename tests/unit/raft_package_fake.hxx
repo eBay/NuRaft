@@ -39,7 +39,6 @@ public:
         , listener(nullptr)
         , rpcCliFactory(nullptr)
         , scheduler(nullptr)
-        , params(nullptr)
         , ctx(nullptr)
         , raftServer(nullptr)
         {}
@@ -67,16 +66,15 @@ public:
         scheduler = fTimer;
 
         if (!given_params) {
-            params = new raft_params();
-            params->with_election_timeout_lower(0);
-            params->with_election_timeout_upper(10000);
-            params->with_hb_interval(5000);
-            params->with_client_req_timeout(1000000);
-            params->with_reserved_log_items(0);
-            params->with_snapshot_enabled(5);
-            params->with_log_sync_stopping_gap(1);
+            params.with_election_timeout_lower(0);
+            params.with_election_timeout_upper(10000);
+            params.with_hb_interval(5000);
+            params.with_client_req_timeout(1000000);
+            params.with_reserved_log_items(0);
+            params.with_snapshot_enabled(5);
+            params.with_log_sync_stopping_gap(1);
         } else {
-            params = given_params;
+            params = *given_params;
         }
 
         ctx = new context( sMgr, sm, listener, myLog,
@@ -116,7 +114,7 @@ public:
     ptr<rpc_listener> listener;
     ptr<rpc_client_factory> rpcCliFactory;
     ptr<delayed_task_scheduler> scheduler;
-    raft_params* params;
+    raft_params params;
     context* ctx;
     ptr<raft_server> raftServer;
 };
