@@ -29,7 +29,6 @@ limitations under the License.
 namespace nuraft {
 
 struct raft_params {
-public:
     enum return_method_type {
         // `append_entries()` will be a blocking call,
         // and will return after it is committed in leader node.
@@ -62,9 +61,6 @@ public:
         , return_method_(blocking)
         {}
 
-    __nocopy__(raft_params);
-
-public:
     /**
      * Election timeout upper bound in milliseconds
      *
@@ -294,28 +290,6 @@ public:
         return std::max
                ( heart_beat_interval_,
                  election_timeout_lower_bound_ - (heart_beat_interval_ / 2) );
-    }
-
-    raft_params* copy_to() const {
-        raft_params* ret = new raft_params();
-        ret->election_timeout_upper_bound_ = election_timeout_upper_bound_;
-        ret->election_timeout_lower_bound_ = election_timeout_lower_bound_;
-        ret->heart_beat_interval_ = heart_beat_interval_;
-        ret->rpc_failure_backoff_ = rpc_failure_backoff_;
-        ret->log_sync_batch_size_ = log_sync_batch_size_;
-        ret->log_sync_stop_gap_ = log_sync_stop_gap_;
-        ret->snapshot_distance_ = snapshot_distance_;
-        ret->snapshot_block_size_ = snapshot_block_size_;
-        ret->max_append_size_ = max_append_size_;
-        ret->reserved_log_items_ = reserved_log_items_;
-        ret->client_req_timeout_ = client_req_timeout_;
-        ret->fresh_log_gap_ = fresh_log_gap_;
-        ret->stale_log_gap_ = stale_log_gap_;
-        ret->custom_commit_quorum_size_ = custom_commit_quorum_size_;
-        ret->custom_election_quorum_size_ = custom_election_quorum_size_;
-        ret->auto_forwarding_ = auto_forwarding_;
-        ret->return_method_ = return_method_;
-        return ret;
     }
 
 public:

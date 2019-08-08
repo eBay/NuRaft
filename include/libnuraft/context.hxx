@@ -45,14 +45,14 @@ public:
              ptr<logger>& l,
              ptr<rpc_client_factory>& cli_factory,
              ptr<delayed_task_scheduler>& scheduler,
-             raft_params* params = nilptr )
+             const raft_params& params )
         : state_mgr_(mgr)
         , state_machine_(m)
         , rpc_listener_(listener)
         , logger_(l)
         , rpc_cli_factory_(cli_factory)
         , scheduler_(scheduler)
-        , params_(params == nilptr ? new raft_params() : params)
+        , params_( cs_new<raft_params>(params) )
         {}
 
     void set_cb_func(cb_func::func_type func) {

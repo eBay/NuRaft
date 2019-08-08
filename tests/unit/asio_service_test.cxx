@@ -524,8 +524,8 @@ int async_append_handler_test() {
     // Set async.
     for (auto& entry: pkgs) {
         RaftAsioPkg* pp = entry;
-        ptr<raft_params> param = pp->raftServer->get_current_params();
-        param->return_method_ = raft_params::async_handler;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
         pp->raftServer->update_params(param);
     }
 

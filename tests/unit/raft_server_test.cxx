@@ -185,13 +185,13 @@ int update_params_test() {
 
     for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
-        ptr<raft_params> param = pp->raftServer->get_current_params();
-        int old_value = param->election_timeout_upper_bound_;
-        param->with_election_timeout_upper( old_value + 1 );
+        raft_params param = pp->raftServer->get_current_params();
+        int old_value = param.election_timeout_upper_bound_;
+        param.with_election_timeout_upper( old_value + 1 );
         pp->raftServer->update_params(param);
 
         param = pp->raftServer->get_current_params();
-        CHK_EQ( old_value + 1, param->election_timeout_upper_bound_ );
+        CHK_EQ( old_value + 1, param.election_timeout_upper_bound_ );
     }
 
     print_stats(pkgs);
@@ -809,8 +809,8 @@ int async_append_handler_test() {
 
     for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
-        ptr<raft_params> param = pp->raftServer->get_current_params();
-        param->return_method_ = raft_params::async_handler;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
         pp->raftServer->update_params(param);
     }
 
@@ -897,8 +897,8 @@ int async_append_handler_cancel_test() {
 
     for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
-        ptr<raft_params> param = pp->raftServer->get_current_params();
-        param->return_method_ = raft_params::async_handler;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
         pp->raftServer->update_params(param);
     }
 

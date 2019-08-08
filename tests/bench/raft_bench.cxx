@@ -192,14 +192,14 @@ int init_raft(server_stuff& stuff) {
     ptr<rpc_client_factory> rpc_cli_factory = stuff.asio_svc_;
 
     // Set parameters and start Raft server.
-    raft_params* params = new raft_params();
-    params->heart_beat_interval_ = 500;
-    params->election_timeout_lower_bound_ = 1000;
-    params->election_timeout_upper_bound_ = 2000;
-    params->reserved_log_items_ = 10000000;
-    params->snapshot_distance_ = 100000;
-    params->client_req_timeout_ = 4000;
-    params->return_method_ = raft_params::blocking;
+    raft_params params;
+    params.heart_beat_interval_ = 500;
+    params.election_timeout_lower_bound_ = 1000;
+    params.election_timeout_upper_bound_ = 2000;
+    params.reserved_log_items_ = 10000000;
+    params.snapshot_distance_ = 100000;
+    params.client_req_timeout_ = 4000;
+    params.return_method_ = raft_params::blocking;
     context* ctx = new context( stuff.smgr_,
                                 stuff.sm_,
                                 stuff.asio_listener_,

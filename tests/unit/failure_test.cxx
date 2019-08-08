@@ -46,8 +46,8 @@ int simple_conflict_test() {
 
     for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
-        ptr<raft_params> param = pp->raftServer->get_current_params();
-        param->return_method_ = raft_params::async_handler;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
         pp->raftServer->update_params(param);
     }
 

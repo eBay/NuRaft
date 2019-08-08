@@ -114,13 +114,13 @@ public:
         ptr<delayed_task_scheduler> scheduler = asioSvc;
         ptr<rpc_client_factory> rpc_cli_factory = asioSvc;
 
-        raft_params* params( new raft_params() );
-        params->with_hb_interval(HEARTBEAT_MS);
-        params->with_election_timeout_lower(HEARTBEAT_MS * 2);
-        params->with_election_timeout_upper(HEARTBEAT_MS * 4);
-        params->with_reserved_log_items(10);
-        params->with_snapshot_enabled(5);
-        params->with_client_req_timeout(10000);
+        raft_params params;
+        params.with_hb_interval(HEARTBEAT_MS);
+        params.with_election_timeout_lower(HEARTBEAT_MS * 2);
+        params.with_election_timeout_upper(HEARTBEAT_MS * 4);
+        params.with_reserved_log_items(10);
+        params.with_snapshot_enabled(5);
+        params.with_client_req_timeout(10000);
         context* ctx( new context( sMgr, sm, listener, myLog,
                                    rpc_cli_factory, scheduler, params ) );
         raftServer = cs_new<raft_server>(ctx);
