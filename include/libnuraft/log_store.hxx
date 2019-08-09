@@ -67,6 +67,9 @@ public:
 
     /**
      * Overwrite a log entry at the given `index`.
+     * This API should make sure that all log entries
+     * after the given `index` should be truncated (if exist),
+     * as a result of this function call.
      *
      * @param index Log index number to overwrite.
      * @param entry New log entry to overwrite.

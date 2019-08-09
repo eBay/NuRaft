@@ -74,10 +74,12 @@ ulong inmem_log_store::append(ptr<log_entry>& entry) {
 void inmem_log_store::write_at(ulong index, ptr<log_entry>& entry) {
     ptr<log_entry> clone = make_clone(entry);
 
-    // Find first and erase existing one.
+    // Discard all logs equal to or greater than `index.
     std::lock_guard<std::mutex> l(logs_lock_);
-    auto existing = logs_.find(index);
-    if (existing != logs_.end()) logs_.erase(existing);
+    auto itr = logs_.lower_bound(index);
+    while (itr != logs_.end()) {
+        itr = logs_.erase(itr);
+    }
     logs_[index] = clone;
 }
 
