@@ -1,4 +1,4 @@
-How to Use Nuraft: A Quick Tutorial
+How to Use NuRaft: A Quick Tutorial
 ===
 
 If you are ready to explore NuRaft, the best starting point to learn using NuRaft is the examples within the [examples directory](../examples) in the repo. There are two examples: [echo](../examples/echo) and [calculator](../examples/calculator), both share some common files. For a hello-world equivalent example, see [Quick Start Guide](quick_start_guide.md).

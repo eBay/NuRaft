@@ -256,6 +256,12 @@ int remove_node_test() {
         }
     }
 
+    // Invoke election timer for S3, to make it step down.
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    // Pending timer task should be zero in S3.
+    CHK_Z( s3.fTimer->getNumPendingTasks() );
+
     print_stats(pkgs);
 
     s1.raftServer->shutdown();
