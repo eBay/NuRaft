@@ -1,7 +1,7 @@
 Enabling SSL/TLS
 ----------------
 
-When you set [`asio_options`](../include/asio_service_options.hxx), there are a few options for enabling SSL/TLS:
+When you set [`asio_options`](../include/libnuraft/asio_service_options.hxx), there are a few options for enabling SSL/TLS:
 ```C++
 asio_service::options asio_opt;
 asio_opt.enable_ssl_        = true;

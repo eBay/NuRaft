@@ -15,9 +15,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#include "nuraft.hxx"
 #include "echo_state_machine.hxx"
 #include "in_memory_state_mgr.hxx"
+
+#include "libnuraft/nuraft.hxx"
 
 #include <chrono>
 #include <string>

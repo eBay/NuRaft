@@ -1,7 +1,7 @@
 Dealing with Buffer
 ---
 
-[`buffer`](../include/buffer.hxx) class instance just points to a raw memory blob. At the beginning of each memory blob, a few bytes are reserved for metadata: 4 bytes if buffer size is less than 32KB and 8 bytes otherwise. User data section starts right after that, thus you should write your data starting from there.
+[`buffer`](../include/libnuraft/buffer.hxx) class instance just points to a raw memory blob. At the beginning of each memory blob, a few bytes are reserved for metadata: 4 bytes if buffer size is less than 32KB and 8 bytes otherwise. User data section starts right after that, thus you should write your data starting from there.
 
 You can use `alloc()` API to allocate memory:
 ```C++
@@ -29,7 +29,7 @@ Buffer Serializer
 ---
 `buffer` itself has a few APIs to get and put data, but we do not recommend using those APIs, since they change the internal position of the buffer, which blocks concurrent reads and also is mistake-prone if you forget to reset the position.
 
-Instead, you can use [`buffer_serializer`](../include/buffer_serializer.hxx):
+Instead, you can use [`buffer_serializer`](../include/libnuraft/buffer_serializer.hxx):
 ```C++
 ptr<buffer> b = buffer::alloc( size_to_allocate );
 buffer_serializer s(b);

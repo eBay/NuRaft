@@ -6,7 +6,7 @@ The fundamental logic is described in the original paper. We skip the details he
 
 * Diego Ongaro and John K. Ousterhout, [In Search of an Understandable Consensus Algorithm](https://raft.github.io/raft.pdf), USENIX ATC 2014.
 
-If you are in a hurry, go to [Quick Start Guide](quick_start_guide.md).
+If you are in a hurry, go to [Quick Start Guide](quick_start_guide.md) or [Quick Tutorial](quick_tutorial.md).
 
 
 Modules
@@ -15,17 +15,17 @@ It basically consists of 5 modules: Raft server, Asio layer, log store, state ma
 * Raft server: coordinating all incoming requests and responses from users and other nodes.
 * Asio layer: dealing with network communication and timer, as well as thread pool management.
 * Log store: managing read, write, and compact operations of Raft logs.
-    * [Interface](../include/log_store.hxx)
+    * [Interface](../include/libnuraft/log_store.hxx)
     * [Example - in-memory log store](../examples/in_memory_log_store.cxx)
 * State machine: executing commit (optionally pre-commit and rollback), and managing snapshots.
-    * [Interface](../include/state_machine.hxx)
+    * [Interface](../include/libnuraft/state_machine.hxx)
     * [Example #1 - echo state machine](../examples/echo/echo_state_machine.hxx)
     * [Example #2 - calculator state machine](../examples/calculator/calc_state_machine.hxx)
 * State manager: saving and loading cluster configuration and status.
-    * [Interface](../include/state_mgr.hxx)
+    * [Interface](../include/libnuraft/state_mgr.hxx)
     * [Example - in-memory state manager](../examples/in_memory_state_mgr.hxx)
 * (Optional) Debugging logger: for system logging.
-    * [Interface](../include/logger.hxx)
+    * [Interface](../include/libnuraft/logger.hxx)
     * [Example - example logger](../examples/logger_wrapper.hxx)
 
 

@@ -7,7 +7,7 @@ The motivation comes from [Flexible Paxos](https://fpaxos.github.io/) paper:
 
 The basic idea is that as long as there is at least one overlapping node between the quorum for commit and the quorum for leader election, the entire group is safe. For example, let's say Qc and Qe represent the size of quorum for commit and leader election, respectively. If we have 5 servers, the set of {Qc, Qe} pairs {1, 5}, {2, 4}, {3, 3} (original algorithm), {4, 2}, and {5, 1} provides the same level of safety. Note that availability will be sacrificed as the value of |Qc - Qe| increases.
 
-For custom quorum size, we provide two parameters: `custom_commit_quorum_size_` and `custom_election_quorum_size_` in [`raft_params`](../include/raft_params.hxx).
+For custom quorum size, we provide two parameters: `custom_commit_quorum_size_` and `custom_election_quorum_size_` in [`raft_params`](../include/libnuraft/raft_params.hxx).
 
 ```C++
 raft_params params;
