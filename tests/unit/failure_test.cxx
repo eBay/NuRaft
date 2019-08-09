@@ -161,6 +161,70 @@ int simple_conflict_test() {
     return 0;
 }
 
+int rmv_not_resp_srv_wq_test(bool explicit_failure) {
+    // * Remove server that is not responding.
+    // * Can reach quorum.
+
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Remove s3 from leader.
+    s1.dbgLog(" --- remove ---");
+    s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+
+    s1.fNet->execReqResp(s2_addr);
+    // Fail to send it to S3.
+    if (explicit_failure) {
+        s1.fNet->makeReqFailAll(s3_addr);
+    }
+
+    // Heartbeat multiple times.
+    for (size_t ii=0; ii<10; ++ii) {
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s1.fNet->execReqResp(s2_addr);
+        // Fail to send it to S3.
+        if (explicit_failure) {
+            s1.fNet->makeReqFailAll(s3_addr);
+        }
+    }
+
+    // Wait for commit.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // For server 1 and 2, only 2 servers should exist.
+    for (auto& entry: pkgs) {
+        RaftPkg* pkg = entry;
+        std::vector< ptr<srv_config> > configs;
+        pkg->raftServer->get_srv_config_all(configs);
+
+        if (pkg != &s3) {
+            CHK_EQ(2, configs.size());
+        }
+    }
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace failure_test;
 using namespace failure_test;
 
@@ -171,6 +235,10 @@ int main(int argc, char** argv) {
 
     ts.doTest( "simple conflict test",
                simple_conflict_test );
+
+    ts.doTest( "remove not responding server with quorum test",
+               rmv_not_resp_srv_wq_test,
+               TestRange<bool>({false, true}));
 
     return 0;
 }

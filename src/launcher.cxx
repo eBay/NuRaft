@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "launcher.hxx"
 
+// LCOV_EXCL_START
+
 namespace nuraft {
 
 raft_launcher::raft_launcher()
@@ -73,4 +75,6 @@ bool raft_launcher::shutdown(size_t time_limit_sec) {
 }
 
 }
+
+// LCOV_EXCL_STOP
 
