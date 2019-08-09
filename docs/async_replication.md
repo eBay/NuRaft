@@ -5,7 +5,7 @@ The original Raft's commit happens after reaching quorum, which means that netwo
 
 However, there are some loosened cases that we want to achieve low latency by sacrificing consistency and resolving conflicts manually. Then waiting for the acknowledges from a majority of servers is a waste of time.
 
-To support such cases, we provide `async_replication_` flag in [`cluster_config`](../include/cluster_config.hxx). If that flag is set, `append_entries()` API immediately returns with the result of `state_machine::pre_commit()`, and replication is done in background later.
+To support such cases, we provide `async_replication_` flag in [`cluster_config`](../include/libnuraft/cluster_config.hxx). If that flag is set, `append_entries()` API immediately returns with the result of `state_machine::pre_commit()`, and replication is done in background later.
 
 Below diagram shows the overall flow. You can compare it with [original sequence](replication_flow.md):
 ```
@@ -29,7 +29,7 @@ X------>|       |   raft_server::append_entries()
 
 To enable asynchronous replication, `state_machine::pre_commit()` function should do the actual execution, instead of `state_machine::commit()`. In addition to that, you also should implement `state_machine::rollback()` correctly, to revert any changes done by `pre_commit()`.
 
-In synchronous replication mode, we provide another option: `async_handler` in [`raft_params`](../include/raft_params.hxx). Here are the differences between asynchronous replication mode and synchronous replication with `async_handler` mode:
+In synchronous replication mode, we provide another option: `async_handler` in [`raft_params`](../include/libnuraft/raft_params.hxx). Here are the differences between asynchronous replication mode and synchronous replication with `async_handler` mode:
 
 * Synchronous replication with `async_handler` mode:
     * The actual execution in state machine happens after reaching consensus.

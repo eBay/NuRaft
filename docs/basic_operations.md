@@ -5,7 +5,7 @@ Basic Operations
 
 Initializing Raft Server
 ------------------------
-First of all, you need to define your own [log store](../include/log_store.hxx), [state machine](../include/state_machine.hxx), and [state manager](../include/state_mgr.hxx) (optionally [debugging logger](../include/logger.hxx)):
+First of all, you need to define your own [log store](../include/libnuraft/log_store.hxx), [state machine](../include/libnuraft/state_machine.hxx), and [state manager](../include/libnuraft/state_mgr.hxx) (optionally [debugging logger](../include/libnuraft/logger.hxx)):
 ```C++
 ptr<logger> my_logger;
 ptr<state_machine> my_state_machine;
@@ -13,13 +13,13 @@ ptr<state_mgr> my_state_manager;
 ```
 Log store will not be passed at initialization time, but will be loaded through `load_log_store()` API in state manager later. So you need properly implement that function.
 
-After that, set your [Asio](../include/asio_service_options.hxx) and [Raft](../include/raft_params.hxx) options:
+After that, set your [Asio](../include/libnuraft/asio_service_options.hxx) and [Raft](../include/libnuraft/raft_params.hxx) options:
 ```C++
 asio_service::options asio_opt;
 raft_params params;
 ```
 
-And then you can use [Launcher](../include/launcher.hxx) for initialization:
+And then you can use [Launcher](../include/libnuraft/launcher.hxx) for initialization:
 ```C++
 ptr<raft_server> server = launcher.init(my_state_machine,
                                         my_state_manager,
@@ -45,7 +45,7 @@ Once you initialize Raft server, it will invoke below APIs from your custom modu
     * This function should return the last committed Raft cluster config, that contains the membership info.
     * At the very first launch, you can return a cluster config that contains the server itself only. After adding server the cluster config will change, and you should make it durable (if necessary).
 * `state_mgr::read_state()`
-    * This function should return the last [server state](../include/srv_state.hxx), that contains term and voting info.
+    * This function should return the last [server state](../include/libnuraft/srv_state.hxx), that contains term and voting info.
 * `state_machine::last_commit_index()`
     * You should make the last committed log number durable (if necessary), and return it here. Otherwise, Raft server attempts to do catch-up from the beginning.
 * `state_machine::last_snapshot()`
@@ -54,7 +54,7 @@ Once you initialize Raft server, it will invoke below APIs from your custom modu
 
 Shutting Down Raft Server
 -------------------------
-You can simply use [Launcher](../include/launcher.hxx)'s shutdown API:
+You can simply use [Launcher](../include/libnuraft/launcher.hxx)'s shutdown API:
 ```C++
 bool success = launcher.shutdown();
 ```
@@ -62,7 +62,7 @@ This API is a blocking call, so that the server termination is guaranteed once t
 
 Adding Server -- Organizing a Group
 ---
-Set [`srv_config`](../include/srv_config.hxx) of the server to be added:
+Set [`srv_config`](../include/libnuraft/srv_config.hxx) of the server to be added:
 ```C++
 srv_config server_to_add(...);
 ```
@@ -89,7 +89,7 @@ The server to be removed should be running at the time you remove server. Otherw
 
 Appending Log -- Replication
 ---
-You can allocate [`buffer`](../include/buffer.hxx), and put your data into it using [`buffer_serializer`](../include/buffer_serializer.hxx):
+You can allocate [`buffer`](../include/libnuraft/buffer.hxx), and put your data into it using [`buffer_serializer`](../include/libnuraft/buffer_serializer.hxx):
 ```C++
 ptr<buffer> b = buffer::alloc(...);
 buffer_serializer s(b);

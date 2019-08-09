@@ -8,7 +8,7 @@ The main goal is to prioritize member nodes for next leader election. Raft uses 
 
 New Definitions
 ---------------
-We define `priority_` in [`srv_config`](../include/srv_config.hxx), which is an integer from 0 to any value. Priority `0` is a special value so that a node with zero priority will never be a leader. All nodes in the same Raft group will be aware of all members' priority.
+We define `priority_` in [`srv_config`](../include/libnuraft/srv_config.hxx), which is an integer from 0 to any value. Priority `0` is a special value so that a node with zero priority will never be a leader. All nodes in the same Raft group will be aware of all members' priority.
 
 Each node has an internal local value *target priority* which is initially set to `max(priority of all nodes)`.
 

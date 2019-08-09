@@ -21,7 +21,7 @@ To address this issue, we introduce leadership expiration.
 
 How To Enable Leadership Expiration
 -----------------------------------
-We provide a parameter `leadership_expiry_` in [`raft_params`](../include/raft_params.hxx) to set the expiration time (in millisecond) of the current leader:
+We provide a parameter `leadership_expiry_` in [`raft_params`](../include/libnuraft/raft_params.hxx) to set the expiration time (in millisecond) of the current leader:
 
 ```C++
 raft_params params;

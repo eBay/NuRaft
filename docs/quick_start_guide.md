@@ -4,9 +4,10 @@ Quick Start Guide
 [examples/quick_start.cxx](../examples/quick_start.cxx)
 
 ```C++
-#include "nuraft.hxx"
 #include "echo_state_machine.hxx"
 #include "in_memory_state_mgr.hxx"
+
+#include "libnuraft/nuraft.hxx"
 
 #include <chrono>
 #include <string>
@@ -52,4 +53,4 @@ int main(int argc, char** argv) {
 }
 ```
 
-Please refer to [Echo server](../examples/echo) example for more details.
+Please refer to [Quick Tutorial](quick_tutorial.md) and [Echo server](../examples/echo) example for more details.
