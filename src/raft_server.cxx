@@ -646,8 +646,10 @@ void raft_server::send_reconnect_request() {
         p_leader->send_req(p_leader, req, ex_resp_handler_);
 
     } else {
+        // LCOV_EXCL_START
         p_ft("cannot find leader!");
         ctx_->state_mgr_->system_exit(-1);
+        // LCOV_EXCL_STOP
     }
 }
 
@@ -1052,8 +1054,10 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
     // cluster membership change log entries.  Losing cluster membership log
     // entries may lead to split brain.
     if ( entry->get_val_type() == log_val_type::conf && !log_store_->flush() ) {
+        // LCOV_EXCL_START
         p_ft("log store flush failed");
         ctx_->state_mgr_->system_exit(N21_log_flush_failed);
+        // LCOV_EXCL_STOP
     }
 
     return log_index;

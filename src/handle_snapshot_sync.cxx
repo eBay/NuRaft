@@ -77,6 +77,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         snp = get_last_snapshot();
         if ( snp == nilptr ||
              last_log_idx > snp->get_last_log_idx() ) {
+            // LCOV_EXCL_START
             p_er( "system is running into fatal errors, failed to find a "
                   "snapshot for peer %d (snapshot null: %d, snapshot "
                   "doesn't contais lastLogIndex: %d)",
@@ -89,16 +90,19 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
             ctx_->state_mgr_->system_exit(raft_err::N16_snapshot_for_peer_not_found);
             ::exit(-1);
             return ptr<req_msg>();
+            // LCOV_EXCL_STOP
         }
 
         if ( snp->get_type() == snapshot::raw_binary &&
              snp->size() < 1L ) {
+            // LCOV_EXCL_START
             p_er("invalid snapshot, this usually means a bug from state "
                  "machine implementation, stop the system to prevent "
                  "further errors");
             ctx_->state_mgr_->system_exit(raft_err::N17_empty_snapshot);
             ::exit(-1);
             return ptr<req_msg>();
+            // LCOV_EXCL_STOP
         }
 
         if (snp->get_last_log_idx() != prev_sync_snp_log_idx) {
@@ -127,12 +131,14 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         data = buffer::alloc((size_t)(std::min(blk_sz, sz_left)));
         int32 sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
         if ((size_t)sz_rd < data->size()) {
+            // LCOV_EXCL_START
             p_er( "only %d bytes could be read from snapshot while %d "
                   "bytes are expected, must be something wrong, exit.",
                   sz_rd, data->size() );
             ctx_->state_mgr_->system_exit(raft_err::N18_partial_snapshot_block);
             ::exit(-1);
             return ptr<req_msg>();
+            // LCOV_EXCL_STOP
         }
         last_request = (offset + (ulong)data->size()) >= snp->size();
         data_idx = offset;
@@ -173,6 +179,7 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
             become_follower();
 
         } else if (role_ == srv_role::leader) {
+            // LCOV_EXCL_START
             p_er( "Receive InstallSnapshotRequest from another leader(%d) "
                   "with same term, there must be a bug, server exits",
                   req.get_src() );
@@ -180,6 +187,7 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
                 ( raft_err::N10_leader_receive_InstallSnapshotRequest );
             ::exit(-1);
             return ptr<resp_msg>();
+            // LCOV_EXCL_STOP
 
         } else {
             restart_election_timer();
@@ -227,8 +235,10 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
 
     if (handle_snapshot_sync_req(*sync_req)) {
         if (sync_req->get_snapshot().get_type() == snapshot::raw_binary) {
+            // LCOV_EXCL_START
             // Raw binary: add received byte to offset.
             resp->accept(sync_req->get_offset() + sync_req->get_data().size());
+            // LCOV_EXCL_STOP
 
         } else {
             // Object type: add one (next object index).
@@ -270,8 +280,10 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
         } else {
             ptr<snapshot> snp = sync_ctx->get_snapshot();
             if (snp->get_type() == snapshot::raw_binary) {
+                // LCOV_EXCL_START
                 p_db("resp.get_next_idx(): %zu, snp->size(): %zu\n",
                      resp.get_next_idx(), snp->size());
+                // LCOV_EXCL_STOP
             }
 
             bool snp_install_done =
@@ -424,10 +436,13 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
     if (!initialized_) initialized_ = true;
 
     if (req.get_snapshot().get_type() == snapshot::raw_binary) {
+        // LCOV_EXCL_START
         // Raw binary type (original).
         state_machine_->save_snapshot_data(req.get_snapshot(),
                                            req.get_offset(),
                                            req.get_data());
+        // LCOV_EXCL_STOP
+
     } else {
         // Logical object type.
         ulong obj_id = req.get_offset();
@@ -446,9 +461,11 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
 
         // Only follower will run this piece of code, but let's check it again
         if (role_ != srv_role::follower) {
+            // LCOV_EXCL_START
             p_er("bad server role for applying a snapshot, exit for debugging");
             ctx_->state_mgr_->system_exit(raft_err::N11_not_follower_for_snapshot);
             ::exit(-1);
+            // LCOV_EXCL_STOP
         }
 
         p_in( "sucessfully receive a snapshot (idx %zu term %zu) from leader",
@@ -463,11 +480,13 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             p_in("successfully compact the log store, will now ask the "
                  "statemachine to apply the snapshot");
             if (!state_machine_->apply_snapshot(req.get_snapshot())) {
+                // LCOV_EXCL_START
                 p_er("failed to apply the snapshot after log compacted, "
                      "to ensure the safety, will shutdown the system");
                 ctx_->state_mgr_->system_exit(raft_err::N12_apply_snapshot_failed);
                 ::exit(-1);
                 return false;
+                // LCOV_EXCL_STOP
             }
 
             reconfigure(req.get_snapshot().get_last_config());
@@ -504,10 +523,12 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
     }
 
  } catch (...) {
+    // LCOV_EXCL_START
     p_er("failed to handle snapshot installation due to system errors");
     ctx_->state_mgr_->system_exit(raft_err::N13_snapshot_install_failed);
     ::exit(-1);
     return false;
+    // LCOV_EXCL_STOP
  }
 
     return true;

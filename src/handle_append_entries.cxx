@@ -174,11 +174,13 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
     }
 
     if (last_log_idx >= cur_nxt_idx) {
+        // LCOV_EXCL_START
         p_er( "Peer's lastLogIndex is too large %llu v.s. %llu, ",
               last_log_idx, cur_nxt_idx );
         ctx_->state_mgr_->system_exit(raft_err::N8_peer_last_log_idx_too_large);
         ::exit(-1);
         return ptr<req_msg>();
+        // LCOV_EXCL_STOP
     }
 
     // cur_nxt_idx: last log index of myself (leader).
