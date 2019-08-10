@@ -125,12 +125,14 @@ void raft_server::commit_in_bg() {
                   quick_commit_index_.load(), sm_commit_index_.load() );
 
             if (le->get_term() == 0) {
+                // LCOV_EXCL_START
                 // Zero term means that log store is corrupted
                 // (failed to read log).
                 p_ft( "empty log at idx %llu, must be log corruption",
                       sm_commit_index_.load() );
                 ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
                 ::exit(-1);
+                // LCOV_EXCL_STOP
             }
 
             if (le->get_val_type() == log_val_type::app_log) {
@@ -164,12 +166,14 @@ void raft_server::commit_in_bg() {
         }
 
      } catch (std::exception& err) {
+        // LCOV_EXCL_START
         commit_bg_stopped_ = true;
         p_er( "background committing thread encounter err %s, "
               "exiting to protect the system",
               err.what() );
         ctx_->state_mgr_->system_exit(raft_err::N20_background_commit_err);
         ::exit(-1);
+        // LCOV_EXCL_STOP
      }
     }
     commit_bg_stopped_ = true;
@@ -299,12 +303,14 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
              conf->get_prev_log_idx() > 0 &&
              conf->get_prev_log_idx() < log_store_->start_index() ) {
             if (!local_snp) {
+                // LCOV_EXCL_START
                 p_er("No snapshot could be found while no configuration "
                      "cannot be found in current committed logs, "
                      "this is a system error, exiting");
                 ctx_->state_mgr_->system_exit(raft_err::N6_no_snapshot_found);
                 ::exit(-1);
                 return;
+                // LCOV_EXCL_STOP
             }
             conf = local_snp->get_last_config();
 
