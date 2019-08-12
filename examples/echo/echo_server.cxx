@@ -72,7 +72,8 @@ void append_log(const std::string& cmd,
     // Create a new log which will contain
     // 4-byte length and string data.
     ptr<buffer> new_log = buffer::alloc(sizeof(int) + cascaded_str.size());
-    new_log->put(cascaded_str.data(), cascaded_str.size());
+    buffer_serializer bs(new_log);
+    bs.put_str(cascaded_str);
 
     // To measure the elapsed time.
     ptr<TestSuite::Timer> timer = cs_new<TestSuite::Timer>();
