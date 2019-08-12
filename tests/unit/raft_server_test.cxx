@@ -291,7 +291,14 @@ int add_node_error_cases_test() {
         ret = s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
 
         // May fail (depends on commit thread wake-up timing).
-        //CHK_EQ( cmd_result_code::CONFIG_CHANGING, ret->get_result_code() );
+        size_t expected_cluster_size = 2;
+        if (ret->get_result_code() == cmd_result_code::OK) {
+            // If succeed, S3 is also a member of group.
+            expected_cluster_size = 3;
+        } else {
+            // If not, error code should be CONFIG_CHANGNING.
+            CHK_EQ( cmd_result_code::CONFIG_CHANGING, ret->get_result_code() );
+        }
 
         // Finish adding S2 task.
         s1.fNet->execReqResp();
@@ -307,8 +314,7 @@ int add_node_error_cases_test() {
         std::vector< ptr< srv_config > > configs_out;
         s1.raftServer->get_srv_config_all(configs_out);
 
-        // S2 should be added successfully.
-        CHK_EQ(2, configs_out.size());
+        CHK_EQ(expected_cluster_size, configs_out.size());
     }
 
     {   // Attempt to add S2 again.
