@@ -26,6 +26,8 @@ limitations under the License.
 using namespace nuraft;
 using namespace raft_functional_common;
 
+using raft_result = cmd_result< ptr<buffer> >;
+
 namespace raft_server_test {
 
 struct ExecArgs : TestSuite::ThreadArgs {
@@ -192,6 +194,173 @@ int update_params_test() {
 
         param = pp->raftServer->get_current_params();
         CHK_EQ( old_value + 1, param.election_timeout_upper_bound_ );
+    }
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
+int add_node_error_cases_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+
+    size_t num_srvs = pkgs.size();
+    CHK_GT(num_srvs, 0);
+
+    ptr<FakeNetwork> c_net = cs_new<FakeNetwork>("client", f_base);
+    f_base->addNetwork(c_net);
+    c_net->create_client(s1_addr);
+    c_net->create_client(s2_addr);
+
+    std::atomic<bool> invoked(false);
+    rpc_handler bad_req_handler = [&invoked]( ptr<resp_msg>& resp,
+                                              ptr<rpc_exception>& err ) -> int {
+        invoked.store(true);
+        CHK_EQ( cmd_result_code::BAD_REQUEST, resp->get_result_code() );
+        return 0;
+    };
+
+    {   // Attempt to add more than one server at once.
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( (ulong)0, msg_type::add_server_request, 0, 0,
+                             (ulong)0, (ulong)0, (ulong)0 );
+        for (size_t ii=1; ii<num_srvs; ++ii) {
+            RaftPkg* ff = pkgs[ii];
+            ptr<srv_config> srv = ff->getTestMgr()->get_srv_config();
+            ptr<buffer> buf(srv->serialize());
+            ptr<log_entry> log( cs_new<log_entry>
+                                ( 0, buf, log_val_type::cluster_server ) );
+            req->log_entries().push_back(log);
+        }
+        c_net->findClient(s1_addr)->send( req, bad_req_handler );
+        c_net->execReqResp();
+    }
+    CHK_TRUE(invoked.load());
+    invoked = false;
+
+    {   // Attempt to add server with wrong message type.
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( (ulong)0, msg_type::add_server_request, 0, 0,
+                             (ulong)0, (ulong)0, (ulong)0 );
+        RaftPkg* ff = pkgs[1];
+        ptr<srv_config> srv = ff->getTestMgr()->get_srv_config();
+        ptr<buffer> buf(srv->serialize());
+        ptr<log_entry> log( cs_new<log_entry>
+                            ( 0, buf, log_val_type::conf ) );
+        req->log_entries().push_back(log);
+        c_net->findClient(s1_addr)->send( req, bad_req_handler );
+        c_net->execReqResp();
+    }
+    CHK_TRUE(invoked.load());
+    invoked = false;
+
+    {   // Attempt to add server while previous one is in progress.
+
+        // Add S2 to S1.
+        s1.raftServer->add_srv( *(s2.getTestMgr()->get_srv_config()) );
+
+        // Now adding S2 is in progress, add S3 to S1.
+        ptr<raft_result> ret =
+            s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
+
+        // Should fail.
+        CHK_EQ( cmd_result_code::SERVER_IS_JOINING, ret->get_result_code() );
+
+        // Join req/resp.
+        s1.fNet->execReqResp();
+
+        // Now config change is in progress, add S3 to S1.
+        ret = s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
+
+        // Should fail.
+        CHK_EQ( cmd_result_code::CONFIG_CHANGING, ret->get_result_code() );
+
+        // Finish adding S2 task.
+        s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
+        TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+        // Heartbeat.
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
+        TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+        std::vector< ptr< srv_config > > configs_out;
+        s1.raftServer->get_srv_config_all(configs_out);
+
+        // S2 should be added successfully.
+        CHK_EQ(2, configs_out.size());
+    }
+
+    {   // Attempt to add S2 again.
+        ptr<raft_result> ret =
+            s1.raftServer->add_srv( *(s2.getTestMgr()->get_srv_config()) );
+        CHK_EQ( cmd_result_code::SERVER_ALREADY_EXISTS, ret->get_result_code() );
+    }
+
+    {   // Attempt to add S3 to S2 (non-leader).
+        ptr<raft_result> ret =
+            s2.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
+        CHK_EQ( cmd_result_code::NOT_LEADER, ret->get_result_code() );
+    }
+
+    rpc_handler nl_handler = [&invoked]( ptr<resp_msg>& resp,
+                                         ptr<rpc_exception>& err ) -> int {
+        invoked.store(true);
+        CHK_EQ( cmd_result_code::NOT_LEADER, resp->get_result_code() );
+        return 0;
+    };
+    {   // Attempt to add S3 to S2 (non-leader), through RPC.
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( (ulong)0, msg_type::add_server_request, 0, 0,
+                             (ulong)0, (ulong)0, (ulong)0 );
+        ptr<srv_config> srv = s3.getTestMgr()->get_srv_config();
+        ptr<buffer> buf(srv->serialize());
+        ptr<log_entry> log( cs_new<log_entry>
+                            ( 0, buf, log_val_type::cluster_server ) );
+        req->log_entries().push_back(log);
+        c_net->findClient(s2_addr)->send( req, nl_handler );
+        c_net->execReqResp();
+    }
+    CHK_TRUE(invoked.load());
+    invoked = false;
+
+    {   // Now, normally add S3 to S1.
+        s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
+        s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
+        TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+        // Heartbeat.
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
+        TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+        std::vector< ptr< srv_config > > configs_out;
+        s1.raftServer->get_srv_config_all(configs_out);
+
+        // All 3 servers should exist.
+        CHK_EQ(3, configs_out.size());
     }
 
     print_stats(pkgs);
@@ -993,6 +1162,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "update params test",
                update_params_test );
+
+    ts.doTest( "add node error cases test",
+               add_node_error_cases_test );
 
     ts.doTest( "remove node test",
                remove_node_test );
