@@ -448,6 +448,155 @@ int remove_node_test() {
     return 0;
 }
 
+int remove_node_error_cases_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    size_t num_srvs = pkgs.size();
+    CHK_GT(num_srvs, 0);
+
+    ptr<FakeNetwork> c_net = cs_new<FakeNetwork>("client", f_base);
+    f_base->addNetwork(c_net);
+    c_net->create_client(s1_addr);
+    c_net->create_client(s2_addr);
+
+    std::atomic<bool> invoked(false);
+    rpc_handler bad_req_handler = [&invoked]( ptr<resp_msg>& resp,
+                                              ptr<rpc_exception>& err ) -> int {
+        invoked.store(true);
+        CHK_EQ( cmd_result_code::BAD_REQUEST, resp->get_result_code() );
+        return 0;
+    };
+
+    {   // Attempt to remove more than one server at once.
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( (ulong)0, msg_type::remove_server_request, 0, 0,
+                             (ulong)0, (ulong)0, (ulong)0 );
+        for (size_t ii=1; ii<num_srvs; ++ii) {
+            RaftPkg* ff = pkgs[ii];
+            ptr<srv_config> srv = ff->getTestMgr()->get_srv_config();
+            ptr<buffer> buf(srv->serialize());
+            ptr<log_entry> log( cs_new<log_entry>
+                                ( 0, buf, log_val_type::cluster_server ) );
+            req->log_entries().push_back(log);
+        }
+        c_net->findClient(s1_addr)->send( req, bad_req_handler );
+        c_net->execReqResp();
+    }
+    CHK_TRUE(invoked.load());
+    invoked = false;
+
+    {   // Attempt to remove S3 from S2 (non-leader).
+        ptr<raft_result> ret = s2.raftServer->remove_srv(s3.myId);
+        CHK_EQ( cmd_result_code::NOT_LEADER, ret->get_result_code() );
+    }
+
+    rpc_handler nl_handler = [&invoked]( ptr<resp_msg>& resp,
+                                         ptr<rpc_exception>& err ) -> int {
+        invoked.store(true);
+        CHK_EQ( cmd_result_code::NOT_LEADER, resp->get_result_code() );
+        return 0;
+    };
+    {   // Attempt to remove S3 to S2 (non-leader), through RPC.
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( (ulong)0, msg_type::remove_server_request, 0, 0,
+                             (ulong)0, (ulong)0, (ulong)0 );
+        ptr<buffer> buf(buffer::alloc(sz_int));
+        buf->put(s3.myId);
+        buf->pos(0);
+        ptr<log_entry> log(cs_new<log_entry>(0, buf, log_val_type::cluster_server));
+        req->log_entries().push_back(log);
+        c_net->findClient(s2_addr)->send( req, nl_handler );
+        c_net->execReqResp();
+    }
+    CHK_TRUE(invoked.load());
+    invoked = false;
+
+    {   // Attempt to remove non-existing server ID.
+        ptr<raft_result> ret = s1.raftServer->remove_srv(9999);
+        CHK_EQ( cmd_result_code::SERVER_NOT_FOUND, ret->get_result_code() );
+    }
+
+    {   // Attempt to remove leader itself.
+        ptr<raft_result> ret = s1.raftServer->remove_srv(s1.myId);
+        CHK_EQ( cmd_result_code::CANNOT_REMOVE_LEADER, ret->get_result_code() );
+    }
+
+    {   // Attempt to remove server while previous one is in progress.
+
+        // Remove S2 from S1.
+        s1.raftServer->remove_srv(s2.myId);
+
+        // Leave req/resp.
+        s1.fNet->execReqResp();
+
+        // Now config change is in progress, add S3 to S1.
+        ptr<raft_result> ret = s1.raftServer->remove_srv(s3.myId);
+
+        // May fail (depends on commit thread wake-up timing).
+        size_t expected_cluster_size = 2;
+        if (ret->get_result_code() == cmd_result_code::OK) {
+            // If succeed, S3 is also removed.
+            expected_cluster_size = 1;
+        } else {
+            // If not, error code should be CONFIG_CHANGNING.
+            CHK_EQ( cmd_result_code::CONFIG_CHANGING, ret->get_result_code() );
+        }
+
+        // Finish the task.
+        s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
+        TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+        // Heartbeat.
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
+        TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+        std::vector< ptr< srv_config > > configs_out;
+        s1.raftServer->get_srv_config_all(configs_out);
+        CHK_EQ(expected_cluster_size, configs_out.size());
+
+        // If S3 still exists, remove it here.
+        if (expected_cluster_size > 1) {
+            s1.raftServer->remove_srv(s3.myId);
+            s1.fNet->execReqResp();
+            s1.fNet->execReqResp();
+            TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+            s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+            s1.fNet->execReqResp();
+            s1.fNet->execReqResp();
+            TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+            configs_out.clear();
+            s1.raftServer->get_srv_config_all(configs_out);
+            CHK_EQ(1, configs_out.size());
+        }
+    }
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int leader_election_basic_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -1174,6 +1323,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "remove node test",
                remove_node_test );
+
+    ts.doTest( "remove node error cases test",
+               remove_node_error_cases_test );
 
     ts.doTest( "leader election basic test",
                leader_election_basic_test );
