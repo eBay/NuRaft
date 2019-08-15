@@ -231,6 +231,14 @@ public:
     { return sm_commit_index_.load(); }
 
     /**
+     * Get the leader's last committed log index number.
+     *
+     * @return The leader's last committed log index number.
+     */
+    ulong get_leader_committed_log_idx() const
+    { return is_leader() ? get_committed_log_idx() : leader_commit_index_.load(); }
+
+    /**
      * Get the current Raft cluster config.
      *
      * @return Cluster config.
