@@ -13,6 +13,7 @@ if (NOT CMAKE_BUILD_TYPE)
     message(STATUS "Build type is not given, use default.")
 endif ()
 message(STATUS "Build type: " ${CMAKE_BUILD_TYPE})
+message(STATUS "Build Install Prefix : " ${CMAKE_INSTALL_PREFIX})
 
 set(BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -274,5 +275,9 @@ if (CODE_COVERAGE GREATER 0)
     )
 endif()
 
+
+# === Install Targets ===
+install(TARGETS static_lib ARCHIVE DESTINATION lib)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/libnuraft DESTINATION include)
 
 
