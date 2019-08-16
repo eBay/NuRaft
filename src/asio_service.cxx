@@ -721,7 +721,12 @@ public:
 #ifdef SSL_LIBRARY_NOT_FOUND
             assert(0); // Should not reach here.
 #else
-            ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
+            if (_impl->get_options().skip_verification_) {
+                ssl_socket_.set_verify_mode(asio::ssl::verify_none);
+            } else {
+                ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
+            }
+
             ssl_socket_.set_verify_callback
                         ( std::bind( &asio_rpc_client::verify_certificate,
                                      this,

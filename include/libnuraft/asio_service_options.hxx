@@ -66,6 +66,7 @@ struct asio_service_options {
     asio_service_options()
         : thread_pool_size_(0)
         , enable_ssl_(false)
+        , skip_verification_(false)
         , write_req_meta_(nullptr)
         , read_req_meta_(nullptr)
         , invoke_req_cb_on_empty_meta_(true)
@@ -81,6 +82,9 @@ struct asio_service_options {
 
     // If `true`, enable SSL/TLS secure connection.
     bool enable_ssl_;
+
+    // If `true`, skip certificate verification.
+    bool skip_verification_;
 
     // Path to certification & key files.
     std::string server_cert_file_;
