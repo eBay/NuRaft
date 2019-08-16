@@ -408,6 +408,11 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
     thread_local char temp_buf[1024];
     std::string str_buf;
 
+    // Compare old and new configs, to check if
+    // the configuration change is for adding this node.
+    bool invoke_join_cb =
+        ( !cur_config->get_server(id_) && new_config->get_server(id_) );
+
     // we only allow one server to be added or removed at a time
     std::vector<int32> srvs_removed;
     std::vector< ptr<srv_config> > srvs_added;
@@ -514,6 +519,14 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
     }
 
     set_config(new_config);
+
+    if (invoke_join_cb) {
+        cb_func::Param param(id_, leader_);
+        ptr<cluster_config> c_conf = get_config();
+        param.ctx = (void*)c_conf.get();
+        CbReturnCode rc = ctx_->cb_func_.call(cb_func::JoinedCluster, &param);
+        (void)rc;
+    }
 
     str_buf = "";
     for (auto& entry: new_config->get_servers()) {

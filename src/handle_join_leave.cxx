@@ -177,12 +177,6 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     ctx_->state_mgr_->save_state(*state_);
     reconfigure(cluster_config::deserialize(entries[0]->get_buf()));
 
-    cb_func::Param param(id_, leader_);
-    ptr<cluster_config> c_conf = get_config();
-    param.ctx = (void*)c_conf.get();
-    CbReturnCode rc = ctx_->cb_func_.call(cb_func::JoinedCluster, &param);
-    (void)rc;
-
     resp->accept( quick_commit_index_.load() + 1 );
     return resp;
 }
