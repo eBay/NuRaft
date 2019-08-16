@@ -721,10 +721,10 @@ public:
 #ifdef SSL_LIBRARY_NOT_FOUND
             assert(0); // Should not reach here.
 #else
-            if (_impl->get_options().verify_peer_) {
-                ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
-            } else {
+            if (_impl->get_options().skip_verification_) {
                 ssl_socket_.set_verify_mode(asio::ssl::verify_none);
+            } else {
+                ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
             }
 
             ssl_socket_.set_verify_callback
