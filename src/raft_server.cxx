@@ -39,7 +39,7 @@ namespace nuraft {
 
 const int raft_server::default_snapshot_sync_block_size = 4 * 1024;
 
-raft_server::raft_server(context* ctx)
+raft_server::raft_server(context* ctx, const init_options& opt)
     : initialized_(false)
     , leader_(-1)
     , id_(ctx->state_mgr_->server_id())
@@ -215,13 +215,22 @@ raft_server::raft_server(context* ctx)
 
     bg_commit_thread_ = std::thread(std::bind(&raft_server::commit_in_bg, this));
 
-    p_in("wait for HB, for %d + [%d, %d] ms",
-         params->rpc_failure_backoff_,
-         params->election_timeout_lower_bound_,
-         params->election_timeout_upper_bound_);
-    std::this_thread::sleep_for( std::chrono::milliseconds
-                                 (params->rpc_failure_backoff_) );
-    restart_election_timer();
+    if (opt.skip_initial_election_timeout_) {
+        // Issue #23:
+        //   During remediation, the node (to be added) shouldn't be
+        //   even a temp leader (to avoid local commit). We provide
+        //   this option for that purpose.
+        p_in("skip initialization of election timer, waiting for first heartbeat");
+
+    } else {
+        p_in("wait for HB, for %d + [%d, %d] ms",
+             params->rpc_failure_backoff_,
+             params->election_timeout_lower_bound_,
+             params->election_timeout_upper_bound_);
+        std::this_thread::sleep_for( std::chrono::milliseconds
+                                     (params->rpc_failure_backoff_) );
+        restart_election_timer();
+    }
     p_db("server %d started", id_);
 }
 

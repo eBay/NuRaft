@@ -54,7 +54,22 @@ class raft_server {
 public:
     static const int32 PRE_VOTE_REJECTION_LIMIT = 20;
 
-    raft_server(context* ctx);
+    struct init_options {
+        init_options()
+            : skip_initial_election_timeout_(false)
+            {}
+
+        // If `true`, the election timer will not be initiated
+        // automatically, so that this node will never trigger
+        // leader election until it gets the first heartbeat
+        // from any valid leader.
+        //
+        // Purpose: to avoid becoming leader when there is only one
+        //          node in the cluster.
+        bool skip_initial_election_timeout_;
+    };
+
+    raft_server(context* ctx, const init_options& opt = init_options());
 
     virtual ~raft_server();
 

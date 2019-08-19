@@ -48,7 +48,9 @@ public:
         fNet->shutdown();
     }
 
-    void initServer(raft_params* given_params = nullptr)
+    void initServer(raft_params* given_params = nullptr,
+                    const raft_server::init_options opt =
+                        raft_server::init_options())
     {
         fNet = cs_new<FakeNetwork>( myEndpoint, fBase );
         fBase->addNetwork(fNet);
@@ -79,7 +81,7 @@ public:
 
         ctx = new context( sMgr, sm, listener, myLog,
                            rpcCliFactory, scheduler, params );
-        raftServer = cs_new<raft_server>(ctx);
+        raftServer = cs_new<raft_server>(ctx, opt);
     }
 
     void free() {
