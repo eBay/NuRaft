@@ -183,6 +183,11 @@ public:
     void yield_leadership();
 
     /**
+     * Start the election timer on this server, if this server is a follower.
+     */
+    void restart_election_timer();
+
+    /**
      * Set custom context to Raft cluster config.
      *
      * @param ctx Custom context.
@@ -456,7 +461,6 @@ protected:
     void become_leader();
     void become_follower();
     void enable_hb_for_peer(peer& p);
-    void restart_election_timer();
     void stop_election_timer();
     void handle_hb_timeout(int32 srv_id);
     void reset_peer_info();
