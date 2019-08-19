@@ -103,6 +103,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
 void raft_server::restart_election_timer() {
     // don't start the election timer while this server is still catching up the logs
     // or this server is the leader
+    recur_lock(lock_);
     if (catching_up_ || role_ == srv_role::leader) {
         return;
     }
