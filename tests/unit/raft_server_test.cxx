@@ -169,6 +169,63 @@ int make_group_test() {
     return 0;
 }
 
+int init_options_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+
+    size_t num_srvs = pkgs.size();
+    CHK_GT(num_srvs, 0);
+
+    raft_server::init_options opt;
+
+    for (size_t ii = 0; ii < num_srvs; ++ii) {
+        RaftPkg* ff = pkgs[ii];
+
+        // For s2 and s3, initialize Raft servers with
+        // election timer skip option.
+        opt.skip_initial_election_timeout_ = (ii > 0);
+        ff->initServer(nullptr, opt);
+        ff->fNet->listen(ff->raftServer);
+        ff->fTimer->invoke( timer_task_type::election_timer );
+    }
+
+    // s2 and s3 should never be a leader.
+    for (size_t ii = 0; ii < num_srvs; ++ii) {
+        RaftPkg* ff = pkgs[ii];
+        if (ii == 0) {
+            CHK_TRUE( ff->raftServer->is_leader() );
+        } else {
+            CHK_FALSE( ff->raftServer->is_leader() );
+        }
+    }
+
+    // Make group should succeed as long as s1 is the current leader.
+    CHK_Z( make_group( pkgs ) );
+    for (RaftPkg* ff: pkgs) {
+        CHK_EQ(1, ff->raftServer->get_leader());
+    }
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int update_params_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -1314,6 +1371,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "make group test",
                make_group_test );
+
+    ts.doTest( "init options test",
+               init_options_test );
 
     ts.doTest( "update params test",
                update_params_test );
