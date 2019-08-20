@@ -170,17 +170,22 @@ public:
                                    const int new_priority);
 
     /**
-     * Yield current leadership and becomes follower immediately.
+     * Yield current leadership and becomes follower.
      * Only leader will accept this operation.
      *
-     * NOTE: Since leader election is non-deterministic in Raft,
-     *       there is always a chance that this server becomes
-     *       next leader again.
+     * If given `immediate_yield` flag is `true`, it will
+     * become follower immediately, and next leader election will
+     * be totally random so that there is always a chance that
+     * this server becomes next leader again.
      *
-     * @param srv_id ID of server to update priority.
-     * @param new_priority New priority.
+     * Otherwise, this server will pause write first, wait until
+     * highest priority server (except for this server) finishes
+     * the catch-up of the latest log, and then resign.
+     * In such case, next leader will be much more predictable.
+     *
+     * @param immediate_yield If `true`, yield immediately.
      */
-    void yield_leadership();
+    void yield_leadership(bool immediate_yield = false);
 
     /**
      * Start the election timer on this server, if this server is a follower.
@@ -566,6 +571,13 @@ protected:
 
     // `true` if background commit thread has been terminated.
     std::atomic<bool> commit_bg_stopped_;
+
+    // `true` if write operation is paused, as the first phase of
+    // leader re-election.
+    std::atomic<bool> write_paused_;
+
+    // Timer that will start at pausing write.
+    timer_helper reelection_timer_;
 
     // (Read-only)
     // `true` if this server is a learner. Will not participate

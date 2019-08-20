@@ -48,7 +48,7 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         return resp;
     }
 
-    if (role_ != srv_role::leader) {
+    if (role_ != srv_role::leader || write_paused_) {
         p_er("this is not a leader, cannot handle AddServerRequest");
         resp->set_result_code(cmd_result_code::NOT_LEADER);
         return resp;
@@ -321,7 +321,7 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
         return resp;
     }
 
-    if (role_ != srv_role::leader) {
+    if (role_ != srv_role::leader || write_paused_) {
         p_wn("this is not a leader, cannot handle RemoveServerRequest");
         resp->set_result_code(cmd_result_code::NOT_LEADER);
         return resp;
