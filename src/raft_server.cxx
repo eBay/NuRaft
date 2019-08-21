@@ -798,6 +798,8 @@ void raft_server::yield_leadership(bool immediate_yield) {
         p_in("got immediate re-elect request, resign now");
         leader_ = -1;
         become_follower();
+        // Clear live flag to avoid pre-vote rejection.
+        hb_alive_ = false;
         return;
     }
 
