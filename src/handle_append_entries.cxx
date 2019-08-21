@@ -513,14 +513,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     // continue to send appendEntries to this peer
     bool need_to_catchup = true;
 
-    // If reelection task is in progress, check if this node is ready to resign.
-    bool ready_to_resign = false;
-
+    // [For re-election checking]
     // Current highest priority, and its ID.
     int cur_hp = 0, cur_hp_server_id = 0;
-
     // Log index of highest priority node.
-    ulong hp_server_idx = 0;
+    ulong hp_server_log_idx = 0;
 
     ptr<peer> p = it->second;
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
@@ -562,14 +559,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
                 // There may be more than one nodes have same priority.
                 if ( ( p_priority == cur_hp &&
-                       p->get_matched_idx() > hp_server_idx ) ||
+                       p->get_matched_idx() > hp_server_log_idx ) ||
                      p_priority > cur_hp ) {
                     cur_hp = p->get_config().get_priority();
                     cur_hp_server_id = p->get_id();
-                    hp_server_idx = p->get_matched_idx();
-                    if (hp_server_idx == log_store_->next_slot() - 1) {
-                        ready_to_resign = true;
-                    }
+                    hp_server_log_idx = p->get_matched_idx();
                 }
             }
         }
@@ -614,14 +608,16 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     }
 
     // NOTE:
-    //   If all other followers are not responding, we may not reach
-    //   here. In that case, we check the timeout of reelection timer
-    //   in heartbeat handler, and do force resign.
-    if ( write_paused_ && ready_to_resign ) {
+    //   If all other followers are not responding, we may not make
+    //   below condition true. In that case, we check the timeout of
+    //   re-election timer in heartbeat handler, and do force resign.
+    if ( write_paused_ &&
+         hp_server_log_idx &&
+         hp_server_log_idx == log_store_->next_slot() - 1 ) {
         p_in("ready to resign, priority %d, server id %d, "
              "latest log index %zu, "
              "%zu us elapsed, resign now",
-             cur_hp, cur_hp_server_id, hp_server_idx,
+             cur_hp, cur_hp_server_id, hp_server_log_idx,
              reelection_timer_.get_us());
         leader_ = -1;
 
@@ -634,7 +630,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         become_follower();
         update_rand_timeout();
 
-        // Clear this flag to avoid pre-vote rejection.
+        // Clear live flag to avoid pre-vote rejection.
         hb_alive_ = false;
         return;
     }
