@@ -509,9 +509,19 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         return;
     }
 
-    // if there are pending logs to be synced or commit index need to be advanced,
+    // If there are pending logs to be synced or commit index need to be advanced,
     // continue to send appendEntries to this peer
     bool need_to_catchup = true;
+
+    // If reelection task is in progress, check if this node is ready to resign.
+    bool ready_to_resign = false;
+
+    // Current highest priority, and its ID.
+    int cur_hp = 0, cur_hp_server_id = 0;
+
+    // Log index of highest priority node.
+    ulong hp_server_idx = 0;
+
     ptr<peer> p = it->second;
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
          (int)p->get_id(), (int)resp.get_next_idx());
@@ -546,6 +556,22 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             if (p->is_learner()) continue;
 
             matched_indexes.push_back( p->get_matched_idx() );
+
+            if (write_paused_) {
+                int p_priority = p->get_config().get_priority();
+
+                // There may be more than one nodes have same priority.
+                if ( ( p_priority == cur_hp &&
+                       p->get_matched_idx() > hp_server_idx ) ||
+                     p_priority > cur_hp ) {
+                    cur_hp = p->get_config().get_priority();
+                    cur_hp_server_id = p->get_id();
+                    hp_server_idx = p->get_matched_idx();
+                    if (hp_server_idx == log_store_->next_slot() - 1) {
+                        ready_to_resign = true;
+                    }
+                }
+            }
         }
         assert((int32)matched_indexes.size() == get_num_voting_members());
 
@@ -585,6 +611,32 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
               "resp next %zu, new next log idx %zu",
               p->get_id(), prev_next_log,
               resp.get_next_idx(), p->get_next_log_idx() );
+    }
+
+    // NOTE:
+    //   If all other followers are not responding, we may not reach
+    //   here. In that case, we check the timeout of reelection timer
+    //   in heartbeat handler, and do force resign.
+    if ( write_paused_ && ready_to_resign ) {
+        p_in("ready to resign, priority %d, server id %d, "
+             "latest log index %zu, "
+             "%zu us elapsed, resign now",
+             cur_hp, cur_hp_server_id, hp_server_idx,
+             reelection_timer_.get_us());
+        leader_ = -1;
+
+        // To avoid this node becomes next leader again, set timeout
+        // value bigger than any others, just once at this time.
+        rand_timeout_ = [this]() -> int32 {
+            return this->ctx_->get_params()->election_timeout_upper_bound_ +
+                   this->ctx_->get_params()->election_timeout_lower_bound_;
+        };
+        become_follower();
+        update_rand_timeout();
+
+        // Clear this flag to avoid pre-vote rejection.
+        hb_alive_ = false;
+        return;
     }
 
     // This may not be a leader anymore,

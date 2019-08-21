@@ -38,7 +38,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
                            msg_type::append_entries_response,
                            id_,
                            leader_ );
-    if (role_ != srv_role::leader) {
+    if (role_ != srv_role::leader || write_paused_) {
         resp->set_result_code( cmd_result_code::NOT_LEADER );
         return resp;
     }

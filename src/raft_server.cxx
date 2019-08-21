@@ -57,6 +57,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , data_fresh_(false)
     , stopping_(false)
     , commit_bg_stopped_(false)
+    , write_paused_(false)
     , im_learner_(false)
     , serving_req_(false)
     , steps_to_down_(0)
@@ -751,6 +752,7 @@ void raft_server::become_leader() {
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
     (void)rc; // nothing to do in this callback.
 
+    write_paused_ = false;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
     data_fresh_ = true;
@@ -777,18 +779,37 @@ bool raft_server::check_leadership_validity() {
              min_quorum_size);
 
         p_er("will yield the leadership of this node");
-        yield_leadership();
+        yield_leadership(true);
         return false;
     }
     return true;
 }
 
-void raft_server::yield_leadership() {
-    recur_lock(lock_);
+void raft_server::yield_leadership(bool immediate_yield) {
+    // Leader reelection is already happening.
+    if (write_paused_) return;
+
     // Not a leader, do nothing.
     if (id_ != leader_) return;
-    leader_ = -1;
-    become_follower();
+
+    recur_lock(lock_);
+
+    if (immediate_yield) {
+        p_in("got immediate re-elect request, resign now");
+        leader_ = -1;
+        become_follower();
+        return;
+    }
+
+    p_in("got graceful re-elect request, pause write from now");
+
+    // Reset reelection timer, and pause write.
+    write_paused_ = true;
+
+    // Wait until election timeout upper bound.
+    reelection_timer_.set_duration_ms
+                      ( ctx_->get_params()->election_timeout_upper_bound_ );
+    reelection_timer_.reset();
 }
 
 void raft_server::become_follower() {
@@ -804,6 +825,7 @@ void raft_server::become_follower() {
     cb_func::Param param(id_, leader_);
     (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
 
+    write_paused_ = false;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
 

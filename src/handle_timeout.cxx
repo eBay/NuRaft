@@ -40,6 +40,17 @@ void raft_server::enable_hb_for_peer(peer& p) {
 void raft_server::handle_hb_timeout(int32 srv_id) {
     recur_lock(lock_);
 
+    if (write_paused_ && reelection_timer_.timeout()) {
+        p_in("resign by timeout, %zu us elapsed, resign now",
+             reelection_timer_.get_us());
+        leader_ = -1;
+        become_follower();
+
+        // Clear this flag to avoid pre-vote rejection.
+        hb_alive_ = false;
+        return;
+    }
+
     auto pit = peers_.find(srv_id);
     if (pit == peers_.end()) {
         p_er("heartbeat handler error: server %d not exist", srv_id);
