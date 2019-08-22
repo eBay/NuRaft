@@ -165,6 +165,11 @@ if ( (TESTSUITE_NO_COLOR GREATER 0) OR (WIN32) )
     message(STATUS "---- NO ANSI COLOR ----")
 endif()
 
+if (ENABLE_RAFT_STATS GREATER 0)
+    add_definitions(-DENABLE_RAFT_STATS=1)
+    message(STATUS "---- ENABLED RAFT STATS ----")
+endif()
+
 # === Other shared libraries ===
 if (NOT WIN32)
     set(LIBDL dl)
@@ -229,6 +234,7 @@ set(RAFT_CORE
     ${ROOT_SRC}/snapshot.cxx
     ${ROOT_SRC}/snapshot_sync_req.cxx
     ${ROOT_SRC}/srv_config.cxx
+    ${ROOT_SRC}/stat_mgr.cxx
     )
 add_library(RAFT_CORE_OBJ OBJECT ${RAFT_CORE})
 
@@ -265,6 +271,7 @@ if (CODE_COVERAGE GREATER 0)
         serialization_test
         timer_test
         strfmt_test
+        stat_mgr_test
     )
 
     # lcov

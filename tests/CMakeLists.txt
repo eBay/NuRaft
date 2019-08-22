@@ -74,4 +74,10 @@ add_dependencies(strfmt_test
 target_link_libraries(strfmt_test
                       ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
 
+add_executable(stat_mgr_test
+               unit/stat_mgr_test.cxx)
+add_dependencies(stat_mgr_test
+                 static_lib)
+target_link_libraries(stat_mgr_test
+                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
 
