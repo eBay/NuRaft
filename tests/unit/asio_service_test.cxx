@@ -595,6 +595,20 @@ int main(int argc, char** argv) {
     ts.doTest( "async append handler test",
                async_append_handler_test );
 
+#ifdef ENABLE_RAFT_STATS
+    _msg("raft stats: ENABLED\n");
+#else
+    _msg("raft stats: DISABLED\n");
+#endif
+    _msg("num allocs: %zu\n"
+         "amount of allocs: %zu bytes\n"
+         "num active buffers: %zu\n"
+         "amount of active buffers: %zu bytes\n",
+         raft_server::get_stat_counter("num_buffer_allocs"),
+         raft_server::get_stat_counter("amount_buffer_allocs"),
+         raft_server::get_stat_counter("num_active_buffers"),
+         raft_server::get_stat_counter("amount_active_buffers"));
+
     return 0;
 }
 

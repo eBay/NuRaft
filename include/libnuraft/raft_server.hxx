@@ -371,6 +371,47 @@ public:
      */
     raft_params get_current_params() const;
 
+    /**
+     * Get the counter number of given stat name.
+     *
+     * @param name Stat name to retrieve.
+     * @return Counter value.
+     */
+    static uint64_t get_stat_counter(const std::string& name);
+
+    /**
+     * Get the gauge number of given stat name.
+     *
+     * @param name Stat name to retrieve.
+     * @return Gauge value.
+     */
+    static int64_t get_stat_gauge(const std::string& name);
+
+    /**
+     * Get the histogram of given stat name.
+     *
+     * @param name Stat name to retrieve.
+     * @param[out] histogram_out
+     *     Histogram as a map. Key is the upper bound of a bucket, and
+     *     value is the counter of that bucket.
+     * @return `true` on success.
+     *         `false` if stat does not exist, or is not histogram type.
+     */
+    static bool get_stat_histogram(const std::string& name,
+                                   std::map<double, uint64_t>& histogram_out);
+
+    /**
+     * Reset given stat to zero.
+     *
+     * @param name Stat name to reset.
+     */
+    static void reset_stat(const std::string& name);
+
+    /**
+     * Reset all existing stats to zero.
+     */
+    static void reset_all_stats();
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 

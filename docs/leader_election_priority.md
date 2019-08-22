@@ -3,7 +3,7 @@ Leader Election Priority
 
 Purpose
 -------
-The main goal is to prioritize member nodes for next leader election. Raft uses randomized timer so that it is hard to make a deterministic decision. In this library, priority will be still probabilistic, but more predictable.
+The main goal is to prioritize member nodes for next leader election. Raft uses randomized timer so that it is hard to make a deterministic decision. In this library, leader election will be still probabilistic, but more predictable.
 
 
 New Definitions
@@ -17,9 +17,9 @@ Detailed Mechanism
 ------------------
 When the current leader is alive, whenever a follower receives heartbeat, it updates its target priority to the initial value: `max(priority of all nodes)`.
 
-If the leader dies, and election timeout happens in a follower node, it first compares its local target priority its own priority (i.e., `priority_`). If `priority_ < target_priority`, it does not initiate leader election and waits for the next election timeout. Otherwise, it initiates leader election. If next leader is not elected until next election timeout, it exponentially lessens its local target priority, for example `target_priority = target_priority * 0.8`. And the minimum value of target priority should be `1`.
+If the leader dies, and election timeout happens in a follower node, it first compares its local target priority with its own priority (i.e., `priority_`). If `priority_ < target_priority`, it does not initiate leader election and waits for the next election timeout. Otherwise, it initiates leader election. If next leader is not elected until next election timeout, it exponentially lessens its local target priority, for example `target_priority = target_priority * 0.8`. And the minimum value of target priority should be `1`.
 
-Once a follower node receives a vote request, it compares its local target priority with the priority of the candidate. If `candidate_priority < target_priority`, it rejects the vote request. If not, it makes a decision properly, the same as the original Raft algorithm.
+Once a follower node receives a vote request, it compares its local target priority with the priority of the candidate. If `candidate_priority < target_priority`, it rejects the vote request. If not, it makes a decision properly, the same as in the original Raft algorithm.
 
 
 Examples
