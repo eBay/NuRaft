@@ -236,7 +236,7 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
         log_entries( (last_log_idx + 1) >= cur_nxt_idx
                      ? ptr<std::vector<ptr<log_entry>>>()
                      : log_store_->log_entries_ext(last_log_idx + 1, end_idx,
-                                                   p.get_next_batch_size_hint()) );
+                                                   p.get_next_batch_size_hint_in_bytes()) );
     p_db( "append_entries for %d with LastLogIndex=%llu, "
           "LastLogTerm=%llu, EntriesLength=%d, CommitIndex=%llu, "
           "Term=%llu, peer_last_sent_idx %zu",
@@ -357,7 +357,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                  local_snp->get_last_log_idx(),
                  local_snp->get_last_log_term());
         }
-        resp->set_next_batch_size_hint(state_machine_->get_next_batch_size_hint());
+        resp->set_next_batch_size_hint_in_bytes(
+                state_machine_->get_next_batch_size_hint_in_bytes() );
         return resp;
     }
 
@@ -501,7 +502,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         restart_election_timer();
     }
 
-    resp->set_next_batch_size_hint(state_machine_->get_next_batch_size_hint());
+    resp->set_next_batch_size_hint_in_bytes(
+            state_machine_->get_next_batch_size_hint_in_bytes() );
     return resp;
 }
 
@@ -525,7 +527,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     ptr<peer> p = it->second;
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
          (int)p->get_id(), (int)resp.get_next_idx());
-    p->set_next_batch_size_hint(resp.get_next_batch_size_hint());
+    p->set_next_batch_size_hint_in_bytes(resp.get_next_batch_size_hint_in_bytes());
     if (resp.get_accepted()) {
         uint64_t prev_matched_idx = 0;
         uint64_t new_matched_idx = 0;

@@ -69,7 +69,7 @@ public:
         , rpc_backoff_( ctx.get_params()->rpc_failure_backoff_ )
         , max_hb_interval_( ctx.get_params()->max_hb_interval() )
         , next_log_idx_(0)
-        , next_batch_size_hint_(0)
+        , next_batch_size_hint_in_bytes_(0)
         , matched_idx_(0)
         , busy_flag_(false)
         , pending_commit_flag_(false)
@@ -170,12 +170,12 @@ public:
         next_log_idx_ = idx;
     }
 
-    ulong get_next_batch_size_hint() const {
-        return next_batch_size_hint_;
+    ulong get_next_batch_size_hint_in_bytes() const {
+        return next_batch_size_hint_in_bytes_;
     }
 
-    void set_next_batch_size_hint(ulong batch_size) {
-        next_batch_size_hint_ = batch_size;
+    void set_next_batch_size_hint_in_bytes(ulong batch_size) {
+        next_batch_size_hint_in_bytes_ = batch_size;
     }
 
     ulong get_matched_idx() const {
@@ -333,7 +333,7 @@ private:
     std::atomic<ulong> next_log_idx_;
 
     // Hint of the next log batch size in bytes.
-    std::atomic<ulong> next_batch_size_hint_;
+    std::atomic<ulong> next_batch_size_hint_in_bytes_;
 
     // The last log index whose term matches up with the leader.
     ulong matched_idx_;

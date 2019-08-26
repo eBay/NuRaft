@@ -129,7 +129,7 @@ public:
      *
      * @return the preferred size of the next log batch
      */
-    virtual ulong get_next_batch_size_hint() { return 0; }
+    virtual ulong get_next_batch_size_hint_in_bytes() { return 0; }
 
     /**
      * (Deprecated)
