@@ -95,6 +95,25 @@ public:
     virtual ptr<std::vector<ptr<log_entry>>> log_entries(ulong start, ulong end) = 0;
 
     /**
+     * (Optional)
+     * Get log entries with index [start, end).
+     *
+     * The total size of the returned entries is limited by batch_size_hint.
+     * Entries near the end are not returned if the total size of the entries exceeds
+     * batch_size_hint.
+     *
+     * @param start The start log index number (inclusive).
+     * @param end The end log index number (exclusive).
+     * @param batch_size_hint_in_bytes total size (in bytes) of the returned entries
+     * @return The log entries between [start, end) and limited by the total size
+     *         given by the batch_size_hint_in_bytes.
+     */
+    virtual ptr<std::vector<ptr<log_entry>>> log_entries_ext(
+            ulong start, ulong end, ulong batch_size_hint_in_bytes = 0) {
+        return log_entries(start, end);
+    }
+
+    /**
      * Get the log entry at the specified log index number.
      *
      * @param index Should be equal to or greater than 1.
