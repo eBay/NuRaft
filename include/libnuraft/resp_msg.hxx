@@ -43,6 +43,7 @@ public:
              bool accepted = false)
         : msg_base(term, type, src, dst)
         , next_idx_(next_idx)
+        , next_batch_size_hint_(0)
         , accepted_(accepted)
         , ctx_(nullptr)
         , cb_func_(nullptr)
@@ -55,6 +56,14 @@ public:
 public:
     ulong get_next_idx() const {
         return next_idx_;
+    }
+
+    ulong get_next_batch_size_hint() const {
+        return next_batch_size_hint_;
+    }
+
+    void set_next_batch_size_hint(ulong bytes) {
+        next_batch_size_hint_ = bytes;
     }
 
     bool get_accepted() const {
@@ -110,6 +119,7 @@ public:
 
 private:
     ulong next_idx_;
+    ulong next_batch_size_hint_;
     bool accepted_;
     ptr<buffer> ctx_;
     resp_cb cb_func_;

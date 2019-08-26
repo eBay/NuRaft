@@ -119,6 +119,19 @@ public:
     {   rollback(params.log_idx, *params.data);  }
 
     /**
+     * (Optional)
+     * Return a hint about the preferred size (in number of bytes)
+     * of the next batch of logs to be sent from the leader.
+     *
+     * Return 0 to indicate no preferred size (any size is good).
+     *
+     * Only applicable on followers.
+     *
+     * @return the preferred size of the next log batch
+     */
+    virtual ulong get_next_batch_size_hint() { return 0; }
+
+    /**
      * (Deprecated)
      * Save the given snapshot chunk to local snapshot.
      * This API is for snapshot receiver (i.e., follower).
