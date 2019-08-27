@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "asio_service.hxx"
 
+#include "buffer_serializer.hxx"
 #include "crc32.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
@@ -96,8 +97,15 @@ limitations under the License.
 #define DATA_SIZE_LEN (4)
 #define CRC_FLAGS_LEN (8)
 
-// RPC Flags.
+// === RPC Flags =========
+
+// If set, RPC message includes custom meta given by user.
 #define INCLUDE_META (0x1)
+
+// If set, RPC message (response) includes additional hints.
+#define INCLUDE_HINT (0x2)
+
+// =======================
 
 namespace nuraft {
 
@@ -491,44 +499,57 @@ private:
             }
         }
 
-        int buf_size = RPC_RESP_HEADER_SIZE + resp_meta_size + resp_ctx_size;
+        size_t resp_hint_size = 0;
+        if (resp->get_next_batch_size_hint_in_bytes()) {
+            // Hint is given, set the flag.
+            flags |= INCLUDE_HINT;
+            // For future extension, we will put 2-byte version and 2-byte length.
+            resp_hint_size += sizeof(uint16_t) * 2 + sizeof(ulong);
+        }
+
+        size_t carried_data_size = resp_meta_size + resp_hint_size + resp_ctx_size;
+
+        int buf_size = RPC_RESP_HEADER_SIZE + carried_data_size;
         ptr<buffer> resp_buf = buffer::alloc(buf_size);
+        buffer_serializer bs(resp_buf);
 
-        resp_buf->pos(0);
-        byte* resp_buf_data = resp_buf->data();
-
-        byte marker = 0x1;
-        resp_buf->put(marker);
-        resp_buf->put((byte)resp->get_type());
-        resp_buf->put(resp->get_src());
-        resp_buf->put(resp->get_dst());
-        resp_buf->put(resp->get_term());
-        resp_buf->put(resp->get_next_idx());
-        resp_buf->put((byte)resp->get_accepted());
-        resp_buf->put((int32)resp_meta_size + resp_ctx_size);
+        const byte RESP_MARKER = 0x1;
+        bs.put_u8(RESP_MARKER);
+        bs.put_u8(resp->get_type());
+        bs.put_i32(resp->get_src());
+        bs.put_i32(resp->get_dst());
+        bs.put_u64(resp->get_term());
+        bs.put_u64(resp->get_next_idx());
+        bs.put_u8(resp->get_accepted());
+        bs.put_i32(carried_data_size);
 
         // Calculate CRC32 on header only.
-        uint32_t crc_val = crc32_8( resp_buf_data,
+        uint32_t crc_val = crc32_8( resp_buf->data_begin(),
                                     RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN,
                                     0 );
 
         uint64_t flags_crc = ((uint64_t)flags << 32) | crc_val;
-        resp_buf->put((ulong)flags_crc);
+        bs.put_u64(flags_crc);
 
         // Handling meta if the flag is set.
         if (flags & INCLUDE_META) {
-            resp_buf->put( (byte*)resp_meta_str.data(), resp_meta_str.size() );
+            bs.put_str(resp_meta_str);
+        }
+        // Put hint if the flag is set.
+        if (flags & INCLUDE_HINT) {
+            const uint16_t CUR_HINT_VERSION = 0;
+            bs.put_u16(CUR_HINT_VERSION);
+            bs.put_u16(sizeof(ulong));
+            bs.put_u64(resp->get_next_batch_size_hint_in_bytes());
         }
 
         if (resp_ctx_size) {
             resp_ctx->pos(0);
-            resp_buf->put(*resp_ctx);
+            bs.put_buffer(*resp_ctx);
         }
 
-        resp_buf->pos(0);
-
         aa::write( ssl_enabled_, ssl_socket_, socket_,
-                   asio::buffer(resp_buf->data(), resp_buf->size()),
+                   asio::buffer(resp_buf->data_begin(), resp_buf->size()),
                    [this, self, resp_buf]
                    (ERROR_CODE err_code, size_t) -> void
         {
@@ -1128,13 +1149,12 @@ private:
             return;
         }
 
-        resp_buf->pos(0);
-        byte* resp_buf_data = resp_buf->data();
-        uint32_t crc_local = crc32_8( resp_buf_data,
+        buffer_serializer bs(resp_buf);
+        uint32_t crc_local = crc32_8( resp_buf->data_begin(),
                                       RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN,
                                       0 );
-        resp_buf->pos(RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN);
-        uint64_t flags_and_crc = resp_buf->get_ulong();
+        bs.pos(RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN);
+        uint64_t flags_and_crc = bs.get_u64();
         uint32_t crc_buf = flags_and_crc & (uint32_t)0xffffffff;
         uint32_t flags = (flags_and_crc >> 32);
 
@@ -1152,14 +1172,14 @@ private:
             return;
         }
 
-        resp_buf->pos(1);
-        byte msg_type_val = resp_buf->get_byte();
-        int32 src = resp_buf->get_int();
-        int32 dst = resp_buf->get_int();
-        ulong term = resp_buf->get_ulong();
-        ulong nxt_idx = resp_buf->get_ulong();
-        byte accepted_val = resp_buf->get_byte();
-        int32 meta_and_ctx_size = resp_buf->get_int();
+        bs.pos(1);
+        byte msg_type_val = bs.get_u8();
+        int32 src = bs.get_i32();
+        int32 dst = bs.get_i32();
+        ulong term = bs.get_u64();
+        ulong nxt_idx = bs.get_u64();
+        byte accepted_val = bs.get_u8();
+        int32 carried_data_size = bs.get_i32();
         ptr<resp_msg> rsp
             ( cs_new<resp_msg>
               ( term, (msg_type)msg_type_val, src, dst,
@@ -1175,10 +1195,10 @@ private:
             if (!meta_ok) return;
         }
 
-        if (meta_and_ctx_size) {
-            ptr<buffer> ctx_buf = buffer::alloc(meta_and_ctx_size);
+        if (carried_data_size) {
+            ptr<buffer> ctx_buf = buffer::alloc(carried_data_size);
             aa::read( ssl_enabled_, ssl_socket_, socket_,
-                      asio::buffer(ctx_buf->data(), meta_and_ctx_size),
+                      asio::buffer(ctx_buf->data(), carried_data_size),
                       std::bind( &asio_rpc_client::ctx_read,
                                  self,
                                  req,
@@ -1202,8 +1222,10 @@ private:
                   std::error_code err,
                   size_t bytes_transferred)
     {
-        if ( !(flags & INCLUDE_META) ) {
-            // Meta does not exist, just use the buffer as it is.
+        if ( !(flags & INCLUDE_META) &&
+             !(flags & INCLUDE_HINT) ) {
+            // Neither meta nor hint exists,
+            // just use the buffer as it is for ctx.
             ctx_buf->pos(0);
             rsp->set_ctx(ctx_buf);
             ptr<rpc_exception> except;
@@ -1211,24 +1233,42 @@ private:
             return;
         }
 
-        // Otherwise: custom meta exists.
-        size_t resp_meta_len = 0;
-        const byte* resp_meta_raw = ctx_buf->get_bytes(resp_meta_len);
+        // Otherwise: buffer contains composite data.
+        buffer_serializer bs(ctx_buf);
+        int remaining_len = ctx_buf->size();
 
-        // If callback is given, verify meta
-        // (if meta is empty, invoke callback according to the flag).
-        if ( impl_->get_options().read_resp_meta_ &&
-             ( resp_meta_len ||
-               impl_->get_options().invoke_resp_cb_on_empty_meta_ ) ) {
+        // 1) Custom meta.
+        if (flags & INCLUDE_META) {
+            size_t resp_meta_len = 0;
+            void* resp_meta_raw = bs.get_bytes(resp_meta_len);
 
-            bool meta_ok = handle_custom_resp_meta
-                           ( req, rsp, when_done,
-                             std::string( (const char*)resp_meta_raw,
-                                          resp_meta_len) );
-            if (!meta_ok) return;
+            // If callback is given, verify meta
+            // (if meta is empty, invoke callback according to the flag).
+            if ( impl_->get_options().read_resp_meta_ &&
+                 ( resp_meta_len ||
+                   impl_->get_options().invoke_resp_cb_on_empty_meta_ ) ) {
+
+                bool meta_ok = handle_custom_resp_meta
+                               ( req, rsp, when_done,
+                                 std::string( (const char*)resp_meta_raw,
+                                              resp_meta_len) );
+                if (!meta_ok) return;
+            }
+            remaining_len -= sizeof(int32) + resp_meta_len;
         }
 
-        size_t remaining_len = ctx_buf->size() - (sizeof(int32) + resp_meta_len);
+        // 2) Hint.
+        if (flags & INCLUDE_HINT) {
+            size_t hint_len = 0;
+            uint16_t hint_version = bs.get_u16();
+            (void)hint_version;
+            hint_len = bs.get_u16();
+            rsp->set_next_batch_size_hint_in_bytes(bs.get_u64());
+            remaining_len -= sizeof(uint16_t) * 2 + hint_len;
+        }
+
+        // 3) Context.
+        assert(remaining_len >= 0);
         if (remaining_len) {
             // It has context, read it.
             ptr<buffer> actual_ctx = buffer::alloc(remaining_len);

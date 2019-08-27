@@ -45,6 +45,9 @@ public:
 
     ptr<std::vector<ptr<log_entry>>> log_entries(ulong start, ulong end);
 
+    ptr<std::vector<ptr<log_entry>>> log_entries_ext(
+            ulong start, ulong end, ulong batch_size_hint_in_bytes = 0);
+
     ptr<log_entry> entry_at(ulong index);
 
     ulong term_at(ulong index);

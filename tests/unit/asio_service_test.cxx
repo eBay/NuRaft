@@ -492,6 +492,113 @@ int empty_meta_test(bool always_invoke_cb) {
     return 0;
 }
 
+int response_hint_test(bool with_meta) {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers %s\n",
+         with_meta ? "(with meta)" : "");
+    std::atomic<size_t> read_req_cb_count(0);
+    std::atomic<size_t> write_req_cb_count(0);
+    std::atomic<size_t> read_resp_cb_count(0);
+    std::atomic<size_t> write_resp_cb_count(0);
+    for (RaftAsioPkg* ee: pkgs) {
+        if (with_meta) {
+            ee->setMetaCallback
+                ( std::bind( test_read_req_meta,
+                             &read_req_cb_count,
+                             std::placeholders::_1,
+                             std::placeholders::_2 ),
+                  std::bind( test_write_req_meta,
+                             &write_req_cb_count,
+                             std::placeholders::_1 ),
+                  std::bind( test_read_resp_meta,
+                             &read_resp_cb_count,
+                             std::placeholders::_1,
+                             std::placeholders::_2 ),
+                  std::bind( test_write_resp_meta,
+                             &write_resp_cb_count,
+                             std::placeholders::_1 ),
+                  true );
+        }
+    }
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("enable batch size hint\n");
+    for (RaftAsioPkg* ee: pkgs) {
+        ee->getTestSm()->set_next_batch_size_hint_in_bytes(1);
+    }
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    const size_t NUM = 100;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    _msg("disable batch size hint\n");
+    for (RaftAsioPkg* ee: pkgs) {
+        ee->getTestSm()->set_next_batch_size_hint_in_bytes(0);
+    }
+
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string msg_str = "2nd_" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    if (with_meta) {
+        // Callback functions for meta should have been called.
+        CHK_GT(read_req_cb_count.load(), 0);
+        CHK_GT(write_req_cb_count.load(), 0);
+        CHK_GT(read_resp_cb_count.load(), 0);
+        CHK_GT(write_resp_cb_count.load(), 0);
+        _msg( "read req callback %zu, write req callback %zu\n",
+              read_req_cb_count.load(), write_req_cb_count.load() );
+        _msg( "read resp callback %zu, write resp callback %zu\n",
+              read_resp_cb_count.load(), write_resp_cb_count.load() );
+    }
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 static void async_handler(std::list<ulong>* idx_list,
                           ptr<buffer>& result,
                           ptr<std::exception>& err)
@@ -590,6 +697,10 @@ int main(int argc, char** argv) {
 
     ts.doTest( "empty meta test",
                empty_meta_test,
+               TestRange<bool>( {false, true} ) );
+
+    ts.doTest( "response hint test",
+               response_hint_test,
                TestRange<bool>( {false, true} ) );
 
     ts.doTest( "async append handler test",

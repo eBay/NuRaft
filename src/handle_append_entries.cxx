@@ -235,20 +235,30 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
     ptr<std::vector<ptr<log_entry>>>
         log_entries( (last_log_idx + 1) >= cur_nxt_idx
                      ? ptr<std::vector<ptr<log_entry>>>()
-                     : log_store_->log_entries_ext(last_log_idx + 1, end_idx,
-                                                   p.get_next_batch_size_hint_in_bytes()) );
+                     : log_store_->log_entries_ext
+                       ( last_log_idx + 1,
+                         end_idx,
+                         p.get_next_batch_size_hint_in_bytes() ) );
+
+    ulong adjusted_end_idx = end_idx;
+    if (log_entries) adjusted_end_idx = last_log_idx + 1 + log_entries->size();
+    if (adjusted_end_idx != end_idx) {
+        p_tr("adjusted end_idx due to batch size hint: %zu -> %zu",
+             end_idx, adjusted_end_idx);
+    }
+
     p_db( "append_entries for %d with LastLogIndex=%llu, "
           "LastLogTerm=%llu, EntriesLength=%d, CommitIndex=%llu, "
           "Term=%llu, peer_last_sent_idx %zu",
           p.get_id(), last_log_idx, last_log_term,
           ( log_entries ? log_entries->size() : 0 ), commit_idx, term,
           peer_last_sent_idx );
-    if (last_log_idx+1 == end_idx) {
+    if (last_log_idx+1 == adjusted_end_idx) {
         p_tr( "EMPTY PAYLOAD" );
-    } else if (last_log_idx+1 + 1 == end_idx) {
+    } else if (last_log_idx+1 + 1 == adjusted_end_idx) {
         p_db( "idx: %zu", last_log_idx+1 );
     } else {
-        p_db( "idx range: %zu-%zu", last_log_idx+1, end_idx-1 );
+        p_db( "idx range: %zu-%zu", last_log_idx+1, adjusted_end_idx-1 );
     }
 
     ptr<req_msg> req
@@ -502,8 +512,10 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         restart_election_timer();
     }
 
-    resp->set_next_batch_size_hint_in_bytes(
-            state_machine_->get_next_batch_size_hint_in_bytes() );
+    ulong bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
+    resp->set_next_batch_size_hint_in_bytes(bs_hint);
+    p_tr("batch size hint: %zu bytes", bs_hint);
+
     return resp;
 }
 
@@ -527,7 +539,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     ptr<peer> p = it->second;
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
          (int)p->get_id(), (int)resp.get_next_idx());
-    p->set_next_batch_size_hint_in_bytes(resp.get_next_batch_size_hint_in_bytes());
+
+    ulong bs_hint = resp.get_next_batch_size_hint_in_bytes();
+    p_tr("peer %d batch size hint: %zu bytes", p->get_id(), bs_hint);
+    p->set_next_batch_size_hint_in_bytes(bs_hint);
+
     if (resp.get_accepted()) {
         uint64_t prev_matched_idx = 0;
         uint64_t new_matched_idx = 0;

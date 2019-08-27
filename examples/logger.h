@@ -4,7 +4,7 @@ Author/Developer(s): Jung-Sang Ahn
 
 Original Copyright 2017 Jung-Sang Ahn
 See URL: https://github.com/greensky00/simple_logger
-         (v0.3.21)
+         (v0.3.22)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
