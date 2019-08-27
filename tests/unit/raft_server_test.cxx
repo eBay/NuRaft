@@ -797,6 +797,90 @@ int leader_election_priority_test() {
     return 0;
 }
 
+int leader_election_with_aggressive_node_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Set the priority of S1 to 100.
+    s1.raftServer->set_priority(1, 100);
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Set the priority of S2 to 50.
+    s1.raftServer->set_priority(2, 50);
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Set the priority of S3 to 1.
+    s1.raftServer->set_priority(3, 1);
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // --- Now assume S1 is not reachable. ---
+
+    // Trigger election timer of S2.
+    s2.dbgLog(" --- invoke election timer of S2 ---");
+    // It will not initiate vote due to priority.
+    s2.fTimer->invoke( timer_task_type::election_timer );
+
+    // Keep triggering election timer of S3, until it becomes leader.
+    const size_t MAX_ATTEMPTS = 1000;
+    size_t num_attempts = 0;
+    TestSuite::UnknownProgress pp("leader election attempts: ");
+    do {
+        s3.dbgLog(" --- invoke election timer of S3 ---");
+        s3.fTimer->invoke( timer_task_type::election_timer );
+        // Drop all packets to S1.
+        s3.fNet->makeReqFailAll(s1_addr);
+        // Send pre-vote requests.
+        s3.fNet->execReqResp();
+        // Send vote request (if exists).
+        s3.fNet->execReqResp();
+        pp.update(++num_attempts);
+    } while ( !s3.raftServer->is_leader() &&
+              num_attempts < MAX_ATTEMPTS );
+    pp.done();
+    _msg("%zu attempts\n", num_attempts);
+    CHK_SM(num_attempts, MAX_ATTEMPTS);
+
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    s3.fNet->makeReqFailAll(s1_addr);
+    s3.fNet->execReqResp();
+    s3.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    CHK_FALSE( s2.raftServer->is_leader() );
+    CHK_TRUE( s3.raftServer->is_leader() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int priority_broadcast_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -821,8 +905,8 @@ int priority_broadcast_test() {
     s1.fNet->execReqResp();
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
-    // Set the priority of S3 to 85.
-    s1.raftServer->set_priority(3, 85);
+    // Set the priority of S3 to 50.
+    s1.raftServer->set_priority(3, 50);
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -851,8 +935,8 @@ int priority_broadcast_test() {
     // Send vote requests, S2 will deny due to priority.
     s3.fNet->execReqResp();
 
-    // Now there should be no leader.
-    CHK_FALSE( s1.raftServer->is_leader() );
+    // S1 should be still leader.
+    CHK_TRUE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
     CHK_FALSE( s3.raftServer->is_leader() );
 
@@ -1392,6 +1476,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "leader election priority test",
                leader_election_priority_test );
+
+    ts.doTest( "leader election with aggressive node test",
+               leader_election_with_aggressive_node_test );
 
     ts.doTest( "priority broadcast test",
                priority_broadcast_test );
