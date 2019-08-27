@@ -38,7 +38,8 @@ namespace raft_functional_common {
 class TestSm : public state_machine {
 public:
     TestSm(SimpleLogger* logger = nullptr)
-        : myLog(logger)
+        : customBatchSize(1)
+        , myLog(logger)
     {
         (void)myLog;
     }
@@ -209,6 +210,10 @@ public:
         when_done(ret, except);
     }
 
+    ulong get_next_batch_size_hint_in_bytes() {
+        return customBatchSize;
+    }
+
     bool isSame(const TestSm& with, bool check_precommit = false) {
         // NOTE:
         //   To avoid false alarm by TSAN (regarding lock order inversion),
@@ -294,6 +299,8 @@ private:
 
     ptr<snapshot> lastSnapshot;
     mutable std::mutex lastSnapshotLock;
+
+    std::atomic<uint64_t> customBatchSize;
 
     SimpleLogger* myLog;
 };

@@ -105,6 +105,32 @@ ptr< std::vector< ptr<log_entry> > >
     return ret;
 }
 
+ptr<std::vector<ptr<log_entry>>>
+    inmem_log_store::log_entries_ext(ulong start,
+                                     ulong end,
+                                     ulong batch_size_hint_in_bytes)
+{
+    ptr< std::vector< ptr<log_entry> > > ret =
+        cs_new< std::vector< ptr<log_entry> > >();
+
+    size_t accum_size = 0;
+    for (ulong ii = start ; ii < end ; ++ii) {
+        ptr<log_entry> src = nullptr;
+        {   std::lock_guard<std::mutex> l(logs_lock_);
+            auto entry = logs_.find(ii);
+            if (entry == logs_.end()) {
+                entry = logs_.find(0);
+            }
+            src = entry->second;
+        }
+        ret->push_back(make_clone(src));
+        accum_size += src->get_buf().size();
+        if (batch_size_hint_in_bytes &&
+            accum_size >= batch_size_hint_in_bytes) break;
+    }
+    return ret;
+}
+
 ptr<log_entry> inmem_log_store::entry_at(ulong index) {
     ptr<log_entry> src = nullptr;
     {   std::lock_guard<std::mutex> l(logs_lock_);
