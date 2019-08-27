@@ -38,7 +38,7 @@ namespace raft_functional_common {
 class TestSm : public state_machine {
 public:
     TestSm(SimpleLogger* logger = nullptr)
-        : customBatchSize(1)
+        : customBatchSize(0)
         , myLog(logger)
     {
         (void)myLog;
@@ -208,6 +208,10 @@ public:
         ptr<std::exception> except(nullptr);
         bool ret = true;
         when_done(ret, except);
+    }
+
+    void set_next_batch_size_hint_in_bytes(ulong to) {
+        customBatchSize = to;
     }
 
     ulong get_next_batch_size_hint_in_bytes() {

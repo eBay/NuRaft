@@ -4,7 +4,7 @@ Author/Developer(s): Jung-Sang Ahn
 
 Original Copyright 2017 Jung-Sang Ahn
 See URL: https://github.com/greensky00/simple_logger
-         (v0.3.21)
+         (v0.3.22)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -975,16 +975,18 @@ int SimpleLogger::start() {
 
 int SimpleLogger::stop() {
     if (fs.is_open()) {
-        SimpleLoggerMgr* mgr = SimpleLoggerMgr::get();
-        SimpleLogger* ll = this;
-        mgr->removeLogger(ll);
+        SimpleLoggerMgr* mgr = SimpleLoggerMgr::getWithoutInit();
+        if (mgr) {
+            SimpleLogger* ll = this;
+            mgr->removeLogger(ll);
 
-        _log_sys(ll, "Stop logger: %s", filePath.c_str());
-        flushAll();
-        fs.flush();
-        fs.close();
+            _log_sys(ll, "Stop logger: %s", filePath.c_str());
+            flushAll();
+            fs.flush();
+            fs.close();
 
-        while (numCompJobs.load() > 0) std::this_thread::yield();
+            while (numCompJobs.load() > 0) std::this_thread::yield();
+        }
     }
 
     return 0;
