@@ -82,6 +82,7 @@ if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
         include_directories(BEFORE /usr/local/opt/openssl/include)
         link_directories(/usr/local/opt/openssl/lib)
@@ -247,6 +248,9 @@ set(LIBRARY_NAME "nuraft")
 add_library(static_lib ${STATIC_LIB_SRC})
 set_target_properties(static_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
 
+add_library(shared_lib SHARED ${STATIC_LIB_SRC})
+set_target_properties(shared_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
+
 if (WIN32)
     set(LIBRARY_OUTPUT_NAME "${LIBRARY_NAME}.lib")
 else ()
@@ -285,6 +289,7 @@ endif()
 
 # === Install Targets ===
 install(TARGETS static_lib ARCHIVE DESTINATION lib)
+install(TARGETS shared_lib LIBRARY DESTINATION lib)
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/libnuraft DESTINATION include)
 
 

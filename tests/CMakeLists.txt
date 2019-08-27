@@ -43,7 +43,7 @@ target_link_libraries(raft_bench
                       ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
                       ${LIBRARIES})
 
-                      
+
 # === Other modules ===
 add_executable(buffer_test
                unit/buffer_test.cxx)
