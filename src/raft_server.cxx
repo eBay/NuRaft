@@ -455,7 +455,18 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
          req.get_type() == msg_type::request_vote_request ||
          req.get_type() == msg_type::install_snapshot_request ) {
         // we allow the server to be continue after term updated to save a round message
-        update_term(req.get_term());
+        bool term_updated = update_term(req.get_term());
+
+        if ( !im_learner_ &&
+             !hb_alive_ &&
+             term_updated &&
+             req.get_type() == msg_type::request_vote_request ) {
+            // If someone has newer term, that means leader has not been
+            // elected in the current term, and this node's election timer
+            // has been reset by this request.
+            // We should decay the target priority here.
+            decay_target_priority();
+        }
 
         // Reset stepping down value to prevent this server goes down when leader
         // crashes after sending a LeaveClusterRequest
