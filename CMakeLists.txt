@@ -250,6 +250,9 @@ set_target_properties(static_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DI
 
 add_library(shared_lib SHARED ${STATIC_LIB_SRC})
 set_target_properties(shared_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
+if (APPLE)
+    target_link_libraries(shared_lib ${LIBRARIES})
+endif ()
 
 if (WIN32)
     set(LIBRARY_OUTPUT_NAME "${LIBRARY_NAME}.lib")
