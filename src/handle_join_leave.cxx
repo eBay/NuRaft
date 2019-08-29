@@ -210,6 +210,17 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
               gap, quick_commit_index_.load(), start_idx,
               params->log_sync_stop_gap_ );
 
+        // See comment for raft_params::interval_to_wait_previous_config_change_finish_.
+        int32 count = 0;
+        while (config_changing_) {
+            p_in( "Try to add server %d. But now there is a "
+                  "un-committed config change. Should wait. "
+                  "Count: %d.", srv_to_join_->get_id(), count++);
+            std::this_thread::sleep_for
+                ( std::chrono::milliseconds
+                    (params->interval_to_wait_previous_config_change_finish_) );
+        }
+
         ptr<cluster_config> cur_conf = get_config();
         ptr<cluster_config> new_conf = cs_new<cluster_config>
                                        ( log_store_->next_slot(),
@@ -403,6 +414,17 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     } else {
         ptr<peer> pp = pit->second;
         pp->step_down();
+    }
+
+    // See comment for raft_params::interval_to_wait_previous_config_change_finish_.
+    int32 count = 0;
+    while (config_changing_) {
+        p_in( "Try to remove server %d. But now there is a "
+              "un-committed config change. Should wait. "
+              "Count: %d.", srv_id, count++);
+        std::this_thread::sleep_for
+            ( std::chrono::milliseconds
+                  (ctx_->get_params()->interval_to_wait_previous_config_change_finish_) );
     }
 
     ptr<cluster_config> cur_conf = get_config();
