@@ -58,7 +58,6 @@ struct raft_params {
         , custom_election_quorum_size_(0)
         , leadership_expiry_(0)
         , auto_forwarding_(false)
-        , interval_to_wait_previous_config_change_finish_(100)
         , return_method_(blocking)
         {}
 
@@ -363,16 +362,6 @@ public:
     // to the current leader.
     // Otherwise, it will return error to client immediately.
     bool  auto_forwarding_;
-
-    // Although we have config_changing_ to try to prevent
-    // config changing happen simultaneously, it is still
-    // possible that two add/remove server actions trigger
-    // to change the config based on the same original config.
-    // These two actions will append two conf log entry. When
-    // committing the second conf log entry, the configure
-    // change in the first conf log entry will lost. So we
-    // should prevent config change when config_changing_ is true.
-    int32  interval_to_wait_previous_config_change_finish_;
 
     // To choose blocking call or asynchronous call.
     return_method_type return_method_;

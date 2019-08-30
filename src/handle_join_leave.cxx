@@ -210,18 +210,18 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
               gap, quick_commit_index_.load(), start_idx,
               params->log_sync_stop_gap_ );
 
-        // See comment for raft_params::interval_to_wait_previous_config_change_finish_.
-        int32 count = 0;
-        while (config_changing_) {
-            p_in( "Try to add server %d. But now there is a "
-                  "un-committed config change. Should wait. "
-                  "Count: %d.", srv_to_join_->get_id(), count++);
-            std::this_thread::sleep_for
-                ( std::chrono::milliseconds
-                    (params->interval_to_wait_previous_config_change_finish_) );
+        ptr<cluster_config> cur_conf = get_config();
+
+        // WARNING:
+        //   If there is any uncommitted changed config,
+        //   new config should be generated on top of it.
+        if (uncommitted_config_) {
+            p_in("uncommitted config exists at log %zu, prev log %zu",
+                 uncommitted_config_->get_log_idx(),
+                 uncommitted_config_->get_prev_log_idx());
+            cur_conf = uncommitted_config_;
         }
 
-        ptr<cluster_config> cur_conf = get_config();
         ptr<cluster_config> new_conf = cs_new<cluster_config>
                                        ( log_store_->next_slot(),
                                          cur_conf->get_log_idx() );
@@ -239,6 +239,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
                                                  log_val_type::conf ) );
         store_log_entry(entry);
         config_changing_ = true;
+        uncommitted_config_ = new_conf;
         request_append_entries();
         return;
     }
@@ -416,18 +417,17 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
         pp->step_down();
     }
 
-    // See comment for raft_params::interval_to_wait_previous_config_change_finish_.
-    int32 count = 0;
-    while (config_changing_) {
-        p_in( "Try to remove server %d. But now there is a "
-              "un-committed config change. Should wait. "
-              "Count: %d.", srv_id, count++);
-        std::this_thread::sleep_for
-            ( std::chrono::milliseconds
-                  (ctx_->get_params()->interval_to_wait_previous_config_change_finish_) );
+    ptr<cluster_config> cur_conf = get_config();
+
+    // NOTE: Need to honor uncommitted config,
+    //       refer to comment in `sync_log_to_new_srv()`
+    if (uncommitted_config_) {
+        p_in("uncommitted config exists at log %zu, prev log %zu",
+             uncommitted_config_->get_log_idx(),
+             uncommitted_config_->get_prev_log_idx());
+        cur_conf = uncommitted_config_;
     }
 
-    ptr<cluster_config> cur_conf = get_config();
     ptr<cluster_config> new_conf = cs_new<cluster_config>
                                    ( log_store_->next_slot(),
                                      cur_conf->get_log_idx() );
@@ -442,11 +442,13 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     new_conf->set_async_replication
               ( cur_conf->is_async_replication() );
 
-    p_in( "removed a server from configuration and "
+    p_in( "removed server %d from configuration and "
           "save the configuration to log store at %llu",
+          srv_id,
           new_conf->get_log_idx() );
 
     config_changing_ = true;
+    uncommitted_config_ = new_conf;
     ptr<buffer> new_conf_buf( new_conf->serialize() );
     ptr<log_entry> entry( cs_new<log_entry>( state_->get_term(),
                                              new_conf_buf,

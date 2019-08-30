@@ -654,6 +654,66 @@ int remove_node_error_cases_test() {
     return 0;
 }
 
+int multiple_config_change_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+    std::string s4_addr = "S4";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    RaftPkg s4(f_base, 4, s4_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Remove two nodes without waiting commit.
+    s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+    s1.raftServer->remove_srv( s4.getTestMgr()->get_srv_config()->get_id() );
+
+    // Leave req/resp.
+    s1.fNet->execReqResp();
+    // Leave done, notify to peers.
+    s1.fNet->execReqResp();
+    // Probably one more.
+    s1.fNet->execReqResp();
+    // Notify new commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // S3 and S4 should be removed.
+    for (RaftPkg* pp: pkgs) {
+        if (pp->getTestMgr()->get_srv_config()->get_id() == 3 ||
+            pp->getTestMgr()->get_srv_config()->get_id() == 4) continue;
+
+        std::vector< ptr< srv_config > > configs_out;
+        pp->raftServer->get_srv_config_all(configs_out);
+
+        // Only S1 and S2 should exist.
+        CHK_EQ(2, configs_out.size());
+        for (auto& entry: configs_out) {
+            ptr<srv_config>& s_conf = entry;
+            CHK_TRUE( s_conf->get_id() == 1 || s_conf->get_id() == 2 );
+        }
+    }
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int leader_election_basic_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -1470,6 +1530,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "remove node error cases test",
                remove_node_error_cases_test );
+
+    ts.doTest( "multiple config change test",
+               multiple_config_change_test );
 
     ts.doTest( "leader election basic test",
                leader_election_basic_test );

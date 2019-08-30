@@ -695,11 +695,15 @@ protected:
     // Previous config for debugging purpose, protected by `config_lock_`.
     ptr<cluster_config> stale_config_;
 
-    // Current cluster config, protected by `config_lock_`.
+    // Current (committed) cluster config, protected by `config_lock_`.
     ptr<cluster_config> config_;
 
     // Lock for cluster config.
     mutable std::mutex config_lock_;
+
+    // Latest uncommitted cluster config changed from `config_`,
+    // protected by `lock_`. `nullptr` if `config_` is the latest one.
+    ptr<cluster_config> uncommitted_config_;
 
     // Server that is preparing to join,
     // protected by `lock_`.
