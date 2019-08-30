@@ -520,6 +520,15 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
 
     set_config(new_config);
 
+    if ( uncommitted_config_ &&
+         uncommitted_config_->get_log_idx() == new_config->get_log_idx() ) {
+        // All configs are committed.
+        p_in("clearing uncommitted config at log %zu, prev %zu",
+             uncommitted_config_->get_log_idx(),
+             uncommitted_config_->get_prev_log_idx());
+        uncommitted_config_.reset();
+    }
+
     if (invoke_join_cb) {
         cb_func::Param param(id_, leader_);
         ptr<cluster_config> c_conf = get_config();

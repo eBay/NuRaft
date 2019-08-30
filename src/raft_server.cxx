@@ -75,6 +75,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , l_(ctx->logger_)
     , stale_config_(nullptr)
     , config_(ctx->state_mgr_->load_config())
+    , uncommitted_config_(nullptr)
     , srv_to_join_(nullptr)
     , conf_to_add_(nullptr)
     , resp_handler_( (rpc_handler)std::bind( &raft_server::handle_peer_resp,
@@ -840,6 +841,7 @@ void raft_server::become_follower() {
 
     write_paused_ = false;
     initialized_ = true;
+    uncommitted_config_.reset();
     pre_vote_.quorum_reject_count_ = 0;
 
     // Drain all pending callback functions.

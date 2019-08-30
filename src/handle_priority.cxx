@@ -58,6 +58,16 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
 
     // Clone current cluster config.
     ptr<cluster_config> cur_config = get_config();
+
+    // NOTE: Need to honor uncommitted config,
+    //       refer to comment in `sync_log_to_new_srv()`
+    if (uncommitted_config_) {
+        p_in("uncommitted config exists at log %zu, prev log %zu",
+             uncommitted_config_->get_log_idx(),
+             uncommitted_config_->get_prev_log_idx());
+        cur_config = uncommitted_config_;
+    }
+
     ptr<buffer> enc_conf = cur_config->serialize();
     ptr<cluster_config> cloned_config = cluster_config::deserialize(*enc_conf);
 
@@ -79,6 +89,10 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
                           ( state_->get_term(),
                             new_conf_buf,
                             log_val_type::conf ) );
+
+    config_changing_ = true;
+    uncommitted_config_ = cloned_config;
+
     store_log_entry(entry);
     request_append_entries();
 }
