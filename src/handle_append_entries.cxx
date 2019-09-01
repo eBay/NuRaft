@@ -209,6 +209,26 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
         return create_sync_snapshot_req(p, last_log_idx, term, commit_idx);
     }
 
+    if (last_log_idx + 1 < starting_idx) {
+        static timer_helper msg_timer(5000000);
+        static bool first_event_fired = false;
+
+        // Neither snapshot nor log exists, it should not happen
+        // and probably user did something wrong.
+        // Return here to protect leader itself.
+        int log_lv = L_TRACE;
+        if (!first_event_fired || msg_timer.timeout()) {
+            msg_timer.reset();
+            first_event_fired = true;
+            log_lv = L_ERROR;
+        }
+        p_lv(log_lv,
+             "neither snapshot nor log exists, peer %d, last log %zu, "
+             "leader's start log %zu",
+             p.get_id(), last_log_idx, starting_idx);
+        return ptr<req_msg>();
+    }
+
     ulong last_log_term = term_for_log(last_log_idx);
     ulong end_idx = std::min( cur_nxt_idx,
                               last_log_idx + 1 +

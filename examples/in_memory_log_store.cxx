@@ -97,6 +97,7 @@ ptr< std::vector< ptr<log_entry> > >
             auto entry = logs_.find(ii);
             if (entry == logs_.end()) {
                 entry = logs_.find(0);
+                assert(0);
             }
             src = entry->second;
         }
@@ -120,6 +121,7 @@ ptr<std::vector<ptr<log_entry>>>
             auto entry = logs_.find(ii);
             if (entry == logs_.end()) {
                 entry = logs_.find(0);
+                assert(0);
             }
             src = entry->second;
         }

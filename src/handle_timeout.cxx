@@ -92,7 +92,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
 
     if (!check_leadership_validity()) return;
 
-    p_db("Heartbeat timeout for %d", p->get_id());
+    p_db("heartbeat timeout for %d", p->get_id());
     if (role_ == srv_role::leader) {
         update_target_priority();
         request_append_entries(p);

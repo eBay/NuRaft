@@ -4,7 +4,7 @@ Author/Developer(s): Jung-Sang Ahn
 
 Original Copyright 2017 Jung-Sang Ahn
 See URL: https://github.com/greensky00/simple_logger
-         (v0.3.22)
+         (v0.3.24)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -584,8 +584,8 @@ SimpleLoggerMgr::~SimpleLoggerMgr() {
     termination = true;
 
 #if defined(__linux__) || defined(__APPLE__)
-    if (oldSigSegvHandler) signal(SIGSEGV, oldSigSegvHandler);
-    if (oldSigAbortHandler) signal(SIGABRT, oldSigAbortHandler);
+    signal(SIGSEGV, oldSigSegvHandler);
+    signal(SIGABRT, oldSigAbortHandler);
 #endif
     {   std::unique_lock<std::mutex> l(cvFlusherLock);
         cvFlusher.notify_all();
