@@ -225,6 +225,69 @@ int rmv_not_resp_srv_wq_test(bool explicit_failure) {
     return 0;
 }
 
+int force_log_compaction_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        // Do not create snapshot.
+        param.snapshot_distance_ = 0;
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 10;
+
+    // Append messages asynchronously.
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        s1.raftServer->append_entries( {msg} );
+    }
+
+    // Send it to S2 only.
+    s1.fNet->execReqResp(s2_addr);
+    s1.fNet->execReqResp(s2_addr);
+    s1.fNet->makeReqFailAll(s3_addr);
+
+    // Force log compaction.
+    s1.sMgr->load_log_store()->compact(NUM / 2);
+
+    // Trigger heartbeat, it should be ok, without any crash.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp(s2_addr);
+
+    // One more time, after 100ms.
+    TestSuite::sleep_ms(100);
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp(s2_addr);
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace failure_test;
 using namespace failure_test;
 
@@ -239,6 +302,9 @@ int main(int argc, char** argv) {
     ts.doTest( "remove not responding server with quorum test",
                rmv_not_resp_srv_wq_test,
                TestRange<bool>({false, true}));
+
+    ts.doTest( "force log compaction test",
+               force_log_compaction_test );
 
     return 0;
 }
