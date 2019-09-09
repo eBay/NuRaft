@@ -670,7 +670,7 @@ void raft_server::send_reconnect_request() {
     } else {
         // LCOV_EXCL_START
         p_ft("cannot find leader!");
-        ctx_->state_mgr_->system_exit(-1);
+        ctx_->state_mgr_->system_exit(N22_unrecoverable_isolation);
         // LCOV_EXCL_STOP
     }
 }
