@@ -43,6 +43,7 @@ const char * raft_err_msg[] = {
     "N19: Bad log_idx for retrieving the term value.",
     "N20: Background committing thread encounter err.",
     "N21: Log store flush failed."
+    "N22: This node does not get messages from leader, while the others do."
 };
 
 } // namespace nuraft;
