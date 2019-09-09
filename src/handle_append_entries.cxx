@@ -338,6 +338,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         }
     }
 
+    leader_ = req.get_src();
+
     // After a snapshot the req.get_last_log_idx() may less than
     // log_store_->next_slot() but equals to log_store_->next_slot() -1
     //
@@ -500,7 +502,6 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                                          req.log_entries().size() );
     }
 
-    leader_ = req.get_src();
     leader_commit_index_.store(req.get_commit_idx());
 
     // WARNING:

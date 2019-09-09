@@ -669,7 +669,7 @@ void raft_server::send_reconnect_request() {
 
     } else {
         // LCOV_EXCL_START
-        p_ft("cannot find leader!");
+        p_ft("cannot find leader %d!", leader_.load());
         ctx_->state_mgr_->system_exit(-1);
         // LCOV_EXCL_STOP
     }
