@@ -265,6 +265,9 @@ int force_log_compaction_test() {
     s1.fNet->execReqResp(s2_addr);
     s1.fNet->makeReqFailAll(s3_addr);
 
+    // Wait for commit.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
     // Force log compaction.
     s1.sMgr->load_log_store()->compact(NUM / 2);
 
