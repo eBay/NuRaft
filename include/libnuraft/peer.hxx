@@ -44,11 +44,6 @@ public:
     static const int32 RESPONSE_LIMIT   = 20;
 
     // If connection is silent longer than this limit
-    // (multiplied by heartbeat interval), temporarily
-    // reset busy flag to poke that connection.
-    static const int32 BUSY_FLAG_LIMIT  = 20;
-
-    // If connection is silent longer than this limit
     // (multiplied by heartbeat interval), re-establish
     // the connection.
     static const int32 RECONNECT_LIMIT  = 50;
