@@ -135,16 +135,6 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             p_wn("long pause warning to %d is too verbose, "
                  "will suppress it from now", p->get_id());
         }
-
-        // For resiliency, free busy flag once to send heartbeat to the peer.
-        if ( last_ts_ms > params->heart_beat_interval_ *
-                          peer::BUSY_FLAG_LIMIT ) {
-            p_wn("probably something went wrong. "
-                 "temporarily free busy flag for peer %d", p->get_id());
-            p->set_free();
-            p->set_manual_free();
-            p->reset_ls_timer();
-        }
     }
     return false;
 }

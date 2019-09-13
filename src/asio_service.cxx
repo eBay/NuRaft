@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "buffer_serializer.hxx"
 #include "crc32.hxx"
+#include "internal_timer.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
 #include "strfmt.hxx"
@@ -154,7 +155,8 @@ public:
 // asio service implementation
 class asio_service_impl {
 public:
-    asio_service_impl(const asio_service::options& _opt = asio_service::options());
+    asio_service_impl(const asio_service::options& _opt = asio_service::options(),
+                      ptr<logger> l = nullptr);
     ~asio_service_impl();
 
     const asio_service::options& get_options() const { return my_opt_; }
@@ -182,6 +184,7 @@ private:
     std::atomic<uint32_t> num_active_workers_;
     std::list< ptr<std::thread> > worker_handles_;
     asio_service::options my_opt_;
+    ptr<logger> l_;
     friend asio_service;
 };
 
@@ -1337,7 +1340,8 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     }
 }
 
-asio_service_impl::asio_service_impl(const asio_service::options& _opt)
+asio_service_impl::asio_service_impl(const asio_service::options& _opt,
+                                     ptr<logger> l)
     : io_svc_()
     , ssl_server_ctx_(ssl_context::sslv23)
     , ssl_client_ctx_(ssl_context::sslv23)
@@ -1349,6 +1353,7 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt)
     , stopping_cv_()
     , num_active_workers_(0)
     , my_opt_(_opt)
+    , l_(l)
 {
     if (my_opt_.enable_ssl_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
@@ -1413,13 +1418,37 @@ std::string asio_service_impl::get_password
 #endif
 
 void asio_service_impl::worker_entry() {
-    try {
-        num_active_workers_.fetch_add(1);
-        io_svc_.run();
-        num_active_workers_.fetch_sub(1);
-    } catch (...) {
-        // ignore all exceptions
-    }
+    size_t restart_count = 0;
+    const size_t MAX_COUNT = 10;
+    timer_helper timer(5000000); // 5 seconds.
+
+    do {
+        try {
+            num_active_workers_.fetch_add(1);
+            io_svc_.run();
+            num_active_workers_.fetch_sub(1);
+
+        } catch (...) {
+            num_active_workers_.fetch_sub(1);
+            p_er("asio worker thread got exception, "
+                 "current number of workers: %zu",
+                 num_active_workers_.load());
+        }
+
+        restart_count++;
+        if (timer.timeout()) {
+            timer.reset();
+            restart_count = 0;
+
+        } else if (restart_count > MAX_COUNT) {
+            p_er("too many exceptions in short time period. "
+                 "marking down this worker thread.");
+            return;
+        }
+    } while (stopping_status_ == 0);
+
+    p_in("end of asio worker thread, remaining threads: %zu",
+         num_active_workers_.load());
 }
 
 void asio_service_impl::timer_handler(ERROR_CODE err) {
@@ -1470,7 +1499,7 @@ void asio_service_impl::stop() {
 }
 
 asio_service::asio_service(const options& _opt, ptr<logger> _l)
-    : impl_(new asio_service_impl(_opt))
+    : impl_(new asio_service_impl(_opt, _l))
     , l_(_l)
     {}
 
