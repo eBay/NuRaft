@@ -181,31 +181,50 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
     p_tr("last_log_idx: %d, starting_idx: %d, cur_nxt_idx: %d\n",
          last_log_idx, starting_idx, cur_nxt_idx);
 
-    // To avoid inconsistency due to smart pointer, should have local varaible
-    // to increase its ref count.
-    ptr<snapshot> snp_local = get_last_snapshot();
+    // Verify log index range
+    bool entries_valid = (last_log_idx + 1 >= starting_idx);
 
-    // Modified by Jung-Sang Ahn (Oct 11 2017):
-    // As `reserved_log` has been newly added, checking with `starting_idx` only
-    // is inaccurate.
-    if ( snp_local &&
-         last_log_idx < starting_idx &&
-         last_log_idx < snp_local->get_last_log_idx() ) {
-        p_db( "send snapshot peer %d, peer log idx: %zu, my starting idx: %zu, "
-              "my log idx: %zu, last_snapshot_log_idx: %zu\n",
-              p.get_id(),
-              last_log_idx, starting_idx, cur_nxt_idx,
-              snp_local->get_last_log_idx() );
-        return create_sync_snapshot_req(p, last_log_idx, term, commit_idx);
+    // Read log entries.  The underlying log store may have removed some log entries
+    // causing some of the requested entries to be unavailable.  The log store should
+    // return nullptr to indicate such errors.
+    ulong end_idx = std::min( cur_nxt_idx,
+                              last_log_idx + 1 + ctx_->get_params()->max_append_size_ );
+    ptr<std::vector<ptr<log_entry>>> log_entries;
+    if ((last_log_idx + 1) >= cur_nxt_idx) {
+        log_entries = ptr<std::vector<ptr<log_entry>>>();
+    } else if (entries_valid) {
+        log_entries = log_store_->log_entries_ext(last_log_idx + 1, end_idx,
+                                                  p.get_next_batch_size_hint_in_bytes());
+        if (log_entries == nullptr) {
+            p_wn("failed to retrieve log entries: %zu - %zu", last_log_idx + 1, end_idx);
+            entries_valid = false;
+        }
     }
 
-    if (last_log_idx + 1 < starting_idx) {
+    if (!entries_valid) {
+        // Required log entries are missing.  First, we try to use snapshot to recover.
+        // To avoid inconsistency due to smart pointer, should have local varaible
+        // to increase its ref count.
+        ptr<snapshot> snp_local = get_last_snapshot();
+
+        // Modified by Jung-Sang Ahn (Oct 11 2017):
+        // As `reserved_log` has been newly added, checking with `starting_idx` only
+        // is inaccurate.
+        if ( snp_local &&
+             last_log_idx < starting_idx &&
+             last_log_idx < snp_local->get_last_log_idx() ) {
+            p_db( "send snapshot peer %d, peer log idx: %zu, my starting idx: %zu, "
+                  "my log idx: %zu, last_snapshot_log_idx: %zu\n",
+                  p.get_id(),
+                  last_log_idx, starting_idx, cur_nxt_idx,
+                  snp_local->get_last_log_idx() );
+            return create_sync_snapshot_req(p, last_log_idx, term, commit_idx);
+        }
+
+        // Cannot recover using snapshot.  Return here to protect the leader.
         static timer_helper msg_timer(5000000);
         static bool first_event_fired = false;
 
-        // Neither snapshot nor log exists, it should not happen
-        // and probably user did something wrong.
-        // Return here to protect leader itself.
         int log_lv = L_TRACE;
         if (!first_event_fired || msg_timer.timeout()) {
             msg_timer.reset();
@@ -219,10 +238,6 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
         return ptr<req_msg>();
     }
 
-    ulong last_log_term = term_for_log(last_log_idx);
-    ulong end_idx = std::min( cur_nxt_idx,
-                              last_log_idx + 1 +
-                                  ctx_->get_params()->max_append_size_ );
     // NOTE: If this is a retry, probably the follower is down.
     //       Send just one log until it comes back
     //       (i.e., max_append_size_ = 1).
@@ -242,14 +257,7 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
         p.reset_cnt_not_applied();
     }
 
-    ptr<std::vector<ptr<log_entry>>>
-        log_entries( (last_log_idx + 1) >= cur_nxt_idx
-                     ? ptr<std::vector<ptr<log_entry>>>()
-                     : log_store_->log_entries_ext
-                       ( last_log_idx + 1,
-                         end_idx,
-                         p.get_next_batch_size_hint_in_bytes() ) );
-
+    ulong last_log_term = term_for_log(last_log_idx);
     ulong adjusted_end_idx = end_idx;
     if (log_entries) adjusted_end_idx = last_log_idx + 1 + log_entries->size();
     if (adjusted_end_idx != end_idx) {
