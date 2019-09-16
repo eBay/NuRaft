@@ -189,6 +189,26 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
     // return nullptr to indicate such errors.
     ulong end_idx = std::min( cur_nxt_idx,
                               last_log_idx + 1 + ctx_->get_params()->max_append_size_ );
+
+    // NOTE: If this is a retry, probably the follower is down.
+    //       Send just one log until it comes back
+    //       (i.e., max_append_size_ = 1).
+    //       Only when end_idx - start_idx > 1, and 5th try.
+    ulong peer_last_sent_idx = p.get_last_sent_idx();
+    if ( last_log_idx + 1 == peer_last_sent_idx &&
+         last_log_idx + 2 < end_idx ) {
+        int32 cur_cnt = p.inc_cnt_not_applied();
+        p_db("last sent log (%zu) to peer %d is not applied, cnt %d",
+             peer_last_sent_idx, p.get_id(), cur_cnt);
+        if (cur_cnt >= 5) {
+            ulong prev_end_idx = end_idx;
+            end_idx = std::min( cur_nxt_idx, last_log_idx + 1 + 1 );
+            p_db("reduce end_idx %zu -> %zu", prev_end_idx, end_idx);
+        }
+    } else {
+        p.reset_cnt_not_applied();
+    }
+
     ptr<std::vector<ptr<log_entry>>> log_entries;
     if ((last_log_idx + 1) >= cur_nxt_idx) {
         log_entries = ptr<std::vector<ptr<log_entry>>>();
@@ -236,25 +256,6 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
              "leader's start log %zu",
              p.get_id(), last_log_idx, starting_idx);
         return ptr<req_msg>();
-    }
-
-    // NOTE: If this is a retry, probably the follower is down.
-    //       Send just one log until it comes back
-    //       (i.e., max_append_size_ = 1).
-    //       Only when end_idx - start_idx > 1, and 5th try.
-    ulong peer_last_sent_idx = p.get_last_sent_idx();
-    if ( last_log_idx + 1 == peer_last_sent_idx &&
-         last_log_idx + 2 < end_idx ) {
-        int32 cur_cnt = p.inc_cnt_not_applied();
-        p_db("last sent log (%zu) to peer %d is not applied, cnt %d",
-             peer_last_sent_idx, p.get_id(), cur_cnt);
-        if (cur_cnt >= 5) {
-            ulong prev_end_idx = end_idx;
-            end_idx = std::min( cur_nxt_idx, last_log_idx + 1 + 1 );
-            p_db("reduce end_idx %zu -> %zu", prev_end_idx, end_idx);
-        }
-    } else {
-        p.reset_cnt_not_applied();
     }
 
     ulong last_log_term = term_for_log(last_log_idx);
