@@ -176,16 +176,16 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
     // cur_nxt_idx: last log index of myself (leader).
     // starting_idx: start log index of myself (leader).
     // last_log_idx: last log index of replica (follower).
-    // end_idx: if (cur_nxt_idx - last_log_idx) > threshold (100), limit it.
+    // end_idx: if (cur_nxt_idx - last_log_idx) > max_append_size, limit it.
 
     p_tr("last_log_idx: %d, starting_idx: %d, cur_nxt_idx: %d\n",
          last_log_idx, starting_idx, cur_nxt_idx);
 
-    // Verify log index range
+    // Verify log index range.
     bool entries_valid = (last_log_idx + 1 >= starting_idx);
 
-    // Read log entries.  The underlying log store may have removed some log entries
-    // causing some of the requested entries to be unavailable.  The log store should
+    // Read log entries. The underlying log store may have removed some log entries
+    // causing some of the requested entries to be unavailable. The log store should
     // return nullptr to indicate such errors.
     ulong end_idx = std::min( cur_nxt_idx,
                               last_log_idx + 1 + ctx_->get_params()->max_append_size_ );
@@ -202,14 +202,14 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
     }
 
     if (!entries_valid) {
-        // Required log entries are missing.  First, we try to use snapshot to recover.
+        // Required log entries are missing. First, we try to use snapshot to recover.
         // To avoid inconsistency due to smart pointer, should have local varaible
         // to increase its ref count.
         ptr<snapshot> snp_local = get_last_snapshot();
 
         // Modified by Jung-Sang Ahn (Oct 11 2017):
-        // As `reserved_log` has been newly added, checking with `starting_idx` only
-        // is inaccurate.
+        // As `reserved_log` has been newly added, need to check snapshot
+        // in addition to `starting_idx`.
         if ( snp_local &&
              last_log_idx < starting_idx &&
              last_log_idx < snp_local->get_last_log_idx() ) {
@@ -221,7 +221,7 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
             return create_sync_snapshot_req(p, last_log_idx, term, commit_idx);
         }
 
-        // Cannot recover using snapshot.  Return here to protect the leader.
+        // Cannot recover using snapshot. Return here to protect the leader.
         static timer_helper msg_timer(5000000);
         static bool first_event_fired = false;
 
