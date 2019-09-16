@@ -88,6 +88,9 @@ public:
     /**
      * Get log entries with index [start, end).
      *
+     * Return nullptr to indicate error if any log entry within the requested range
+     * could not be retrieved (e.g. due to external log truncation).
+     *
      * @param start The start log index number (inclusive).
      * @param end The end log index number (exclusive).
      * @return The log entries between [start, end).
@@ -101,6 +104,9 @@ public:
      * The total size of the returned entries is limited by batch_size_hint.
      * Entries near the end are not returned if the total size of the entries exceeds
      * batch_size_hint.
+     *
+     * Return nullptr to indicate error if any log entry within the requested range
+     * could not be retrieved (e.g. due to external log truncation).
      *
      * @param start The start log index number (inclusive).
      * @param end The end log index number (exclusive).
