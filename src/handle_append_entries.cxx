@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "error_code.hxx"
 #include "event_awaiter.h"
+#include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
 #include "state_machine.hxx"
@@ -243,19 +244,33 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
 
         // Cannot recover using snapshot. Return here to protect the leader.
         static timer_helper msg_timer(5000000);
-        static bool first_event_fired = false;
-
-        int log_lv = L_TRACE;
-        if (!first_event_fired || msg_timer.timeout()) {
-            msg_timer.reset();
-            first_event_fired = true;
-            log_lv = L_ERROR;
-        }
+        int log_lv = msg_timer.timeout_and_reset() ? L_ERROR : L_TRACE;
         p_lv(log_lv,
              "neither snapshot nor log exists, peer %d, last log %zu, "
              "leader's start log %zu",
              p.get_id(), last_log_idx, starting_idx);
-        return ptr<req_msg>();
+
+        // Send out-of-log-range notification to this follower.
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( term, msg_type::custom_notification_request,
+                             id_, p.get_id(), 0, last_log_idx, commit_idx );
+
+        // Out-of-log message.
+        ptr<out_of_log_msg> ool_msg = cs_new<out_of_log_msg>();
+        ool_msg->start_idx_of_leader_ = starting_idx;
+
+        // Create a notification containing OOL message.
+        ptr<custom_notification_msg> custom_noti =
+            cs_new<custom_notification_msg>
+            ( custom_notification_msg::out_of_log_range_warning );
+        custom_noti->ctx_ = ool_msg->serialize();
+
+        // Wrap it using log_entry.
+        ptr<log_entry> custom_noti_le =
+            cs_new<log_entry>(0, custom_noti->serialize(), log_val_type::custom);
+
+        req->log_entries().push_back(custom_noti_le);
+        return req;
     }
 
     ulong last_log_term = term_for_log(last_log_idx);

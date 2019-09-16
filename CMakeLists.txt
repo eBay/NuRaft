@@ -222,6 +222,7 @@ set(RAFT_CORE
     ${ROOT_SRC}/error_code.cxx
     ${ROOT_SRC}/handle_append_entries.cxx
     ${ROOT_SRC}/handle_client_request.cxx
+    ${ROOT_SRC}/handle_custom_notification.cxx
     ${ROOT_SRC}/handle_commit.cxx
     ${ROOT_SRC}/handle_join_leave.cxx
     ${ROOT_SRC}/handle_priority.cxx

@@ -24,8 +24,9 @@ limitations under the License.
 namespace nuraft {
 
 struct timer_helper {
-    timer_helper(size_t duration_us = 0)
+    timer_helper(size_t duration_us = 0, bool fire_first_event = false)
         : duration_us_(duration_us)
+        , first_event_fired_(!fire_first_event)
     {
         reset();
     }
@@ -85,12 +86,40 @@ struct timer_helper {
     }
 
     bool timeout() {
-        if (get_us() >= duration_us_) return true;
+        auto cur = std::chrono::system_clock::now();
+
+        std::lock_guard<std::mutex> l(lock_);
+        if (!first_event_fired_) {
+            // First event, return `true` immediately.
+            first_event_fired_ = true;
+            return true;
+        }
+
+        std::chrono::duration<double> elapsed = cur - t_created_;
+        return (duration_us_ < elapsed.count() * 1000000);
+    }
+
+    bool timeout_and_reset() {
+        auto cur = std::chrono::system_clock::now();
+
+        std::lock_guard<std::mutex> l(lock_);
+        if (!first_event_fired_) {
+            // First event, return `true` immediately.
+            first_event_fired_ = true;
+            return true;
+        }
+
+        std::chrono::duration<double> elapsed = cur - t_created_;
+        if (duration_us_ < elapsed.count() * 1000000) {
+            t_created_ = cur;
+            return true;
+        }
         return false;
     }
 
     std::chrono::time_point<std::chrono::system_clock> t_created_;
     size_t duration_us_;
+    mutable bool first_event_fired_;
     std::mutex lock_;
 };
 

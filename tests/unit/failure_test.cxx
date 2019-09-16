@@ -225,6 +225,25 @@ int rmv_not_resp_srv_wq_test(bool explicit_failure) {
     return 0;
 }
 
+cb_func::ReturnCode ool_detect_cb(std::atomic<bool>* invoked,
+                                  size_t purge_upto,
+                                  cb_func::Type type,
+                                  cb_func::Param* params)
+{
+    if (type == cb_func::Type::OutOfLogRangeWarning) {
+        cb_func::OutOfLogRangeWarningArgs* ool_args =
+            (cb_func::OutOfLogRangeWarningArgs*)params->ctx;
+        auto chk_func = [purge_upto, ool_args]() -> int {
+            CHK_EQ(purge_upto + 1, ool_args->startIdxOfLeader);
+            return 0;
+        };
+        if (chk_func() == 0) {
+            invoked->store(true);
+        }
+    }
+    return cb_func::ReturnCode::Ok;
+}
+
 int force_log_compaction_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -238,7 +257,26 @@ int force_log_compaction_test() {
     RaftPkg s3(f_base, 3, s3_addr);
     std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
-    CHK_Z( launch_servers( pkgs ) );
+    const size_t NUM_APPENDS = 10;
+    const size_t PURGE_UPTO = 5;
+
+    std::atomic<bool> invoked(false);
+    for (size_t ii = 0; ii < pkgs.size(); ++ii) {
+        RaftPkg* ff = pkgs[ii];
+        if (ii < 2) {
+            ff->initServer();
+        } else {
+            // S3: set callback function to detect out of log range.
+            auto func = std::bind( ool_detect_cb,
+                                   &invoked,
+                                   PURGE_UPTO,
+                                   std::placeholders::_1,
+                                   std::placeholders::_2 );
+            ff->initServer(nullptr, raft_server::init_options(), func);
+        }
+        ff->fNet->listen(ff->raftServer);
+        ff->fTimer->invoke( timer_task_type::election_timer );
+    }
     CHK_Z( make_group( pkgs ) );
 
     for (auto& entry: pkgs) {
@@ -250,10 +288,8 @@ int force_log_compaction_test() {
         pp->raftServer->update_params(param);
     }
 
-    const size_t NUM = 10;
-
     // Append messages asynchronously.
-    for (size_t ii=0; ii<NUM; ++ii) {
+    for (size_t ii=0; ii<NUM_APPENDS; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
@@ -269,16 +305,19 @@ int force_log_compaction_test() {
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
     // Force log compaction.
-    s1.sMgr->load_log_store()->compact(NUM / 2);
+    s1.sMgr->load_log_store()->compact(PURGE_UPTO);
 
     // Trigger heartbeat, it should be ok, without any crash.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s1.fNet->execReqResp(s2_addr);
+    s1.fNet->execReqResp();
 
     // One more time, after 100ms.
     TestSuite::sleep_ms(100);
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s1.fNet->execReqResp(s2_addr);
+    s1.fNet->execReqResp();
+
+    // Callback function should have been invoked.
+    CHK_TRUE(invoked);
 
     print_stats(pkgs);
 
