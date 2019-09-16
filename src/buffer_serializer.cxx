@@ -252,7 +252,7 @@ void buffer_serializer::put_cstr(const char* str) {
 
 uint8_t buffer_serializer::get_u8() {
     uint8_t ret = 0;
-    chk_length( sizeof(ret) );
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     ret = ptr[0];
     pos( pos() + sizeof(ret) );
@@ -261,7 +261,7 @@ uint8_t buffer_serializer::get_u8() {
 
 uint16_t buffer_serializer::get_u16() {
     uint16_t ret = 0;
-    chk_length( sizeof(ret) );
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE)  { get16l(ptr, ret); }
     else                    { get16b(ptr, ret); }
@@ -271,7 +271,7 @@ uint16_t buffer_serializer::get_u16() {
 
 uint32_t buffer_serializer::get_u32() {
     uint32_t ret = 0;
-    chk_length( sizeof(ret) );
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE)  { get32l(ptr, ret); }
     else                    { get32b(ptr, ret); }
@@ -281,7 +281,7 @@ uint32_t buffer_serializer::get_u32() {
 
 uint64_t buffer_serializer::get_u64() {
     uint64_t ret = 0;
-    chk_length( sizeof(ret) );
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE)  { get64l(ptr, ret); }
     else                    { get64b(ptr, ret); }
@@ -291,7 +291,7 @@ uint64_t buffer_serializer::get_u64() {
 
 int8_t buffer_serializer::get_i8() {
     int8_t ret = 0;
-    chk_length( sizeof(ret) );
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     ret = ptr[0];
     pos( pos() + sizeof(ret) );
@@ -300,7 +300,7 @@ int8_t buffer_serializer::get_i8() {
 
 int16_t buffer_serializer::get_i16() {
     int16_t ret = 0;
-    chk_length( sizeof(ret) );
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE)  { get16l(ptr, ret); }
     else                    { get16b(ptr, ret); }
@@ -309,8 +309,8 @@ int16_t buffer_serializer::get_i16() {
 }
 
 int32_t buffer_serializer::get_i32() {
-    uint32_t ret = 0;
-    chk_length( sizeof(ret) );
+    int32_t ret = 0;
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE)  { get32l(ptr, ret); }
     else                    { get32b(ptr, ret); }
@@ -320,7 +320,7 @@ int32_t buffer_serializer::get_i32() {
 
 int64_t buffer_serializer::get_i64() {
     int64_t ret = 0;
-    chk_length( sizeof(ret) );
+    chk_length(ret);
     uint8_t* ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE)  { get64l(ptr, ret); }
     else                    { get64b(ptr, ret); }
