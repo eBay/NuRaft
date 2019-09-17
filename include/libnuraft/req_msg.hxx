@@ -66,9 +66,20 @@ public:
     }
 
 private:
+    // Term of last log below.
     ulong last_log_term_;
+
+    // Last log index that the destination (i.e., follower) node
+    // currently has. If below `log_entries_` contains logs,
+    // the starting index will be `last_log_idx_ + 1`.
     ulong last_log_idx_;
+
+    // Source (i.e., leader) node's current committed log index.
+    // As a pipelining, follower will do commit on this index number
+    // after appending given logs.
     ulong commit_idx_;
+
+    // Logs. Can be empty.
     std::vector<ptr<log_entry>> log_entries_;
 };
 

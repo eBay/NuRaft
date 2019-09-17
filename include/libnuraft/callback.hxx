@@ -89,7 +89,13 @@ public:
         // It will be invoked only for acceptable logs.
         // ctx: pointer to request.
         GotAppendEntryReqFromLeader = 14,
+
+        // This node is out of log range, which means that
+        // leader has no valid log or snapshot to send for this node.
+        // ctx: pointer to `OutOfLogRangeWarningArgs`.
+        OutOfLogRangeWarning = 15,
     };
+
     struct Param {
         Param(int32_t my_id = -1,
               int32_t leader_id = -1,
@@ -105,13 +111,21 @@ public:
         int32_t peerId;
         void* ctx;
     };
+
     enum ReturnCode {
         Ok = 0,
         ReturnNull = -1,
     };
+
+    struct OutOfLogRangeWarningArgs {
+        OutOfLogRangeWarningArgs(uint64_t x = 0) : startIdxOfLeader(x) {}
+        uint64_t startIdxOfLeader;
+    };
+
     using func_type = std::function<ReturnCode(Type, Param*)>;
 
     cb_func() : func(nullptr) {}
+
     cb_func(func_type _func) : func(_func) {}
 
     ReturnCode call(Type type, Param* param) {
@@ -120,6 +134,7 @@ public:
         }
         return Ok;
     }
+
 private:
     func_type func;
 };

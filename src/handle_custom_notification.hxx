@@ -1,6 +1,5 @@
 /************************************************************************
 Modifications Copyright 2017-2019 eBay Inc.
-Author/Developer(s): Jung-Sang Ahn
 
 Original Copyright:
 See URL: https://github.com/datatechnology/cornerstone
@@ -18,19 +17,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _LOG_VALUE_TYPE_HXX_
-#define _LOG_VALUE_TYPE_HXX_
+#pragma once
+
+#include "buffer.hxx"
+#include "ptr.hxx"
 
 namespace nuraft {
 
-enum log_val_type {
-    app_log         = 1,
-    conf            = 2,
-    cluster_server  = 3,
-    log_pack        = 4,
-    snp_sync_req    = 5,
-    custom          = 999,
+struct custom_notification_msg {
+    enum type {
+        out_of_log_range_warning = 1,
+    };
+
+    custom_notification_msg(type t = out_of_log_range_warning)
+        : type_(t)
+        , ctx_(nullptr)
+        {}
+
+    static ptr<custom_notification_msg> deserialize(buffer& buf);
+
+    ptr<buffer> serialize() const;
+
+    type type_;
+
+    ptr<buffer> ctx_;
 };
 
-}
-#endif // _LOG_VALUE_TYPE_HXX_
+struct out_of_log_msg {
+    out_of_log_msg()
+        : start_idx_of_leader_(0)
+        {}
+
+    static ptr<out_of_log_msg> deserialize(buffer& buf);
+
+    ptr<buffer> serialize() const;
+
+    ulong start_idx_of_leader_;
+};
+
+} // namespace nuraft;
+

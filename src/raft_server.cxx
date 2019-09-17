@@ -638,6 +638,10 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         p_in("got ping response from %d", resp->get_src());
         break;
 
+    case msg_type::custom_notification_response:
+        handle_custom_notification_resp(*resp);
+        break;
+
     default:
         p_er( "received an unexpected response: %s, ignore it",
               msg_type_to_string(resp->get_type()).c_str() );
@@ -889,6 +893,9 @@ ptr<resp_msg> raft_server::handle_ext_msg(req_msg& req) {
 
     case msg_type::reconnect_request:
         return handle_reconnect_req(req);
+
+    case msg_type::custom_notification_request:
+        return handle_custom_notification_req(req);
 
     default:
         p_er( "received request: %s, ignore it",

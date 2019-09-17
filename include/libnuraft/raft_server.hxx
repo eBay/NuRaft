@@ -40,6 +40,7 @@ namespace nuraft {
 using CbReturnCode = cb_func::ReturnCode;
 
 class cluster_config;
+class custom_notification_msg;
 class delayed_task_scheduler;
 class logger;
 class peer;
@@ -468,6 +469,7 @@ protected:
     ptr<resp_msg> handle_leave_cluster_req(req_msg& req);
     ptr<resp_msg> handle_priority_change_req(req_msg& req);
     ptr<resp_msg> handle_reconnect_req(req_msg& req);
+    ptr<resp_msg> handle_custom_notification_req(req_msg& req);
 
     void handle_join_cluster_resp(resp_msg& resp);
     void handle_log_sync_resp(resp_msg& resp);
@@ -487,6 +489,7 @@ protected:
     void handle_vote_resp(resp_msg& resp);
     void handle_priority_change_resp(resp_msg& resp);
     void handle_reconnect_resp(resp_msg& resp);
+    void handle_custom_notification_resp(resp_msg& resp);
 
     void handle_ext_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
     void handle_ext_resp_err(rpc_exception& err);
@@ -532,6 +535,10 @@ protected:
     void set_last_snapshot(const ptr<snapshot>& new_snapshot);
 
     ulong store_log_entry(ptr<log_entry>& entry, ulong index = 0);
+
+    ptr<resp_msg> handle_out_of_log_msg(req_msg& req,
+                                        ptr<custom_notification_msg> msg,
+                                        ptr<resp_msg> resp);
 
 protected:
     static const int default_snapshot_sync_block_size;
