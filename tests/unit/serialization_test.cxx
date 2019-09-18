@@ -241,7 +241,7 @@ int custom_notification_msg_test(bool empty_context) {
 
     CHK_EQ( orig_msg.type_ , dec_msg->type_ );
     if (empty_context) {
-        CHK_NULL( dec_msg->ctx_ );
+        CHK_NULL( dec_msg->ctx_.get() );
     } else {
         buffer_serializer bs(dec_msg->ctx_);
         std::string result_str = bs.get_str();
