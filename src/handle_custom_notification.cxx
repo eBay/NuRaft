@@ -163,6 +163,12 @@ ptr<resp_msg> raft_server::handle_out_of_log_msg(req_msg& req,
          ool_msg->start_idx_of_leader_,
          log_store_->next_slot() - 1);
 
+    // Should restart election timer to avoid initiating false vote.
+    if ( req.get_term() == state_->get_term() &&
+         role_ == srv_role::follower ) {
+        restart_election_timer();
+    }
+
     cb_func::Param param(id_, leader_);
     cb_func::OutOfLogRangeWarningArgs args(ool_msg->start_idx_of_leader_);
     param.ctx = &args;
