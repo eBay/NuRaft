@@ -24,7 +24,8 @@ limitations under the License.
 
 namespace nuraft {
 
-struct custom_notification_msg {
+class custom_notification_msg {
+public:
     enum type {
         out_of_log_range_warning = 1,
     };
@@ -43,7 +44,8 @@ struct custom_notification_msg {
     ptr<buffer> ctx_;
 };
 
-struct out_of_log_msg {
+class out_of_log_msg {
+public:
     out_of_log_msg()
         : start_idx_of_leader_(0)
         {}
