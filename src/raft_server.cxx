@@ -58,6 +58,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , stopping_(false)
     , commit_bg_stopped_(false)
     , write_paused_(false)
+    , next_leader_candidate_(-1)
     , im_learner_(false)
     , serving_req_(false)
     , steps_to_down_(0)
@@ -771,6 +772,7 @@ void raft_server::become_leader() {
     (void)rc; // nothing to do in this callback.
 
     write_paused_ = false;
+    next_leader_candidate_ = -1;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
     data_fresh_ = true;
@@ -821,7 +823,37 @@ void raft_server::yield_leadership(bool immediate_yield) {
         return;
     }
 
+    // Not immediate yield, find the highest priority node
+    // whose response time is not expired.
+    int max_priority = 0;
+    int candidate_id = -1;
+    std::string candidate_endpoint;
+    uint64_t last_resp_ms = 0;
+    size_t hb_interval_ms = ctx_->get_params()->heart_beat_interval_;
+    for (auto& entry: peers_) {
+        int32 srv_id = entry.first;
+        ptr<peer>& pp = entry.second;
+        uint64_t pp_last_resp_ms = pp->get_resp_timer_us() / 1000;
+
+        if ( srv_id != id_ &&
+             pp_last_resp_ms <= hb_interval_ms &&
+             pp->get_config().get_priority() > max_priority ) {
+            max_priority = pp->get_config().get_priority();
+            candidate_id = srv_id;
+            candidate_endpoint = pp->get_config().get_endpoint();
+            last_resp_ms = pp_last_resp_ms;
+        }
+    }
+
     p_in("got graceful re-elect request, pause write from now");
+    if (candidate_id > -1) {
+        p_in("next leader candidate: %d %s priority %d last response %zu ms ago",
+             candidate_id, candidate_endpoint.c_str(), max_priority,
+             last_resp_ms);
+        next_leader_candidate_ = candidate_id;;
+    } else {
+        p_wn("cannot find valid candidate for next leader, will proceed anyway");
+    }
 
     // Reset reelection timer, and pause write.
     write_paused_ = true;
@@ -846,6 +878,7 @@ void raft_server::become_follower() {
     (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
 
     write_paused_ = false;
+    next_leader_candidate_ = -1;
     initialized_ = true;
     uncommitted_config_.reset();
     pre_vote_.quorum_reject_count_ = 0;

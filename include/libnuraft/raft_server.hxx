@@ -477,8 +477,8 @@ protected:
 
     bool handle_snapshot_sync_req(snapshot_sync_req& req);
     void request_prevote();
-    void initiate_vote();
-    void request_vote();
+    void initiate_vote(bool ignore_priority = false);
+    void request_vote(bool ignore_priority);
     void request_append_entries();
     bool request_append_entries(ptr<peer> p);
     void handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
@@ -539,6 +539,10 @@ protected:
     ptr<resp_msg> handle_out_of_log_msg(req_msg& req,
                                         ptr<custom_notification_msg> msg,
                                         ptr<resp_msg> resp);
+
+    ptr<resp_msg> handle_leadership_takeover(req_msg& req,
+                                             ptr<custom_notification_msg> msg,
+                                             ptr<resp_msg> resp);
 
 protected:
     static const int default_snapshot_sync_block_size;
@@ -623,6 +627,10 @@ protected:
     // `true` if write operation is paused, as the first phase of
     // leader re-election.
     std::atomic<bool> write_paused_;
+
+    // Server ID indicates the candidate for the next leader,
+    // as a part of leadership takeover task.
+    std::atomic<int32> next_leader_candidate_;
 
     // Timer that will start at pausing write.
     timer_helper reelection_timer_;
