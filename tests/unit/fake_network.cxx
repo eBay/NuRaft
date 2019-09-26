@@ -69,6 +69,7 @@ FakeNetwork::FakeNetwork(const std::string& _endpoint,
     : myEndpoint(_endpoint)
     , base(_base)
     , handler(nullptr)
+    , online(true)
 {}
 
 ptr<rpc_client> FakeNetwork::create_client(const std::string& endpoint) {
@@ -151,6 +152,9 @@ bool FakeNetwork::delieverReqTo(const std::string& endpoint,
     // this:                    source (sending request)
     // conn->dstNet (endpoint): destination (sending response)
     ptr<FakeClient> conn = findClient(endpoint);
+
+    // If destination is offline, make failure.
+    if (!conn->isDstOnline()) return makeReqFail(endpoint, random_order);
 
     auto pkg_entry = conn->pendingReqs.begin();
     if (pkg_entry == conn->pendingReqs.end()) return false;
@@ -302,6 +306,11 @@ void FakeClient::send(ptr<req_msg>& req, rpc_handler& when_done) {
 void FakeClient::dropPackets() {
     pendingReqs.clear();
     pendingResps.clear();
+}
+
+bool FakeClient::isDstOnline() {
+    if (!dstNet) return false;
+    return dstNet->isOnline();
 }
 
 

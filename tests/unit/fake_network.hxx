@@ -86,6 +86,12 @@ public:
 
     size_t getNumPendingResps(const std::string& endpoint);
 
+    void goesOffline() { online = false; }
+
+    void goesOnline() { online =  true; }
+
+    bool isOnline() const { return online; }
+
     void stop();
 
     void shutdown();
@@ -97,6 +103,7 @@ private:
     std::unordered_map< std::string, ptr<FakeClient> > clients;
     std::mutex clientsLock;
     std::list< ptr<FakeClient> > staleClients;
+    bool online;
 };
 
 class FakeNetworkBase {
@@ -133,6 +140,8 @@ public:
     void send(ptr<req_msg>& req, rpc_handler& when_done);
 
     void dropPackets();
+
+    bool isDstOnline();
 
 private:
     FakeNetwork* motherNet;

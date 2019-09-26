@@ -476,6 +476,8 @@ protected:
     void handle_leave_cluster_resp(resp_msg& resp);
 
     bool handle_snapshot_sync_req(snapshot_sync_req& req);
+
+    bool check_cond_for_zp_election();
     void request_prevote();
     void initiate_vote(bool ignore_priority = false);
     void request_vote(bool ignore_priority);
@@ -567,6 +569,9 @@ protected:
 
     // Current target priority for vote, protected by `lock_`.
     int32 target_priority_;
+
+    // Timer that will be reset on `target_priority_` change.
+    timer_helper priority_change_timer_;
 
     // Number of servers responded my vote request, protected by `lock_`.
     int32 votes_responded_;

@@ -205,6 +205,10 @@ void raft_server::decay_target_priority() {
     target_priority_ = std::max(1, target_priority_ - gap);
     p_in("[PRIORITY] decay, target %d -> %d, mine %d",
          prev_priority, target_priority_, my_priority_);
+
+    // Once `target_priority_` becomes 1,
+    // `priority_change_timer_` starts ticking.
+    if (prev_priority > 1) priority_change_timer_.reset();
 }
 
 void raft_server::update_target_priority() {
@@ -221,6 +225,7 @@ void raft_server::update_target_priority() {
     } else {
         target_priority_ = srv_config::INIT_PRIORITY;
     }
+    priority_change_timer_.reset();
 
     hb_alive_ = true;
     pre_vote_.reset(state_->get_term());

@@ -234,6 +234,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                                      (params->rpc_failure_backoff_) );
         restart_election_timer();
     }
+    priority_change_timer_.reset();
     p_db("server %d started", id_);
 }
 
@@ -778,6 +779,13 @@ void raft_server::become_leader() {
     data_fresh_ = true;
 
     request_append_entries();
+
+    if (my_priority_ == 0) {
+        // If this member's priority is zero, this node owns a temporary
+        // leadership. Let other node takeover shortly.
+        p_in("[BECOME LEADER] my priority is 0, will resign shortly");
+        yield_leadership();
+    }
 }
 
 bool raft_server::check_leadership_validity() {
