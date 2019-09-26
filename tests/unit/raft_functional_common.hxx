@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <cassert>
 #include <map>
+#include <sstream>
 
 #define INT_UNUSED      int ATTR_UNUSED
 #define VOID_UNUSED     void ATTR_UNUSED
@@ -365,14 +366,19 @@ private:
 };
 
 static VOID_UNUSED reset_log_files() {
+    std::stringstream ss;
+    for (size_t ii=1; ii<=4; ++ii) {
+        ss << "srv" + std::to_string(ii) + ".log ";
+    }
+
 #if defined(__linux__) || defined(__APPLE__)
-    std::string cmd = "rm -f base.log srv1.log srv2.log srv3.log 2> /dev/null";
+    std::string cmd = "rm -f base.log " + ss.str() + "2> /dev/null";
     FILE* fp = popen(cmd.c_str(), "r");
     int r = pclose(fp);
     (void)r;
 
 #elif defined(WIN32) || defined(_WIN32)
-    std::string cmd = "del /s /f /q base.log srv1.log srv2.log srv3.log > NUL";
+    std::string cmd = "del /s /f /q base.log " + ss.str() + "> NUL";
     int r = system(cmd.c_str());
     (void)r;
 

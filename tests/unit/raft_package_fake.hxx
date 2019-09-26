@@ -125,13 +125,14 @@ public:
     ptr<raft_server> raftServer;
 };
 
-static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs) {
+static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
+                                 raft_params* custom_params = nullptr) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
     for (size_t ii = 0; ii < num_srvs; ++ii) {
         RaftPkg* ff = pkgs[ii];
-        ff->initServer();
+        ff->initServer(custom_params);
         ff->fNet->listen(ff->raftServer);
         ff->fTimer->invoke( timer_task_type::election_timer );
     }

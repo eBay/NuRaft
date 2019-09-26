@@ -100,15 +100,38 @@ ptr<buffer> out_of_log_msg::serialize() const {
     //   << Format >>
     // version                      1 byte
     // start log index of leader    8 bytes
+    size_t len = sizeof(uint8_t) + sizeof(ulong);
+    ptr<buffer> ret = buffer::alloc(len);
 
     const uint8_t CURRENT_VERSION = 0x0;
-
-    size_t len = sizeof(uint8_t) + sizeof(ulong);
-
-    ptr<buffer> ret = buffer::alloc(len);
     buffer_serializer bs(ret);
     bs.put_u8(CURRENT_VERSION);
     bs.put_u64(start_idx_of_leader_);
+    return ret;
+}
+
+
+// --- force_vote_msg ---
+
+ptr<force_vote_msg> force_vote_msg::deserialize(buffer& buf) {
+    ptr<force_vote_msg> ret = cs_new<force_vote_msg>();
+    buffer_serializer bs(buf);
+    uint8_t version = bs.get_u8();
+    (void)version;
+    return ret;
+}
+
+ptr<buffer> force_vote_msg::serialize() const {
+    //   << Format >>
+    // version                      1 byte
+    // ... to be added ...
+
+    size_t len = sizeof(uint8_t);
+    ptr<buffer> ret = buffer::alloc(len);
+
+    const uint8_t CURRENT_VERSION = 0x0;
+    buffer_serializer bs(ret);
+    bs.put_u8(CURRENT_VERSION);
     return ret;
 }
 
@@ -139,7 +162,9 @@ ptr<resp_msg> raft_server::handle_custom_notification_req(req_msg& req) {
     case custom_notification_msg::out_of_log_range_warning: {
         return handle_out_of_log_msg(req, msg, resp);
     }
-
+    case custom_notification_msg::leadership_takeover: {
+        return handle_leadership_takeover(req, msg, resp);
+    }
     default:
         break;
     }
@@ -174,6 +199,23 @@ ptr<resp_msg> raft_server::handle_out_of_log_msg(req_msg& req,
     param.ctx = &args;
     ctx_->cb_func_.call(cb_func::OutOfLogRangeWarning, &param);
 
+    return resp;
+}
+
+ptr<resp_msg> raft_server::handle_leadership_takeover
+                           ( req_msg& req,
+                             ptr<custom_notification_msg> msg,
+                             ptr<resp_msg> resp )
+{
+    if (is_leader()) {
+        p_er("got leadership takeover request from peer %d, "
+             "I'm already a leader", req.get_src());
+        return resp;
+    }
+    p_in("[LEADERSHIP TAKEOVER] got request");
+
+    // Initiate force vote (ignoring priority).
+    initiate_vote(true);
     return resp;
 }
 

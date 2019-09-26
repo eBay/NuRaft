@@ -564,12 +564,6 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     // continue to send appendEntries to this peer
     bool need_to_catchup = true;
 
-    // [For re-election checking]
-    // Current highest priority, and its ID.
-    int cur_hp = 0, cur_hp_server_id = 0;
-    // Log index of highest priority node.
-    ulong hp_server_log_idx = 0;
-
     ptr<peer> p = it->second;
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
          (int)p->get_id(), (int)resp.get_next_idx());
@@ -609,19 +603,6 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             if (p->is_learner()) continue;
 
             matched_indexes.push_back( p->get_matched_idx() );
-
-            if (write_paused_) {
-                int p_priority = p->get_config().get_priority();
-
-                // There may be more than one nodes have same priority.
-                if ( ( p_priority == cur_hp &&
-                       p->get_matched_idx() > hp_server_log_idx ) ||
-                     p_priority > cur_hp ) {
-                    cur_hp = p->get_config().get_priority();
-                    cur_hp_server_id = p->get_id();
-                    hp_server_log_idx = p->get_matched_idx();
-                }
-            }
         }
         assert((int32)matched_indexes.size() == get_num_voting_members());
 
@@ -667,13 +648,16 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     //   If all other followers are not responding, we may not make
     //   below condition true. In that case, we check the timeout of
     //   re-election timer in heartbeat handler, and do force resign.
+    ulong p_matched_idx = p->get_matched_idx();
     if ( write_paused_ &&
-         hp_server_log_idx &&
-         hp_server_log_idx == log_store_->next_slot() - 1 ) {
-        p_in("ready to resign, priority %d, server id %d, "
+         p->get_id() == next_leader_candidate_ &&
+         p_matched_idx &&
+         p_matched_idx == log_store_->next_slot() - 1 ) {
+        p_in("ready to resign, server id %d, "
              "latest log index %zu, "
              "%zu us elapsed, resign now",
-             cur_hp, cur_hp_server_id, hp_server_log_idx,
+             next_leader_candidate_.load(),
+             p_matched_idx,
              reelection_timer_.get_us());
         leader_ = -1;
 
@@ -688,6 +672,27 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
         // Clear live flag to avoid pre-vote rejection.
         hb_alive_ = false;
+
+        // Send leadership takeover request to this follower.
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( state_->get_term(),
+                             msg_type::custom_notification_request,
+                             id_, p->get_id(),
+                             term_for_log(log_store_->next_slot() - 1),
+                             log_store_->next_slot() - 1,
+                             quick_commit_index_.load() );
+
+        // Create a notification.
+        ptr<custom_notification_msg> custom_noti =
+            cs_new<custom_notification_msg>
+            ( custom_notification_msg::leadership_takeover );
+
+        // Wrap it using log_entry.
+        ptr<log_entry> custom_noti_le =
+            cs_new<log_entry>(0, custom_noti->serialize(), log_val_type::custom);
+
+        req->log_entries().push_back(custom_noti_le);
+        p->send_req(p, req, resp_handler_);
         return;
     }
 

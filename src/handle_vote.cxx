@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "cluster_config.hxx"
 #include "event_awaiter.h"
+#include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "state_mgr.hxx"
 #include "tracer.hxx"
@@ -94,8 +95,9 @@ void raft_server::request_prevote() {
     }
 }
 
-void raft_server::initiate_vote() {
+void raft_server::initiate_vote(bool ignore_priority) {
     if ( my_priority_ >= target_priority_ ||
+         ignore_priority ||
          get_quorum_for_election() == 0 ) {
         // Request vote when
         //  1) my priority satisfies the target, OR
@@ -107,12 +109,12 @@ void raft_server::initiate_vote() {
         votes_responded_ = 0;
         election_completed_ = false;
         ctx_->state_mgr_->save_state(*state_);
-        request_vote();
+        request_vote(ignore_priority);
     }
     hb_alive_ = false;
 }
 
-void raft_server::request_vote() {
+void raft_server::request_vote(bool ignore_priority) {
     state_->set_voted_for(id_);
     ctx_->state_mgr_->save_state(*state_);
     votes_granted_ += 1;
@@ -137,14 +139,25 @@ void raft_server::request_vote() {
             // Do not send voting request to learner.
             continue;
         }
-        ptr<req_msg> req( cs_new<req_msg>
-                          ( state_->get_term(),
-                            msg_type::request_vote_request,
-                            id_,
-                            pp->get_id(),
-                            term_for_log(log_store_->next_slot() - 1),
-                            log_store_->next_slot() - 1,
-                            quick_commit_index_.load() ) );
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( state_->get_term(),
+                             msg_type::request_vote_request,
+                             id_,
+                             pp->get_id(),
+                             term_for_log(log_store_->next_slot() - 1),
+                             log_store_->next_slot() - 1,
+                             quick_commit_index_.load() );
+        if (ignore_priority) {
+            // Add a special log entry to let receivers ignore the priority.
+
+            // Force vote message, and wrap it using log_entry.
+            ptr<force_vote_msg> fv_msg = cs_new<force_vote_msg>();
+            ptr<log_entry> fv_msg_le =
+                cs_new<log_entry>(0, fv_msg->serialize(), log_val_type::custom);
+
+            // Ship it.
+            req->log_entries().push_back(fv_msg_le);
+        }
         p_db( "send %s to server %d with term %llu",
               msg_type_to_string(req->get_type()).c_str(),
               it->second->get_id(),
@@ -180,11 +193,17 @@ ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
         ( state_->get_voted_for() == req.get_src() ||
           state_->get_voted_for() == -1 );
 
+    bool force_vote = (req.log_entries().size() > 0);
+    if (force_vote) {
+        p_in("[VOTE REQ] force vote request, will ignore priority");
+    }
+
     if (grant) {
         ptr<cluster_config> c_conf = get_config();
         for (auto& entry: c_conf->get_servers()) {
             srv_config* s_conf = entry.get();
-            if ( s_conf->get_id() == req.get_src() &&
+            if ( !force_vote &&
+                 s_conf->get_id() == req.get_src() &&
                  s_conf->get_priority() < target_priority_ ) {
                 p_in("I (%d) could vote for peer %d, "
                      "but priority %d is lower than %d",
