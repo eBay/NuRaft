@@ -368,7 +368,7 @@ private:
 static VOID_UNUSED reset_log_files() {
     std::stringstream ss;
     for (size_t ii=1; ii<=4; ++ii) {
-        ss << "srv" + std::to_string(ii) + ".log ";
+        ss << "srv" + std::to_string(ii) + ".log* ";
     }
 
 #if defined(__linux__) || defined(__APPLE__)

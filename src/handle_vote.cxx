@@ -32,6 +32,18 @@ limitations under the License.
 
 namespace nuraft {
 
+bool raft_server::check_cond_for_zp_election() {
+    ptr<raft_params> params = ctx_->get_params();
+    if ( params->allow_temporary_zero_priority_leader_ &&
+         target_priority_ == 1 &&
+         my_priority_ == 0 &&
+         priority_change_timer_.get_ms() >
+            (uint64_t)params->heart_beat_interval_ * 20 ) {
+        return true;
+    }
+    return false;
+}
+
 void raft_server::request_prevote() {
     ptr<cluster_config> c_config = get_config();
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
@@ -63,10 +75,14 @@ void raft_server::request_prevote() {
     pre_vote_.dead_++;
 
     if ( my_priority_ < target_priority_ ) {
-        p_in("[PRIORITY] will not initiate pre-vote due to priority: "
-             "target %d, mine %d", target_priority_, my_priority_);
-        restart_election_timer();
-        return;
+        if ( check_cond_for_zp_election() ) {
+            p_in("[PRIORITY] temporarily allow election for zero-priority member");
+        } else {
+            p_in("[PRIORITY] will not initiate pre-vote due to priority: "
+                 "target %d, mine %d", target_priority_, my_priority_);
+            restart_election_timer();
+            return;
+        }
     }
 
     p_in("[PRE-VOTE INIT] my id %d, my role %s, term %ld, log idx %ld, "
@@ -98,6 +114,7 @@ void raft_server::request_prevote() {
 void raft_server::initiate_vote(bool ignore_priority) {
     if ( my_priority_ >= target_priority_ ||
          ignore_priority ||
+         check_cond_for_zp_election() ||
          get_quorum_for_election() == 0 ) {
         // Request vote when
         //  1) my priority satisfies the target, OR
@@ -204,7 +221,13 @@ ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
             srv_config* s_conf = entry.get();
             if ( !force_vote &&
                  s_conf->get_id() == req.get_src() &&
+                 s_conf->get_priority() &&
                  s_conf->get_priority() < target_priority_ ) {
+                // NOTE:
+                //   If zero-priority member initiates leader election,
+                //   that is intentionally triggered by the flag in
+                //   `raft_params`. In such case, we don't check the
+                //   priority.
                 p_in("I (%d) could vote for peer %d, "
                      "but priority %d is lower than %d",
                      id_, s_conf->get_id(),

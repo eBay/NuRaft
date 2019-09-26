@@ -1072,33 +1072,34 @@ int leadership_takeover_offline_candidate_test() {
 
     // Wait longer than heartbeat.
     TestSuite::sleep_ms(600);
+
+    // Now S2 is offline.
+    s2.fNet->goesOffline();
+
     // Send heartbeat to S3 only.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s1.fNet->execReqResp(s3_addr);
-    s1.fNet->makeReqFailAll(s2_addr);
+    s1.fNet->execReqResp();
 
     // Yield leadership, but now S2 is not responding sudo that
     // candidate for the next leader should be S3.
     s1.dbgLog(" --- yield leadership ---");
     s1.raftServer->yield_leadership();
+
     // Send heartbeat.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s1.fNet->execReqResp(s3_addr);
+    s1.fNet->execReqResp();
     // After getting response of heartbeat, S1 will resign.
-    s1.fNet->execReqResp(s3_addr);
-    s1.fNet->makeReqFailAll(s2_addr);
+    s1.fNet->execReqResp();
 
     // Now S3 should have received takeover request.
     // Send vote requests.
-    s3.fNet->execReqResp(s1_addr);
-    s1.fNet->makeReqFailAll(s2_addr);
+    s3.fNet->execReqResp();
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
     // Send new config as a new leader.
-    s3.fNet->execReqResp(s1_addr);
+    s3.fNet->execReqResp();
     // Follow-up: commit.
-    s3.fNet->execReqResp(s1_addr);
-    s1.fNet->makeReqFailAll(s2_addr);
+    s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
@@ -1111,28 +1112,145 @@ int leadership_takeover_offline_candidate_test() {
     s3.raftServer->yield_leadership();
     // Send heartbeat.
     s3.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s3.fNet->execReqResp(s1_addr);
+    s3.fNet->execReqResp();
     // After getting response of heartbeat, S2 will resign.
-    s3.fNet->execReqResp(s1_addr);
-    s3.fNet->makeReqFailAll(s2_addr);
+    s3.fNet->execReqResp();
 
     // Now S1 should have received takeover request.
     // Send vote requests.
-    s1.fNet->execReqResp(s3_addr);
-    s1.fNet->makeReqFailAll(s2_addr);
+    s1.fNet->execReqResp();
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
     // Send new config as a new leader.
-    s1.fNet->execReqResp(s3_addr);
+    s1.fNet->execReqResp();
     // Follow-up: commit.
-    s1.fNet->execReqResp(s3_addr);
-    s1.fNet->makeReqFailAll(s2_addr);
+    s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
     CHK_TRUE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
     CHK_FALSE( s3.raftServer->is_leader() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
+int temporary_leader_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    raft_params custom_params;
+    custom_params.election_timeout_lower_bound_ = 0;
+    custom_params.election_timeout_upper_bound_ = 1000;
+    custom_params.heart_beat_interval_ = 10;
+    CHK_Z( launch_servers( pkgs, &custom_params ) );
+    CHK_Z( make_group( pkgs ) );
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Set the priority of S3 to 0.
+    s1.raftServer->set_priority(3, 0);
+    // Send priority change reqs.
+    s1.fNet->execReqResp();
+    // Send reqs again for commit.
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Now S2 goes offline.
+    s2.fNet->goesOffline();
+
+    const size_t NUM = 10;
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+
+        handlers.push_back(ret);
+    }
+
+    // Replicate.
+    for (size_t ii=0; ii<3; ++ii) s1.fNet->execReqResp();
+    // Wait for bg commit.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Now S1 goes offline, and S2 goes online.
+    s1.fNet->goesOffline();
+    s2.fNet->goesOnline();
+
+    const size_t MAX_ATTEMPTS = 100;
+    size_t attempts = 0;
+    do {
+        // Vote, S2 should be rejected all the time.
+        s2.fTimer->invoke( timer_task_type::election_timer );
+        // Pre-vote and vote.
+        s2.fNet->execReqResp();
+        s2.fNet->execReqResp();
+
+        s3.fTimer->invoke( timer_task_type::election_timer );
+        // Pre-vote and vote.
+        s3.fNet->execReqResp();
+        s3.fNet->execReqResp();
+
+        // Sleep.
+        attempts++;
+        TestSuite::sleep_ms(custom_params.heart_beat_interval_);
+
+        // Repeat until S3 becomes (temporary) leader.
+    } while (!s3.raftServer->is_leader() && attempts < MAX_ATTEMPTS);
+    CHK_SM(attempts, MAX_ATTEMPTS);
+
+    // Commit for reconfigure.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Now S3 will yield leadership for S2.
+    s3.fTimer->invoke( timer_task_type::heartbeat_timer );
+    // Catch-up and commit.
+    s3.fNet->execReqResp();
+    s3.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Resign.
+    s3.fNet->execReqResp();
+    s3.fNet->execReqResp();
+
+    // Now S2 initiates leader election.
+    s2.fNet->execReqResp();
+    s2.fNet->execReqResp();
+
+    CHK_TRUE( s2.raftServer->is_leader() );
+    s2.fNet->execReqResp();
+    s2.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
 
     print_stats(pkgs);
 
@@ -1752,6 +1870,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "leadership takeover with offline candidate test",
                leadership_takeover_offline_candidate_test );
+
+    ts.doTest( "temporary leader test",
+               temporary_leader_test );
 
     ts.doTest( "priority broadcast test",
                priority_broadcast_test );

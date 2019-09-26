@@ -57,6 +57,7 @@ struct raft_params {
         , custom_commit_quorum_size_(0)
         , custom_election_quorum_size_(0)
         , leadership_expiry_(0)
+        , allow_temporary_zero_priority_leader_(true)
         , auto_forwarding_(false)
         , return_method_(blocking)
         {}
@@ -358,10 +359,18 @@ public:
     // (the same as the original Raft logic).
     int32 leadership_expiry_;
 
+    // If true, zero-priority member can initiate vote
+    // when leader is not elected long time (that can happen
+    // only the zero-priority member has the latest log).
+    // Once the zero-priority member becomes a leader,
+    // it will immediately yield leadership so that other
+    // higher priority node can takeover.
+    bool allow_temporary_zero_priority_leader_;
+
     // If true, follower node will forward client request
     // to the current leader.
     // Otherwise, it will return error to client immediately.
-    bool  auto_forwarding_;
+    bool auto_forwarding_;
 
     // To choose blocking call or asynchronous call.
     return_method_type return_method_;
