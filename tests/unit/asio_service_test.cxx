@@ -388,6 +388,85 @@ int message_meta_test() {
     return 0;
 }
 
+bool test_read_meta_random_denial( std::atomic<bool>* start_denial,
+                                   const asio_service::meta_cb_params& params,
+                                   const std::string& meta )
+{
+    if (!start_denial) return true;
+
+    int r = std::rand();
+    if (r % 25 == 0) return false;
+    return true;
+}
+
+int message_meta_random_denial_test() {
+    reset_log_files();
+
+    std::string s1_addr = "127.0.0.1:20010";
+    std::string s2_addr = "127.0.0.1:20020";
+    std::string s3_addr = "127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    std::atomic<size_t> read_req_cb_count(0);
+    std::atomic<size_t> write_req_cb_count(0);
+    std::atomic<size_t> write_resp_cb_count(0);
+    std::atomic<bool> start_denial(false);
+
+    _msg("launching asio-raft servers with meta callback\n");
+    for (RaftAsioPkg* rr: pkgs) {
+        rr->setMetaCallback
+            ( std::bind( test_read_meta_random_denial,
+                         &start_denial,
+                         std::placeholders::_1,
+                         std::placeholders::_2 ),
+              std::bind( test_write_req_meta,
+                         &write_req_cb_count,
+                         std::placeholders::_1 ),
+              std::bind( test_read_meta_random_denial,
+                         &start_denial,
+                         std::placeholders::_1,
+                         std::placeholders::_2 ),
+              std::bind( test_write_resp_meta,
+                         &write_resp_cb_count,
+                         std::placeholders::_1 ),
+              true );
+    }
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+    start_denial = true;
+
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+
+    TestSuite::sleep_sec(5, "wait for random denial");
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 
 std::string test_write_empty_meta( std::atomic<size_t>* count,
                                    const asio_service::meta_cb_params& params )
@@ -698,6 +777,9 @@ int main(int argc, char** argv) {
     ts.doTest( "empty meta test",
                empty_meta_test,
                TestRange<bool>( {false, true} ) );
+
+    ts.doTest( "message meta random denial test",
+               message_meta_random_denial_test );
 
     ts.doTest( "response hint test",
                response_hint_test,

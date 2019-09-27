@@ -1298,7 +1298,7 @@ private:
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "response meta verification failed: "
                              "from peer %d, %s:%s")
-                           .fmt( rsp->get_dst(), host_.c_str(),
+                           .fmt( req->get_dst(), host_.c_str(),
                                  port_.c_str() ),
                     req ) );
             close_socket();
