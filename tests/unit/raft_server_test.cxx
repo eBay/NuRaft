@@ -1827,6 +1827,171 @@ int async_append_handler_cancel_test() {
     return 0;
 }
 
+int apply_config_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    raft_params custom_params;
+    custom_params.election_timeout_lower_bound_ = 0;
+    custom_params.election_timeout_upper_bound_ = 1000;
+    custom_params.heart_beat_interval_ = 500;
+    custom_params.snapshot_distance_ = 100;
+    CHK_Z( launch_servers( pkgs, &custom_params ) );
+    CHK_Z( make_group( pkgs ) );
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Make S3 offline.
+    s3.fNet->goesOffline();
+
+    // Append some logs.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+
+        handlers.push_back(ret);
+    }
+
+    // Packet for pre-commit.
+    s1.fNet->execReqResp();
+    // Packet for commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // One more time to make sure.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Add S4.
+    std::string s4_addr = "S4";
+    RaftPkg s4(f_base, 4, s4_addr);
+    CHK_Z( launch_servers( {&s4} ) );
+
+    // Add to leader.
+    s1.raftServer->add_srv( *(s4.getTestMgr()->get_srv_config()) );
+
+    // Join req/resp.
+    s1.fNet->execReqResp();
+    // Add new server, notify existing peers.
+    // After getting response, it will make configuration commit.
+    s1.fNet->execReqResp();
+    // Notify new commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Now heartbeat to new node is enabled.
+
+    // Heartbeat.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    // Heartbeat req/resp, to finish the catch-up phase.
+    s1.fNet->execReqResp();
+    // Need one-more req/resp.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for new node.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Set the priority of S3 to 85.
+    s1.raftServer->set_priority(3, 85);
+    // Send priority change reqs.
+    s1.fNet->execReqResp();
+    // Send reqs again for commit.
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Set the priority of S4 to 100.
+    s1.raftServer->set_priority(4, 100);
+    // Send priority change reqs.
+    s1.fNet->execReqResp();
+    // Send reqs again for commit.
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Remove S2.
+    s1.raftServer->remove_srv( s2.getTestMgr()->get_srv_config()->get_id() );
+
+    // Leave req/resp.
+    s1.fNet->execReqResp();
+    // Leave done, notify to peers.
+    s1.fNet->execReqResp();
+    // Notify new commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Heartbeat.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    print_stats(pkgs);
+
+    // Shutdown S3, and do offline replay of pending configs.
+
+    {   // NULL argument should fail.
+        ptr<log_entry> le;
+        ptr<state_mgr> smgr;
+        CHK_FALSE( raft_server::apply_config_log_entry( le, smgr, err_msg ) );
+    }
+
+    std::string err_msg;
+    size_t last_s3_commit = s3.sm->last_commit_index();
+    ptr<log_store> s1_log_store = s1.sMgr->load_log_store();
+    size_t last_log_idx = s1_log_store->next_slot() - 1;
+
+    s3.raftServer->shutdown();
+    for (size_t ii=last_s3_commit+1; ii<=last_log_idx; ++ii) {
+        ptr<log_entry> le = s1_log_store->entry_at(ii);
+        bool expected_ok = (le->get_val_type() == log_val_type::conf);
+
+        bool ret_ok = raft_server::apply_config_log_entry(le, s3.sMgr, err_msg);
+        CHK_EQ(expected_ok, ret_ok);
+    }
+
+    // S3 and S1 (leader) should have exactly the same config.
+    ptr<cluster_config> s1_conf = s1.sMgr->load_config();
+    ptr<cluster_config> s3_conf = s3.sMgr->load_config();
+    ptr<buffer> s1_conf_buf = s1_conf->serialize();
+    ptr<buffer> s3_conf_buf = s3_conf->serialize();
+    CHK_EQ( s1_conf_buf->size(), s3_conf_buf->size() );
+    CHK_Z( memcmp( s1_conf_buf->data_begin(),
+                   s3_conf_buf->data_begin(),
+                   s1_conf_buf->size() ) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s4.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace raft_server_test;
 using namespace raft_server_test;
 
@@ -1894,6 +2059,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "async append handler cancel test",
                async_append_handler_cancel_test );
+
+    ts.doTest( "apply config log entry test",
+               apply_config_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
