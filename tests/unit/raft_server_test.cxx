@@ -1953,13 +1953,13 @@ int apply_config_test() {
 
     // Shutdown S3, and do offline replay of pending configs.
 
+    std::string err_msg;
     {   // NULL argument should fail.
         ptr<log_entry> le;
         ptr<state_mgr> smgr;
         CHK_FALSE( raft_server::apply_config_log_entry( le, smgr, err_msg ) );
     }
 
-    std::string err_msg;
     size_t last_s3_commit = s3.sm->last_commit_index();
     ptr<log_store> s1_log_store = s1.sMgr->load_log_store();
     size_t last_log_idx = s1_log_store->next_slot() - 1;
