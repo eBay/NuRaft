@@ -33,6 +33,7 @@ limitations under the License.
 #include "timer_task.hxx"
 
 #include <map>
+#include <string>
 #include <unordered_map>
 
 namespace nuraft {
@@ -49,6 +50,7 @@ class req_msg;
 class resp_msg;
 class rpc_exception;
 class state_machine;
+class state_mgr;
 struct context;
 struct raft_params;
 class raft_server {
@@ -412,6 +414,23 @@ public:
      * Reset all existing stats to zero.
      */
     static void reset_all_stats();
+
+    /**
+     * Apply a log entry containing configuration change, while Raft
+     * server is not running.
+     * This API is only for recovery purpose, and user should
+     * make sure that when Raft server starts, the last committed
+     * index should be equal to or bigger than the index number of
+     * the last configuration log entry applied.
+     *
+     * @param le Log entry containing configuration change.
+     * @param s_mgr State manager instance.
+     * @param err_msg Will contain a message if error happens.
+     * @return `true` on success.
+     */
+    static bool apply_config_log_entry(ptr<log_entry>& le,
+                                       ptr<state_mgr>& s_mgr,
+                                       std::string& err_msg);
 
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;

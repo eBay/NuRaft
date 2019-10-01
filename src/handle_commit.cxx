@@ -265,6 +265,30 @@ void raft_server::commit_conf(ptr<log_entry>& le) {
     // }
 }
 
+bool raft_server::apply_config_log_entry(ptr<log_entry>& le,
+                                         ptr<state_mgr>& s_mgr,
+                                         std::string& err_msg)
+{
+    if (!le.get() || !s_mgr.get()) {
+        err_msg = "Invalid arguments";
+        return false;
+    }
+    if (le->get_val_type() != log_val_type::conf) {
+        err_msg = "Invalid log type: " + std::to_string(le->get_val_type());
+        return false;
+    }
+    if (le->is_buf_null()) {
+        err_msg = "Context is empty";
+        return false;
+    }
+
+    buffer& buf = le->get_buf();
+    buf.pos(0);
+    ptr<cluster_config> new_conf = cluster_config::deserialize(buf);
+    s_mgr->save_config(*new_conf);
+    return true;
+}
+
 void raft_server::snapshot_and_compact(ulong committed_idx) {
     ptr<raft_params> params = ctx_->get_params();
     if ( params->snapshot_distance_ == 0 ||
