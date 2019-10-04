@@ -24,6 +24,7 @@ limitations under the License.
 #include "test_common.h"
 
 #include <cassert>
+#include <list>
 #include <map>
 #include <sstream>
 
@@ -68,6 +69,8 @@ public:
     }
 
     void rollback(const ulong log_idx, buffer& data) {
+        std::lock_guard<std::mutex> ll(dataLock);
+        rollbacks.push_back(log_idx);
     }
 
     void save_logical_snp_obj(snapshot& s,
@@ -219,6 +222,10 @@ public:
         return customBatchSize;
     }
 
+    const std::list<uint64_t>& getRollbackIdxs() const {
+        return rollbacks;
+    }
+
     bool isSame(const TestSm& with, bool check_precommit = false) {
         // NOTE:
         //   To avoid false alarm by TSAN (regarding lock order inversion),
@@ -299,7 +306,7 @@ public:
 private:
     std::map<uint64_t, ptr<buffer>> preCommits;
     std::map<uint64_t, ptr<buffer>> commits;
-    std::map<uint64_t, ptr<buffer>> rollbacks;
+    std::list<uint64_t> rollbacks;
     mutable std::mutex dataLock;
 
     ptr<snapshot> lastSnapshot;

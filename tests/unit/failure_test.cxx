@@ -41,7 +41,12 @@ int simple_conflict_test() {
     RaftPkg s3(f_base, 3, s3_addr);
     std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
-    CHK_Z( launch_servers( pkgs ) );
+    raft_params custom_params;
+    custom_params.election_timeout_lower_bound_ = 0;
+    custom_params.election_timeout_upper_bound_ = 1000;
+    custom_params.heart_beat_interval_ = 500;
+    custom_params.snapshot_distance_ = 100;
+    CHK_Z( launch_servers( pkgs, &custom_params ) );
     CHK_Z( make_group( pkgs ) );
 
     for (auto& entry: pkgs) {
@@ -84,9 +89,12 @@ int simple_conflict_test() {
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
+    // Remember last log index before diverging.
+    uint64_t idx_before_div = s1.getTestMgr()->load_log_store()->next_slot() - 1;
+
     // Append more messages to S1.
-    const size_t MORE = 3;
-    for (size_t ii=NUM; ii<NUM+MORE; ++ii) {
+    const size_t MORE1 = 10;
+    for (size_t ii=NUM; ii<NUM+MORE1; ++ii) {
         std::string test_msg = "more" + std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
@@ -114,12 +122,18 @@ int simple_conflict_test() {
 
     // Append new (diverged) messages to S2 (new leader).
     s2.dbgLog(" --- Append diverged logs to S2 ---");
-    for (size_t ii=NUM; ii<NUM+MORE; ++ii) {
+    const size_t MORE2 = 5;
+    for (size_t ii=NUM; ii<NUM+MORE2; ++ii) {
         std::string test_msg = "diverged" + std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
         s2.raftServer->append_entries( {msg} );
     }
+
+    // S1's log index should be greater than S2's log index.
+    uint64_t idx_after_div = s1.getTestMgr()->load_log_store()->next_slot() - 1;
+    CHK_GT( idx_after_div,
+            s2.getTestMgr()->load_log_store()->next_slot() - 1 );
 
     // S1 attempts to replicate messages.
     // It should be rejected.
@@ -135,7 +149,7 @@ int simple_conflict_test() {
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
     // Check if all messages are committed.
-    for (size_t ii=0; ii<NUM+MORE; ++ii) {
+    for (size_t ii=0; ii<NUM+MORE2; ++ii) {
         std::string test_msg;
         if (ii < NUM) {
             test_msg = "test" + std::to_string(ii);
@@ -149,6 +163,23 @@ int simple_conflict_test() {
     // State machine should be identical.
     CHK_OK( s1.getTestSm()->isSame( *s2.getTestSm() ) );
     CHK_OK( s3.getTestSm()->isSame( *s2.getTestSm() ) );
+
+    // Log store's last index should be identical.
+    CHK_EQ( s1.getTestMgr()->load_log_store()->next_slot(),
+            s2.getTestMgr()->load_log_store()->next_slot() );
+    CHK_EQ( s1.getTestMgr()->load_log_store()->next_slot(),
+            s3.getTestMgr()->load_log_store()->next_slot() );
+
+    // Rolled back indexes should be
+    //   1) from `idx_before_div` (exclusive) to `idx_after_div` (inclusive),
+    //   2) descending order, and
+    //   3) consecutive.
+    const std::list<uint64_t> r_idxs = s1.getTestSm()->getRollbackIdxs();
+    CHK_EQ(idx_after_div - idx_before_div, r_idxs.size());
+    for (uint64_t idx: r_idxs) {
+        CHK_EQ(idx_after_div--, idx);
+    }
+    CHK_EQ(idx_before_div, idx_after_div);
 
     print_stats(pkgs);
 

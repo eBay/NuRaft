@@ -441,23 +441,34 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         }
         p_db("[after SKIP] log_idx: %ld, count: %ld\n", log_idx, cnt);
 
+        // Rollback (only if necessary).
+        // WARNING: Rollback should be done separately before overwriting,
+        //          and MUST BE in backward direction.
+        ulong my_last_log_idx = log_store_->next_slot() - 1;
+        if (my_last_log_idx >= log_idx) {
+            p_in("rollback logs: %zu - %zu", log_idx, my_last_log_idx);
+            for ( uint64_t ii = 0; ii < my_last_log_idx - log_idx + 1; ++ii ) {
+                uint64_t idx = my_last_log_idx - ii;
+                ptr<log_entry> old_entry = log_store_->entry_at(idx);
+                if (old_entry->get_val_type() == log_val_type::app_log) {
+                    ptr<buffer> buf = old_entry->get_buf_ptr();
+                    buf->pos(0);
+                    state_machine_->rollback_ext
+                        ( state_machine::ext_op_params( idx, buf ) );
+                    p_db( "rollback log %zu", idx );
+
+                } else if (old_entry->get_val_type() == log_val_type::conf) {
+                    p_in( "revert from a prev config change to config at %llu",
+                          get_config()->get_log_idx() );
+                    config_changing_ = false;
+                }
+            }
+        }
+
         // Dealing with overwrites (logs with different term).
         while ( log_idx < log_store_->next_slot() &&
                 cnt < req.log_entries().size() )
         {
-            ptr<log_entry> old_entry = log_store_->entry_at(log_idx);
-            if (old_entry->get_val_type() == log_val_type::app_log) {
-                ptr<buffer> buf = old_entry->get_buf_ptr();
-                buf->pos(0);
-                state_machine_->rollback_ext
-                    ( state_machine::ext_op_params( log_idx, buf ) );
-
-            } else if (old_entry->get_val_type() == log_val_type::conf) {
-                p_in( "revert from a prev config change to config at %llu",
-                      get_config()->get_log_idx() );
-                config_changing_ = false;
-            }
-
             ptr<log_entry> entry = req.log_entries().at(cnt);
             p_db("write at %d\n", (int)log_idx);
             store_log_entry(entry, log_idx);
