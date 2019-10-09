@@ -39,6 +39,7 @@ limitations under the License.
 
 #include <atomic>
 #include <ctime>
+#include <exception>
 #include <fstream>
 #include <list>
 #include <queue>
@@ -1418,9 +1419,9 @@ std::string asio_service_impl::get_password
 #endif
 
 void asio_service_impl::worker_entry() {
-    size_t restart_count = 0;
+    static std::atomic<size_t> exception_count(0);
+    static timer_helper timer(60 * 1000000); // 1 min.
     const size_t MAX_COUNT = 10;
-    timer_helper timer(5000000); // 5 seconds.
 
     do {
         try {
@@ -1428,24 +1429,33 @@ void asio_service_impl::worker_entry() {
             io_svc_.run();
             num_active_workers_.fetch_sub(1);
 
-        } catch (...) {
+        } catch (std::exception& ee) {
+            // LCOV_EXCL_START
             num_active_workers_.fetch_sub(1);
-            p_er("asio worker thread got exception, "
-                 "current number of workers: %zu",
-                 num_active_workers_.load());
+            exception_count++;
+            p_er("asio worker thread got exception: %s, "
+                 "current number of workers: %zu, "
+                 "exception count (in 1-min window): %zu, "
+                 "stopping status %u",
+                 ee.what(),
+                 num_active_workers_.load(),
+                 exception_count.load(),
+                 stopping_status_.load());
+            // LCOV_EXCL_STOP
         }
 
-        restart_count++;
-        if (timer.timeout()) {
-            timer.reset();
-            restart_count = 0;
+        // LCOV_EXCL_START
+        if (timer.timeout_and_reset()) {
+            exception_count = 0;
 
-        } else if (restart_count > MAX_COUNT) {
-            p_er("too many exceptions in short time period. "
-                 "marking down this worker thread.");
-            return;
+        } else if (exception_count > MAX_COUNT) {
+            p_ft("too many exceptions (%zu) in 1-min time window.",
+                 exception_count.load());
+            exception_count = 0;
+            abort();
         }
-    } while (stopping_status_ == 0);
+        // LCOV_EXCL_STOP
+    } while (stopping_status_ != 1);
 
     p_in("end of asio worker thread, remaining threads: %zu",
          num_active_workers_.load());
@@ -1485,6 +1495,9 @@ void asio_service_impl::stop() {
             stopping_cv_.wait_for(lock, std::chrono::seconds(1));
         }
     }
+
+    // Stop all workers.
+    stopping_status_ = 1;
 
     io_svc_.stop();
     while (!io_svc_.stopped()) {
