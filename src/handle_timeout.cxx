@@ -191,6 +191,11 @@ void raft_server::handle_election_timeout() {
         return;
     }
 
+    if (out_of_log_range_) {
+        p_wn("Triggered election timer but server is out of log range");
+        return;
+    }
+
     if (receiving_snapshot_ && et_cnt_receiving_snapshot_ < 20) {
         // If this node is receiving snapshot,
         // ignore election timeout 20 times.

@@ -637,6 +637,11 @@ protected:
     // normal `append_entries` request while in catch-up status.
     std::atomic<bool> catching_up_;
 
+    // `true` if this server receives out of log range message
+    // from leader. Once this flag is set, this server will not
+    // initiate leader election.
+    std::atomic<bool> out_of_log_range_;
+
     // `true` if this is a follower and its committed log index is close enough
     // to the leader's committed log index, so the data is fresh enough.
     std::atomic<bool> data_fresh_;
