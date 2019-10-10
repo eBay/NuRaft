@@ -561,6 +561,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
     p_tr("batch size hint: %zu bytes", bs_hint);
 
+    out_of_log_range_ = false;
+
     return resp;
 }
 

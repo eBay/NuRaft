@@ -182,6 +182,8 @@ ptr<resp_msg> raft_server::handle_out_of_log_msg(req_msg& req,
     // As it is a special form of heartbeat, need to update term.
     update_term(req.get_term());
 
+    out_of_log_range_ = true;
+
     ptr<out_of_log_msg> ool_msg = out_of_log_msg::deserialize(*msg->ctx_);
     p_lv(log_lv, "this node is out of log range. leader's start index: %zu, "
          "my last index: %zu",
