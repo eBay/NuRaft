@@ -534,7 +534,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     //   between BG commit thread and appending logs.
     //   Hence, we always should take smaller one.
     commit( std::min( req.get_commit_idx(),
-                      log_store_->next_slot() - 1 ) );
+                      req.get_last_log_idx() + req.log_entries().size() ) );
 
     resp->accept(req.get_last_log_idx() + req.log_entries().size() + 1);
 
