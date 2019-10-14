@@ -5,7 +5,7 @@ NuRaft
 [![Build Status](https://travis-ci.org/eBay/NuRaft.svg?branch=master)](https://travis-ci.org/eBay/NuRaft)
 [![codecov](https://codecov.io/gh/eBay/NuRaft/branch/master/graph/badge.svg)](https://codecov.io/gh/eBay/NuRaft)
 
-Raft implementation derived from [cornerstone](https://github.com/datatechnology/cornerstone) project, which is a very lightweight C++ implementation with minimum dependencies, originally written by [Andy Chen](https://github.com/andy-yx-chen).
+Raft implementation derived from the [cornerstone](https://github.com/datatechnology/cornerstone) project, which is a very lightweight C++ implementation with minimum dependencies, originally written by [Andy Chen](https://github.com/andy-yx-chen).
 
 New features that are not described in the [original paper](https://raft.github.io/raft.pdf), but required for the real-world use cases in eBay, have been added. We believe those features are useful for others outside eBay as well.
 
@@ -49,7 +49,7 @@ $ brew install openssl
 ```
 * Windows
     * Download and install [CMake](https://cmake.org/download/).
-    * Currently we do not support SSL for Windows.
+    * Currently, we do not support SSL for Windows.
 
 #### 2. Fetch [Asio](https://github.com/chriskohlhoff/asio) library: ####
 
@@ -58,7 +58,7 @@ $ brew install openssl
 $ ./prepare.sh
 ```
 * Windows
-    * Clone [Asio](https://github.com/chriskohlhoff/asio) into project directory.
+    * Clone [Asio](https://github.com/chriskohlhoff/asio) into the project directory.
 
 #### 3. Build static library, tests, and examples: ####
 
