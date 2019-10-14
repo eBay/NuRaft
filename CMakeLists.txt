@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
+project(NuRaft VERSION 1.0.0 LANGUAGES CXX)
 
 # === Build type (default: RelWithDebInfo, O2) ===========
 if (NOT CMAKE_BUILD_TYPE)
