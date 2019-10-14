@@ -445,8 +445,31 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         // WARNING: Rollback should be done separately before overwriting,
         //          and MUST BE in backward direction.
         ulong my_last_log_idx = log_store_->next_slot() - 1;
+        bool rollback_in_progress = false;
         if (my_last_log_idx >= log_idx) {
-            p_in("rollback logs: %zu - %zu", log_idx, my_last_log_idx);
+            p_in( "rollback logs: %zu - %zu, commit idx req %zu, quick %zu, sm %zu",
+                  log_idx,
+                  my_last_log_idx,
+                  req.get_commit_idx(),
+                  quick_commit_index_.load(),
+                  sm_commit_index_.load() );
+            rollback_in_progress = true;
+            // If rollback point is smaller than commit index,
+            // should rollback commit index as well
+            // (should not happen in Raft though).
+            if ( quick_commit_index_ >= log_idx ) {
+                p_wn( "rollback quick commit index from %zu to %zu",
+                      quick_commit_index_.load(),
+                      log_idx - 1 );
+                quick_commit_index_ = log_idx - 1;
+            }
+            if ( sm_commit_index_ >= log_idx ) {
+                p_wn( "rollback sm commit index from %zu to %zu",
+                      sm_commit_index_.load(),
+                      log_idx - 1 );
+                sm_commit_index_ = log_idx - 1;
+            }
+
             for ( uint64_t ii = 0; ii < my_last_log_idx - log_idx + 1; ++ii ) {
                 uint64_t idx = my_last_log_idx - ii;
                 ptr<log_entry> old_entry = log_store_->entry_at(idx);
@@ -455,7 +478,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                     buf->pos(0);
                     state_machine_->rollback_ext
                         ( state_machine::ext_op_params( idx, buf ) );
-                    p_db( "rollback log %zu", idx );
+                    p_in( "rollback log %zu", idx );
 
                 } else if (old_entry->get_val_type() == log_val_type::conf) {
                     p_in( "revert from a prev config change to config at %llu",
@@ -470,7 +493,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 cnt < req.log_entries().size() )
         {
             ptr<log_entry> entry = req.log_entries().at(cnt);
-            p_db("write at %d\n", (int)log_idx);
+            p_in("overwrite at %zu\n", log_idx);
             store_log_entry(entry, log_idx);
 
             if (entry->get_val_type() == log_val_type::app_log) {
@@ -484,15 +507,6 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 config_changing_ = true;
             }
 
-            // if rollback point is smaller than commit index,
-            // should rollback commit index as well.
-            if (log_idx <= sm_commit_index_) {
-                p_wn("rollback commit index from %zu to %zu",
-                     sm_commit_index_.load(), log_idx - 1);
-                sm_commit_index_ = log_idx - 1;
-                quick_commit_index_ = log_idx - 1;
-            }
-
             log_idx += 1;
             cnt += 1;
 
@@ -500,9 +514,14 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         }
         p_db("[after OVWR] log_idx: %ld, count: %ld\n", log_idx, cnt);
 
+        if (rollback_in_progress) {
+            p_in("last log index after rollback and overwrite: %zu",
+                 log_store_->next_slot() - 1);
+        }
+
         // Append new log entries
         while (cnt < req.log_entries().size()) {
-            p_tr("append at %d\n", (int)log_store_->next_slot());
+            p_tr("append at %zu\n", log_store_->next_slot());
             ptr<log_entry> entry = req.log_entries().at( cnt++ );
             ulong idx_for_entry = store_log_entry(entry);
             if (entry->get_val_type() == log_val_type::conf) {
