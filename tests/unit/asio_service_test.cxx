@@ -392,7 +392,7 @@ bool test_read_meta_random_denial( std::atomic<bool>* start_denial,
                                    const asio_service::meta_cb_params& params,
                                    const std::string& meta )
 {
-    if (!start_denial) return true;
+    if ( !(start_denial->load()) ) return true;
 
     int r = std::rand();
     if (r % 25 == 0) return false;
@@ -440,12 +440,13 @@ int message_meta_random_denial_test() {
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
 
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
     CHK_TRUE( s1.raftServer->is_leader() );
     CHK_EQ(1, s1.raftServer->get_leader());
     CHK_EQ(1, s2.raftServer->get_leader());
     CHK_EQ(1, s3.raftServer->get_leader());
 
-    TestSuite::sleep_sec(1, "wait for Raft group ready");
     start_denial = true;
 
     for (size_t ii=0; ii<100; ++ii) {
