@@ -442,17 +442,24 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         p_db("[after SKIP] log_idx: %ld, count: %ld\n", log_idx, cnt);
 
         // Rollback (only if necessary).
-        // WARNING: Rollback should be done separately before overwriting,
-        //          and MUST BE in backward direction.
+        // WARNING:
+        //   1) Rollback should be done separately before overwriting,
+        //      and MUST BE in backward direction.
+        //   2) Should do rollback ONLY WHEN we have more than one log
+        //      to overwrite.
         ulong my_last_log_idx = log_store_->next_slot() - 1;
         bool rollback_in_progress = false;
-        if (my_last_log_idx >= log_idx) {
-            p_in( "rollback logs: %zu - %zu, commit idx req %zu, quick %zu, sm %zu",
+        if ( my_last_log_idx >= log_idx &&
+             cnt < req.log_entries().size() ) {
+            p_in( "rollback logs: %zu - %zu, commit idx req %zu, quick %zu, sm %zu, "
+                  "num log entries %zu, current count %zu",
                   log_idx,
                   my_last_log_idx,
                   req.get_commit_idx(),
                   quick_commit_index_.load(),
-                  sm_commit_index_.load() );
+                  sm_commit_index_.load(),
+                  req.log_entries().size(),
+                  cnt );
             rollback_in_progress = true;
             // If rollback point is smaller than commit index,
             // should rollback commit index as well
