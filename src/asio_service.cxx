@@ -183,6 +183,7 @@ private:
     std::mutex stopping_lock_;
     std::condition_variable stopping_cv_;
     std::atomic<uint32_t> num_active_workers_;
+    std::atomic<uint32_t> worker_id_;
     std::list< ptr<std::thread> > worker_handles_;
     asio_service::options my_opt_;
     ptr<logger> l_;
@@ -1353,6 +1354,7 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
     , stopping_lock_()
     , stopping_cv_()
     , num_active_workers_(0)
+    , worker_id_(0)
     , my_opt_(_opt)
     , l_(l)
 {
@@ -1419,6 +1421,11 @@ std::string asio_service_impl::get_password
 #endif
 
 void asio_service_impl::worker_entry() {
+#ifdef __linux__
+    std::string thread_name = "nuraft_w_" + std::to_string(worker_id_.fetch_add(1));
+    pthread_setname_np(pthread_self(), thread_name.c_str());
+#endif
+
     static std::atomic<size_t> exception_count(0);
     static timer_helper timer(60 * 1000000); // 1 min.
     const size_t MAX_COUNT = 10;
