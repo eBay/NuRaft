@@ -251,12 +251,20 @@ public:
     { return log_store_->next_slot() - 1; }
 
     /**
-     * Get the last committed log index number.
+     * Get the last committed log index number of state machine.
      *
-     * @return Last committed log index number.
+     * @return Last committed log index number of state machine.
      */
     ulong get_committed_log_idx() const
     { return sm_commit_index_.load(); }
+
+    /**
+     * Get the target log index number we are required to commit.
+     *
+     * @return Target committed log index number.
+     */
+    ulong get_target_committed_log_idx() const
+    { return quick_commit_index_.load(); }
 
     /**
      * Get the leader's last committed log index number.

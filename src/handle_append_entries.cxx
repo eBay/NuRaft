@@ -552,6 +552,29 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     }
 
     leader_ = req.get_src();
+
+    // WARNING:
+    //   If this node was leader but now follower, and right after
+    //   leader election, new leader's committed index can be
+    //   smaller than this node's quick/sm commit index.
+    //   But that doesn't mean that rollback can happen on
+    //   already committed index. Committed log index should never go back,
+    //   in the state machine's point of view.
+    //
+    // e.g.)
+    //   1) All replicas have log 1, and also committed up to 1.
+    //   2) Leader appends log 2 and 3, replicates them, reaches consensus,
+    //      so that commits up to 3.
+    //   3) Leader appends a new log 4, but before replicating log 4 with
+    //      committed log index 3, leader election happens.
+    //   4) New leader has logs up to 3, but its last committed index is still 1.
+    //   5) In such case, the old leader's log 4 should be rolled back,
+    //      and new leader's commit index (1) can be temporarily smaller
+    //      than old leader's commit index (3), but that doesn't mean
+    //      old leader's commit index is wrong. New leader will soon commit
+    //      logs up to 3 that is identical to what old leader has, and make
+    //      progress after that. Logs already reached consensus (1, 2, and 3)
+    //      will remain unchanged.
     leader_commit_index_.store(req.get_commit_idx());
 
     // WARNING:
