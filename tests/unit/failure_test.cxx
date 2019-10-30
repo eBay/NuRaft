@@ -361,6 +361,106 @@ int force_log_compaction_test() {
     return 0;
 }
 
+int uncommitted_conf_new_leader_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+    std::string s4_addr = "S4";
+    std::string s5_addr = "S5";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    RaftPkg s4(f_base, 4, s4_addr);
+    RaftPkg s5(f_base, 5, s5_addr);
+
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4, &s5};
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.max_append_size_ = 1;
+        // Do not create snapshot.
+        param.snapshot_distance_ = 0;
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM_APPENDS_1 = 3;
+    const size_t NUM_APPENDS_2 = 6;
+
+    // Append 3 messages.
+    for (size_t ii=0; ii<NUM_APPENDS_1; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        s1.raftServer->append_entries( {msg} );
+    }
+    // Replicate to all.
+    for (size_t ii=0; ii<=NUM_APPENDS_1; ++ii) {
+        s1.fNet->execReqResp();
+    }
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Append 3 more messages.
+    for (size_t ii=NUM_APPENDS_1; ii<NUM_APPENDS_2; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        s1.raftServer->append_entries( {msg} );
+    }
+    // Replicate to S2 and S3 only.
+    for (size_t ii=NUM_APPENDS_1; ii<=NUM_APPENDS_2; ++ii) {
+        s1.fNet->execReqResp(s2_addr);
+        s1.fNet->execReqResp(s3_addr);
+    }
+
+    // Now remove S2 (who was a member of the latest quorum).
+    s1.raftServer->remove_srv(2);
+    for (size_t ii=0; ii<3; ++ii) {
+        s1.fNet->execReqResp(s2_addr);
+    }
+    // Send new update to S3 only.
+    s1.fNet->execReqResp(s3_addr);
+
+    // Invoke election timer of S4 and S5 (to make pre-vote of S3 succeed).
+    s4.fTimer->invoke( timer_task_type::election_timer );
+    s4.fNet->execReqResp();
+    s5.fTimer->invoke( timer_task_type::election_timer );
+    s5.fNet->execReqResp();
+
+    // Now S3's vote should succeed.
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    s3.fNet->execReqResp();
+    s3.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    s3.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s3.fNet->execReqResp();
+    s3.fNet->execReqResp();
+
+    // Removing S2 should be in the latest config.
+    ptr<cluster_config> c_config = s3.raftServer->get_config();
+    CHK_NULL(c_config->get_server(2));
+
+    print_stats( pkgs );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    s4.raftServer->shutdown();
+    s5.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace failure_test;
 using namespace failure_test;
 
@@ -378,6 +478,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "force log compaction test",
                force_log_compaction_test );
+
+    ts.doTest( "uncommitted config for new leader test",
+               uncommitted_conf_new_leader_test );
 
     return 0;
 }

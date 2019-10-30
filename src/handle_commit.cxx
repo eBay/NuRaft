@@ -53,8 +53,8 @@ void raft_server::commit(ulong target_idx) {
         }
     }
 
-    p_tr( "local log idx %lu, target_commit_dx %lu\n"
-          "quick_commit_index_ %lu, state_->get_commit_idx() %lu\n",
+    p_tr( "local log idx %lu, target_commit_idx %lu, "
+          "quick_commit_index_ %lu, state_->get_commit_idx() %lu",
           log_store_->next_slot() - 1, target_idx,
           quick_commit_index_.load(), sm_commit_index_.load() );
 

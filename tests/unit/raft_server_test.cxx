@@ -182,7 +182,6 @@ int init_options_test() {
     RaftPkg s3(f_base, 3, s3_addr);
     std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
-
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 

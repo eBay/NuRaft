@@ -642,7 +642,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_next_log_idx(resp.get_next_idx());
             prev_matched_idx = p->get_matched_idx();
             new_matched_idx = resp.get_next_idx() - 1;
-            p_tr("peer %d, prev idx: %ld, nex idx: %ld",
+            p_tr("peer %d, prev idx: %ld, next idx: %ld",
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
         }
@@ -653,38 +653,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         (void)rc;
 
         // Try to commit with this response.
-        std::vector<ulong> matched_indexes;
-        matched_indexes.reserve(16);
-
-        // Leader itself.
-        matched_indexes.push_back( log_store_->next_slot() - 1 );
-        for (auto& entry: peers_) {
-            ptr<peer>& p = entry.second;
-
-            // Skip learner.
-            if (p->is_learner()) continue;
-
-            matched_indexes.push_back( p->get_matched_idx() );
-        }
-        assert((int32)matched_indexes.size() == get_num_voting_members());
-
-        // NOTE: Descending order.
-        //       e.g.) 100 100 99 95 92
-        //             => commit on 99 if `quorum_idx == 2`.
-        std::sort( matched_indexes.begin(),
-                   matched_indexes.end(),
-                   std::greater<ulong>() );
-
-        size_t quorum_idx = get_quorum_for_commit();
-        if (l_->get_level() >= 6) {
-            std::string tmp_str;
-            for (ulong m_idx: matched_indexes) {
-                tmp_str += std::to_string(m_idx) + " ";
-            }
-            p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
-        }
-
-        commit( matched_indexes[ quorum_idx ] );
+        ulong committed_index = get_expected_committed_log_idx();
+        commit( committed_index );
         need_to_catchup = p->clear_pending_commit() ||
                           resp.get_next_idx() < log_store_->next_slot();
 
@@ -767,6 +737,41 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
              (int)p->get_id());
         request_append_entries(p);
     }
+}
+
+ulong raft_server::get_expected_committed_log_idx() {
+    std::vector<ulong> matched_indexes;
+    matched_indexes.reserve(16);
+
+    // Leader itself.
+    matched_indexes.push_back( log_store_->next_slot() - 1 );
+    for (auto& entry: peers_) {
+        ptr<peer>& p = entry.second;
+
+        // Skip learner.
+        if (p->is_learner()) continue;
+
+        matched_indexes.push_back( p->get_matched_idx() );
+    }
+    assert((int32)matched_indexes.size() == get_num_voting_members());
+
+    // NOTE: Descending order.
+    //       e.g.) 100 100 99 95 92
+    //             => commit on 99 if `quorum_idx == 2`.
+    std::sort( matched_indexes.begin(),
+               matched_indexes.end(),
+               std::greater<ulong>() );
+
+    size_t quorum_idx = get_quorum_for_commit();
+    if (l_->get_level() >= 6) {
+        std::string tmp_str;
+        for (ulong m_idx: matched_indexes) {
+            tmp_str += std::to_string(m_idx) + " ";
+        }
+        p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
+    }
+
+    return matched_indexes[ quorum_idx ];
 }
 
 } // namespace nuraft;
