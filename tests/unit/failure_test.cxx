@@ -446,7 +446,7 @@ int uncommitted_conf_new_leader_test() {
 
     // Removing S2 should be in the latest config.
     ptr<cluster_config> c_config = s3.raftServer->get_config();
-    CHK_NULL(c_config->get_server(2));
+    CHK_NULL(c_config->get_server(2).get());
 
     print_stats( pkgs );
 
