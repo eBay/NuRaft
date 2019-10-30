@@ -411,7 +411,6 @@ int message_meta_random_denial_test() {
     RaftAsioPkg s3(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
-    std::atomic<size_t> read_req_cb_count(0);
     std::atomic<size_t> write_req_cb_count(0);
     std::atomic<size_t> write_resp_cb_count(0);
     std::atomic<bool> start_denial(false);
