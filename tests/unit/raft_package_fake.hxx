@@ -44,8 +44,8 @@ public:
         {}
 
     ~RaftPkg() {
-        myLogWrapper->destroy();
-        fNet->shutdown();
+        if (myLogWrapper) myLogWrapper->destroy();
+        if (fNet) fNet->shutdown();
     }
 
     void initServer(raft_params* given_params = nullptr,

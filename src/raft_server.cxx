@@ -757,9 +757,20 @@ void raft_server::become_leader() {
         enable_hb_for_peer(*pp);
     }
 
-    ptr<cluster_config> cur_config = get_config();
-    cur_config->set_log_idx(log_store_->next_slot());
-    ptr<buffer> conf_buf = cur_config->serialize();
+    // If there are uncommitted logs, search if conf log exists.
+    ptr<cluster_config> last_config = get_config();
+    ulong s_idx = sm_commit_index_ + 1;
+    ulong e_idx = log_store_->next_slot();
+    for (ulong ii = s_idx; ii < e_idx; ++ii) {
+        ptr<log_entry> le = log_store_->entry_at(ii);
+        if (le->get_val_type() != log_val_type::conf) continue;
+
+        last_config = cluster_config::deserialize(le->get_buf());
+        p_in("found uncommitted config at %zu", ii);
+    }
+
+    last_config->set_log_idx(log_store_->next_slot());
+    ptr<buffer> conf_buf = last_config->serialize();
     ptr<log_entry> entry
         ( cs_new<log_entry>
           ( state_->get_term(), conf_buf, log_val_type::conf ) );

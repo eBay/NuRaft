@@ -275,6 +275,14 @@ public:
     { return is_leader() ? get_committed_log_idx() : leader_commit_index_.load(); }
 
     /**
+     * Calculate the log index to be committed
+     * from current peers' matched indexes.
+     *
+     * @return Expected committed log index.
+     */
+    ulong get_expected_committed_log_idx();
+
+    /**
      * Get the current Raft cluster config.
      *
      * @return Cluster config.
