@@ -36,6 +36,8 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+class EventAwaiter;
+
 namespace nuraft {
 
 using CbReturnCode = cb_func::ReturnCode;
@@ -487,6 +489,7 @@ protected:
     ptr<resp_msg> handle_append_entries(req_msg& req);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
+    ptr<resp_msg> handle_cli_req_prelock(req_msg& req);
     ptr<resp_msg> handle_cli_req(req_msg& req);
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
@@ -562,7 +565,9 @@ protected:
     ulong term_for_log(ulong log_idx);
 
     void commit_in_bg();
-    void commit_app_log(ptr<log_entry>& le);
+    void append_entries_in_bg();
+
+    void commit_app_log(ptr<log_entry>& le, bool need_to_handle_commit_elem);
     void commit_conf(ptr<log_entry>& le);
 
     ptr< cmd_result< ptr<buffer> > > send_msg_to_leader(ptr<req_msg>& req);
@@ -587,6 +592,13 @@ protected:
     // (Read-only)
     // Background thread for commit and snapshot.
     std::thread bg_commit_thread_;
+
+    // (Read-only)
+    // Background thread for sending quick append entry request.
+    std::thread bg_append_thread_;
+
+    // Condition variable to invoke append thread.
+    EventAwaiter* bg_append_ea_;
 
     // `true` if this server is ready to serve operation.
     std::atomic<bool> initialized_;
@@ -613,6 +625,9 @@ protected:
 
     // Number of servers voted for me, protected by `lock_`.
     int32 votes_granted_;
+
+    // Last pre-committed index.
+    std::atomic<ulong> precommit_index_;
 
     // Leader commit index, seen by this node last time.
     // Only valid when the current role is `follower`.
@@ -775,6 +790,9 @@ protected:
 
     // Lock of entire Raft operation.
     std::recursive_mutex lock_;
+
+    // Lock of handling client request and role change.
+    std::mutex cli_lock_;
 
     // Condition variable to invoke BG commit thread.
     std::condition_variable commit_cv_;

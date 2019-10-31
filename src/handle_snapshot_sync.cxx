@@ -194,12 +194,12 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
         }
     }
 
-    ptr<resp_msg> resp( cs_new<resp_msg>
-                        ( state_->get_term(),
-                          msg_type::install_snapshot_response,
-                          id_,
-                          req.get_src(),
-                          log_store_->next_slot() ) );
+    ptr<resp_msg> resp = cs_new<resp_msg>
+                         ( state_->get_term(),
+                           msg_type::install_snapshot_response,
+                           id_,
+                           req.get_src(),
+                           log_store_->next_slot() );
 
     if (!catching_up_ && req.get_term() < state_->get_term()) {
         p_wn("received an install snapshot request (%zu) which has lower term "
@@ -216,8 +216,8 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
         return resp;
     }
 
-    ptr<snapshot_sync_req> sync_req
-        ( snapshot_sync_req::deserialize(entries[0]->get_buf()) );
+    ptr<snapshot_sync_req> sync_req =
+        snapshot_sync_req::deserialize(entries[0]->get_buf());
     if (sync_req->get_snapshot().get_last_log_idx() <= sm_commit_index_) {
         p_wn( "received a snapshot (%zu) that is older than "
               "current commit idx (%zu), last log idx %zu",
@@ -494,6 +494,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             ptr<cluster_config> c_conf = get_config();
             ctx_->state_mgr_->save_config(*c_conf);
 
+            precommit_index_ = req.get_snapshot().get_last_log_idx();
             sm_commit_index_ = req.get_snapshot().get_last_log_idx();
             quick_commit_index_ = req.get_snapshot().get_last_log_idx();
 

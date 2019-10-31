@@ -143,7 +143,7 @@ void peer::recreate_rpc(ptr<srv_config>& config,
     if (abandoned_) return;
 
     ptr<rpc_client_factory> factory = nullptr;
-    {   std::lock_guard<std::mutex> l(ctx.lock_);
+    {   std::lock_guard<std::mutex> l(ctx.ctx_lock_);
         factory = ctx.rpc_cli_factory_;
     }
     if (!factory) return;

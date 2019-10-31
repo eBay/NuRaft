@@ -47,6 +47,7 @@ enum raft_err {
     N20_background_commit_err = -20,
     N21_log_flush_failed = -21,
     N22_unrecoverable_isolation = -22,
+    N23_precommit_order_inversion = -23,
 };
 
 extern const char * raft_err_msg[];

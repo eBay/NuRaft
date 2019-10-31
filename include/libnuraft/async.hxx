@@ -46,7 +46,7 @@ enum cmd_result_code {
     CONFIG_CHANGING = -6,
     SERVER_IS_JOINING = -7,
     SERVER_NOT_FOUND = -8,
-    CANNOT_REMOVE_LEADER = 9,
+    CANNOT_REMOVE_LEADER = -9,
 
     FAILED = -32768,
 };

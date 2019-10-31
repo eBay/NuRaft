@@ -60,12 +60,12 @@ public:
     }
 
     ptr<raft_params> get_params() const {
-        std::lock_guard<std::mutex> l(lock_);
+        std::lock_guard<std::mutex> l(ctx_lock_);
         return params_;
     }
 
     void set_params(ptr<raft_params>& to) {
-        std::lock_guard<std::mutex> l(lock_);
+        std::lock_guard<std::mutex> l(ctx_lock_);
         params_ = to;
     }
 
@@ -97,7 +97,7 @@ public:
     cb_func cb_func_;
 
     // Lock.
-    mutable std::mutex lock_;
+    mutable std::mutex ctx_lock_;
 };
 
 }

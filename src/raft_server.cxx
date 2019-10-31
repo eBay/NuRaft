@@ -100,6 +100,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
 
     log_current_params();
     update_rand_timeout();
+    precommit_index_ = log_store_->next_slot() - 1;
 
     if (!state_) {
         state_ = cs_new<srv_state>();
@@ -219,6 +220,9 @@ raft_server::raft_server(context* ctx, const init_options& opt)
 
     bg_commit_thread_ = std::thread(std::bind(&raft_server::commit_in_bg, this));
 
+    bg_append_ea_ = new EventAwaiter();
+    bg_append_thread_ = std::thread(std::bind(&raft_server::append_entries_in_bg, this));
+
     if (opt.skip_initial_election_timeout_) {
         // Issue #23:
         //   During remediation, the node (to be added) shouldn't be
@@ -249,6 +253,7 @@ raft_server::~raft_server() {
     commit_lock.release();
     ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10));
     cancel_schedulers();
+    delete bg_append_ea_;
 }
 
 void raft_server::update_rand_timeout() {
@@ -345,7 +350,7 @@ void raft_server::shutdown() {
     drop_all_pending_commit_elems();
 
     // Clear shared_ptrs that the current server is holding.
-    {   std::lock_guard<std::mutex> l(ctx_->lock_);
+    {   std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
         ctx_->logger_.reset();
         ctx_->rpc_listener_.reset();
         ctx_->rpc_cli_factory_.reset();
@@ -355,6 +360,11 @@ void raft_server::shutdown() {
     // Wait for BG commit thread.
     if (bg_commit_thread_.joinable()) {
         bg_commit_thread_.join();
+    }
+
+    if (bg_append_thread_.joinable()) {
+        bg_append_ea_->invoke();
+        bg_append_thread_.join();
     }
 }
 
@@ -438,7 +448,6 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
         return nullptr;
     }
 
-    recur_lock(lock_);
     p_db( "Receive a %s message from %d with LastLogIndex=%llu, "
           "LastLogTerm=%llu, EntriesLength=%d, CommitIndex=%llu and Term=%llu",
           msg_type_to_string(req.get_type()).c_str(),
@@ -455,6 +464,12 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
         return nullptr;
     }
 
+    if ( req.get_type() == msg_type::client_request ) {
+        // Client request doesn't need to go through below process.
+        return handle_cli_req_prelock(req);
+    }
+
+    recur_lock(lock_);
     if ( req.get_type() == msg_type::append_entries_request ||
          req.get_type() == msg_type::request_vote_request ||
          req.get_type() == msg_type::install_snapshot_request ) {
@@ -498,9 +513,6 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
 
     } else if (req.get_type() == msg_type::priority_change_request) {
         resp = handle_priority_change_req(req);
-
-    } else if (req.get_type() == msg_type::client_request) {
-        resp = handle_cli_req(req);
 
     } else {
         // extended requests
@@ -735,48 +747,61 @@ void raft_server::reconnect_client(peer& p) {
 void raft_server::become_leader() {
     stop_election_timer();
 
-    role_ = srv_role::leader;
-    leader_ = id_;
-    srv_to_join_.reset();
-    ptr<snapshot> nil_snp;
-    for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        ptr<peer> pp = it->second;
-        ptr<snapshot_sync_ctx> sync_ctx = pp->get_snapshot_sync_ctx();
-        if (sync_ctx) {
-            void*& user_ctx = sync_ctx->get_user_snp_ctx();
-            state_machine_->free_user_snp_ctx(user_ctx);
-            pp->set_snapshot_in_sync(nil_snp);
+    {   auto_lock(commit_ret_elems_lock_);
+        p_in("number of pending commit elements: %zu",
+             commit_ret_elems_.size());
+    }
+
+    {   auto_lock(cli_lock_);
+        role_ = srv_role::leader;
+        leader_ = id_;
+        srv_to_join_.reset();
+        precommit_index_ = log_store_->next_slot() - 1;
+        p_in("state machine commit index %zu, "
+             "precommit index %zu, last log index %zu",
+             sm_commit_index_.load(),
+             precommit_index_.load(),
+             log_store_->next_slot() - 1);
+        ptr<snapshot> nil_snp;
+        for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
+            ptr<peer> pp = it->second;
+            ptr<snapshot_sync_ctx> sync_ctx = pp->get_snapshot_sync_ctx();
+            if (sync_ctx) {
+                void*& user_ctx = sync_ctx->get_user_snp_ctx();
+                state_machine_->free_user_snp_ctx(user_ctx);
+                pp->set_snapshot_in_sync(nil_snp);
+            }
+            // Reset RPC client for all peers.
+            // NOTE: Now we don't reset client, as we already did it
+            //       during pre-vote phase.
+            // reconnect_client(*pp);
+
+            pp->set_next_log_idx(log_store_->next_slot());
+            pp->set_free();
+            enable_hb_for_peer(*pp);
         }
-        // Reset RPC client for all peers.
-        // NOTE: Now we don't reset client, as we already did it
-        //       during pre-vote phase.
-        // reconnect_client(*pp);
 
-        pp->set_next_log_idx(log_store_->next_slot());
-        pp->set_free();
-        enable_hb_for_peer(*pp);
+        // If there are uncommitted logs, search if conf log exists.
+        ptr<cluster_config> last_config = get_config();
+        ulong s_idx = sm_commit_index_ + 1;
+        ulong e_idx = log_store_->next_slot();
+        for (ulong ii = s_idx; ii < e_idx; ++ii) {
+            ptr<log_entry> le = log_store_->entry_at(ii);
+            if (le->get_val_type() != log_val_type::conf) continue;
+
+            last_config = cluster_config::deserialize(le->get_buf());
+            p_in("found uncommitted config at %zu", ii);
+        }
+
+        last_config->set_log_idx(log_store_->next_slot());
+        ptr<buffer> conf_buf = last_config->serialize();
+        ptr<log_entry> entry
+            ( cs_new<log_entry>
+              ( state_->get_term(), conf_buf, log_val_type::conf ) );
+        p_in("[BECOME LEADER] appended new config at %d\n", log_store_->next_slot());
+        store_log_entry(entry);
+        config_changing_ = true;
     }
-
-    // If there are uncommitted logs, search if conf log exists.
-    ptr<cluster_config> last_config = get_config();
-    ulong s_idx = sm_commit_index_ + 1;
-    ulong e_idx = log_store_->next_slot();
-    for (ulong ii = s_idx; ii < e_idx; ++ii) {
-        ptr<log_entry> le = log_store_->entry_at(ii);
-        if (le->get_val_type() != log_val_type::conf) continue;
-
-        last_config = cluster_config::deserialize(le->get_buf());
-        p_in("found uncommitted config at %zu", ii);
-    }
-
-    last_config->set_log_idx(log_store_->next_slot());
-    ptr<buffer> conf_buf = last_config->serialize();
-    ptr<log_entry> entry
-        ( cs_new<log_entry>
-          ( state_->get_term(), conf_buf, log_val_type::conf ) );
-    p_in("[BECOME LEADER] appended new config at %d\n", log_store_->next_slot());
-    store_log_entry(entry);
-    config_changing_ = true;
 
     cb_func::Param param(id_, leader_);
     ulong my_term = state_->get_term();
@@ -887,24 +912,26 @@ void raft_server::yield_leadership(bool immediate_yield) {
 void raft_server::become_follower() {
     // stop hb for all peers
     p_tr("  FOLLOWER\n");
-    for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        it->second->enable_hb(false);
+    {   std::lock_guard<std::mutex> ll(cli_lock_);
+        for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
+            it->second->enable_hb(false);
+        }
+
+        srv_to_join_.reset();
+        role_ = srv_role::follower;
+
+        cb_func::Param param(id_, leader_);
+        (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
+
+        write_paused_ = false;
+        next_leader_candidate_ = -1;
+        initialized_ = true;
+        uncommitted_config_.reset();
+        pre_vote_.quorum_reject_count_ = 0;
+
+        // Drain all pending callback functions.
+        drop_all_pending_commit_elems();
     }
-
-    srv_to_join_.reset();
-    role_ = srv_role::follower;
-
-    cb_func::Param param(id_, leader_);
-    (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
-
-    write_paused_ = false;
-    next_leader_candidate_ = -1;
-    initialized_ = true;
-    uncommitted_config_.reset();
-    pre_vote_.quorum_reject_count_ = 0;
-
-    // Drain all pending callback functions.
-    drop_all_pending_commit_elems();
 
     restart_election_timer();
 }
@@ -1158,14 +1185,23 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
         log_store_->write_at(log_index, entry);
     }
 
-    // Force persistence of config_change logs to guarantee the durability of
-    // cluster membership change log entries.  Losing cluster membership log
-    // entries may lead to split brain.
-    if ( entry->get_val_type() == log_val_type::conf && !log_store_->flush() ) {
-        // LCOV_EXCL_START
-        p_ft("log store flush failed");
-        ctx_->state_mgr_->system_exit(N21_log_flush_failed);
-        // LCOV_EXCL_STOP
+    if ( entry->get_val_type() == log_val_type::conf ) {
+        // Force persistence of config_change logs to guarantee the durability of
+        // cluster membership change log entries.  Losing cluster membership log
+        // entries may lead to split brain.
+        if ( !log_store_->flush() ) {
+            // LCOV_EXCL_START
+            p_ft("log store flush failed");
+            ctx_->state_mgr_->system_exit(N21_log_flush_failed);
+            // LCOV_EXCL_STOP
+        }
+
+        if ( role_ == srv_role::leader ) {
+            // Need to progress precommit index for config.
+            if (precommit_index_ < log_index) {
+                precommit_index_ = log_index;
+            }
+        }
     }
 
     return log_index;

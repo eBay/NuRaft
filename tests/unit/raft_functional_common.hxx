@@ -359,6 +359,7 @@ public:
         return myId;
     }
     void system_exit(const int exit_code) {
+        abort();
     }
 
     ptr<srv_config> get_srv_config() const { return mySrvConfig; }

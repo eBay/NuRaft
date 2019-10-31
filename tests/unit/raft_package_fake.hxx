@@ -79,6 +79,8 @@ public:
         } else {
             params = *given_params;
         }
+        // For deterministic test, we should not use BG thread.
+        params.use_bg_thread_for_urgent_commit_ = false;
 
         ctx = new context( sMgr, sm, listener, myLog,
                            rpcCliFactory, scheduler, params );
