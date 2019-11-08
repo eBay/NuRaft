@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "basic_types.hxx"
 #include "buffer.hxx"
+#include "buffer_serializer.hxx"
 #include "pp_util.hxx"
 #include "ptr.hxx"
 
@@ -61,6 +62,8 @@ public:
 
 public:
     static ptr<srv_config> deserialize(buffer& buf);
+
+    static ptr<srv_config> deserialize(buffer_serializer& bs);
 
     int32 get_id() const { return id_; }
 

@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef _CLUSTER_CONFIG_HXX_
 #define _CLUSTER_CONFIG_HXX_
 
+#include "buffer_serializer.hxx"
 #include "srv_config.hxx"
 
 #include <list>
@@ -55,6 +56,8 @@ public:
     typedef std::list<ptr<srv_config>>::const_iterator const_srv_itor;
 
     static ptr<cluster_config> deserialize(buffer& buf);
+
+    static ptr<cluster_config> deserialize(buffer_serializer& buf);
 
     ulong get_log_idx() const {
         return log_idx_;

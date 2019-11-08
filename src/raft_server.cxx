@@ -789,8 +789,9 @@ void raft_server::become_leader() {
             ptr<log_entry> le = log_store_->entry_at(ii);
             if (le->get_val_type() != log_val_type::conf) continue;
 
+            p_in("found uncommitted config at %zu, size %zu",
+                 ii, le->get_buf().size());
             last_config = cluster_config::deserialize(le->get_buf());
-            p_in("found uncommitted config at %zu", ii);
         }
 
         last_config->set_log_idx(log_store_->next_slot());
