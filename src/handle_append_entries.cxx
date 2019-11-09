@@ -769,7 +769,7 @@ ulong raft_server::get_expected_committed_log_idx() {
     matched_indexes.reserve(16);
 
     // Leader itself.
-    matched_indexes.push_back( log_store_->next_slot() - 1 );
+    matched_indexes.push_back( precommit_index_ );
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
 
