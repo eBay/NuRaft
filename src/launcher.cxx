@@ -55,6 +55,7 @@ bool raft_launcher::shutdown(size_t time_limit_sec) {
     if (!raft_instance_) return false;
 
     raft_instance_->shutdown();
+    raft_instance_.reset();
 
     if (asio_listener_) {
         asio_listener_->stop();

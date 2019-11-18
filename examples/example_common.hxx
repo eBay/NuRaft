@@ -32,6 +32,13 @@ struct server_stuff {
         , raft_instance_(nullptr)
         {}
 
+    void reset() {
+        raft_logger_.reset();
+        sm_.reset();
+        smgr_.reset();
+        raft_instance_.reset();
+    }
+
     // Server ID.
     int server_id_;
 

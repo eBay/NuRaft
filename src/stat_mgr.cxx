@@ -33,7 +33,6 @@ struct auto_destroyer {
 };
 static auto_destroyer auto_destroyer_;
 
-
 // === stat_elem ==============================================================
 
 stat_elem::stat_elem(Type _type, const std::string& _name)
