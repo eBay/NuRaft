@@ -44,6 +44,7 @@ const char * raft_err_msg[] = {
     "N20: Background committing thread encounter err.",
     "N21: Log store flush failed.",
     "N22: This node does not get messages from leader, while the others do."
+    "N23: Commit is invoked before pre-commit, order inversion happened."
 };
 
 } // namespace nuraft;

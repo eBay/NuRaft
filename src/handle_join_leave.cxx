@@ -300,6 +300,7 @@ ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {
 
     log_store_->apply_pack(req.get_last_log_idx() + 1, entries[0]->get_buf());
     p_db("last log %ld\n", log_store_->next_slot() - 1);
+    precommit_index_ = log_store_->next_slot() - 1;
     commit(log_store_->next_slot() - 1);
     resp->accept(log_store_->next_slot());
     return resp;

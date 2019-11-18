@@ -32,12 +32,47 @@ limitations under the License.
 
 namespace nuraft {
 
+ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req) {
+    ptr<resp_msg> resp = nullptr;
+    ptr<raft_params> params = ctx_->get_params();
+    switch (params->locking_method_type_) {
+        case raft_params::single_mutex: {
+            recur_lock(lock_);
+            resp = handle_cli_req(req);
+            break;
+        }
+        case raft_params::dual_mutex:
+        default: {
+            // TODO: Use RW lock here.
+            auto_lock(cli_lock_);
+            resp = handle_cli_req(req);
+            break;
+        }
+    }
+
+    // Urgent commit, so that the commit will not depend on hb.
+    if (params->use_bg_thread_for_urgent_commit_) {
+        // Let background generate request (some delay may happen).
+        bg_append_ea_->invoke();
+    } else {
+        // Directly generate request in user thread.
+        recur_lock(lock_);
+        request_append_entries();
+    }
+    return resp;
+}
+
 ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
-    ptr<resp_msg> resp = cs_new<resp_msg>
-                         ( state_->get_term(),
-                           msg_type::append_entries_response,
-                           id_,
-                           leader_ );
+    ptr<resp_msg> resp = nullptr;
+    ulong last_idx = 0;
+    ptr<buffer> ret_value = nullptr;
+    ulong resp_idx = 1;
+    ulong cur_term = state_->get_term();
+
+    resp = cs_new<resp_msg>( cur_term,
+                             msg_type::append_entries_response,
+                             id_,
+                             leader_ );
     if (role_ != srv_role::leader || write_paused_) {
         resp->set_result_code( cmd_result_code::NOT_LEADER );
         return resp;
@@ -45,12 +80,10 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
 
     std::vector< ptr<log_entry> >& entries = req.log_entries();
     size_t num_entries = entries.size();
-    ulong last_idx = 0;
-    ptr<buffer> ret_value = nullptr;
 
     for (size_t i = 0; i < num_entries; ++i) {
         // force the log's term to current term
-        entries.at(i)->set_term(state_->get_term());
+        entries.at(i)->set_term(cur_term);
 
         ulong next_slot = store_log_entry(entries.at(i));
         p_db("append at log_idx %d\n", (int)next_slot);
@@ -64,6 +97,8 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
     if (num_entries) {
         log_store_->end_of_append_batch(last_idx - num_entries, num_entries);
     }
+    precommit_index_ = last_idx;
+    resp_idx = log_store_->next_slot();
 
     // Finished appending logs and pre_commit of itself.
     cb_func::Param param(id_, leader_);
@@ -79,7 +114,13 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         elem->result_code_ = cmd_result_code::TIMEOUT;
 
         {   auto_lock(commit_ret_elems_lock_);
-            commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
+            auto entry = commit_ret_elems_.find(last_idx);
+            if (entry != commit_ret_elems_.end()) {
+                // Commit thread was faster than this.
+                elem = entry->second;
+            } else {
+                commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
+            }
 
             switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
@@ -93,7 +134,9 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
 
             case raft_params::async_handler:
                 // Async handler: create & set async result object.
-                elem->async_result_ = cs_new< cmd_result< ptr<buffer> > >();
+                if (!elem->async_result_) {
+                    elem->async_result_ = cs_new< cmd_result< ptr<buffer> > >();
+                }
                 resp->set_async_cb
                       ( std::bind( &raft_server::handle_cli_req_callback_async,
                                    this,
@@ -110,10 +153,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         resp->set_ctx(ret_value);
     }
 
-    // urgent commit, so that the commit will not depend on hb
-    request_append_entries();
-    resp->accept(log_store_->next_slot());
-
+    resp->accept(resp_idx);
     return resp;
 }
 
@@ -136,11 +176,11 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
     }
 
     if (elem->result_code_ == cmd_result_code::OK) {
-        p_dv( "[OK] commit_ret_cv %lu wake up (%lu us), return value %p\n",
+        p_dv( "[OK] commit_ret_cv %lu wake up (%zu us), return value %p\n",
               idx, elapsed_us, ret_value.get() );
     } else {
         // Null `ret_value`, most likely timeout.
-        p_wn( "[NOT OK] commit_ret_cv %lu wake up (%lu us), "
+        p_wn( "[NOT OK] commit_ret_cv %lu wake up (%zu us), "
               "return value %p, result code %d\n",
               idx, elapsed_us, ret_value.get(), elem->result_code_ );
         bool valid_leader = check_leadership_validity();
@@ -176,6 +216,7 @@ void raft_server::drop_all_pending_commit_elems() {
             p_wn("cancelled blocking client request %zu, waited %zu us",
                  elem->idx_, elem->timer_.get_us());
         }
+        commit_ret_elems_.clear();
         return;
     }
 

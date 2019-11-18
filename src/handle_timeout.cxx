@@ -300,7 +300,7 @@ void raft_server::schedule_task(ptr<delayed_task>& task, int32 milliseconds) {
     if (stopping_) return;
 
     if (!scheduler_) {
-        std::lock_guard<std::mutex> l(ctx_->lock_);
+        std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
         scheduler_ = ctx_->scheduler_;
     }
     if (scheduler_) {

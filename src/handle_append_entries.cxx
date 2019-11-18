@@ -36,6 +36,23 @@ limitations under the License.
 
 namespace nuraft {
 
+void raft_server::append_entries_in_bg() {
+#ifdef __linux__
+    std::string thread_name = "nuraft_append";
+    pthread_setname_np(pthread_self(), thread_name.c_str());
+#endif
+    p_in("bg append_entries thread initiated");
+    do {
+        bg_append_ea_->wait();
+        bg_append_ea_->reset();
+        if (stopping_) break;
+
+        recur_lock(lock_);
+        request_append_entries();
+    } while (!stopping_);
+    p_in("bg append_entries thread terminated");
+}
+
 void raft_server::request_append_entries() {
     // Special case:
     //   1) one-node cluster, OR
@@ -46,7 +63,7 @@ void raft_server::request_append_entries() {
     // We should call it here.
     if ( peers_.size() == 0 ||
          get_quorum_for_commit() == 0 ) {
-        commit(log_store_->next_slot() - 1);
+        commit(precommit_index_.load());
         return;
     }
 
@@ -56,6 +73,13 @@ void raft_server::request_append_entries() {
 }
 
 bool raft_server::request_append_entries(ptr<peer> p) {
+    // Checking the validity of role first.
+    if (role_ != srv_role::leader) {
+        // WARNING: We should allow `write_paused_` state for
+        //          graceful resignation.
+        return false;
+    }
+
     cb_func::Param cb_param(id_, leader_, p->get_id());
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::RequestAppendEntries, &cb_param);
     if (rc == CbReturnCode::ReturnNull) {
@@ -150,7 +174,7 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
     {
         recur_lock(lock_);
         starting_idx = log_store_->start_index();
-        cur_nxt_idx = log_store_->next_slot();
+        cur_nxt_idx = precommit_index_ + 1;
         commit_idx = quick_commit_index_;
         term = state_->get_term();
     }
@@ -582,6 +606,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     //   on next `append_entries()` call, due to racing
     //   between BG commit thread and appending logs.
     //   Hence, we always should take smaller one.
+    precommit_index_ = req.get_last_log_idx() + req.log_entries().size();
     commit( std::min( req.get_commit_idx(),
                       req.get_last_log_idx() + req.log_entries().size() ) );
 

@@ -40,6 +40,21 @@ struct raft_params {
         async_handler = 0x1,
     };
 
+    enum locking_method_type {
+        // `append_entries()` will share the same mutex with
+        // background worker threads.
+        single_mutex = 0x0,
+
+        // `append_entries()` and background worker threads will
+        // use separate mutexes.
+        dual_mutex = 0x1,
+
+        // (Not supported yet)
+        // `append_entries()` will use RW-lock, which is separate to
+        // the mutex used by background worker threads.
+        dual_rw_lock = 0x2,
+    };
+
     raft_params()
         : election_timeout_upper_bound_(500)
         , election_timeout_lower_bound_(250)
@@ -59,6 +74,8 @@ struct raft_params {
         , leadership_expiry_(0)
         , allow_temporary_zero_priority_leader_(true)
         , auto_forwarding_(false)
+        , use_bg_thread_for_urgent_commit_(true)
+        , locking_method_type_(dual_mutex)
         , return_method_(blocking)
         {}
 
@@ -371,6 +388,15 @@ public:
     // to the current leader.
     // Otherwise, it will return error to client immediately.
     bool auto_forwarding_;
+
+    // If true, creating replication (append_entries) requests will be
+    // done by a backgroudn thread, instead of doing it in user threads.
+    // There can be some delay a little bit, but it improves reducing
+    // the lock contention.
+    bool use_bg_thread_for_urgent_commit_;
+
+    // Choose the type of lock that will be used by user threads.
+    locking_method_type locking_method_type_;
 
     // To choose blocking call or asynchronous call.
     return_method_type return_method_;
