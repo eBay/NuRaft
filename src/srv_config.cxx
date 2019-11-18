@@ -23,14 +23,19 @@ limitations under the License.
 namespace nuraft {
 
 ptr<srv_config> srv_config::deserialize(buffer& buf) {
-    int32 id = buf.get_int();
-    int32 dc_id = buf.get_int();
-    const char* endpoint_char = buf.get_str();
-    const char* aux_char = buf.get_str();
+    buffer_serializer bs(buf);
+    return deserialize(bs);
+}
+
+ptr<srv_config> srv_config::deserialize(buffer_serializer& bs) {
+    int32 id = bs.get_i32();
+    int32 dc_id = bs.get_i32();
+    const char* endpoint_char = bs.get_cstr();
+    const char* aux_char = bs.get_cstr();
     std::string endpoint( (endpoint_char) ? endpoint_char : std::string() );
     std::string aux( (aux_char) ? aux_char : std::string() );
-    byte is_learner = buf.get_byte();
-    int32 priority = buf.get_int();
+    byte is_learner = bs.get_u8();
+    int32 priority = bs.get_i32();
     return cs_new<srv_config>(id, dc_id, endpoint, aux, is_learner, priority);
 }
 

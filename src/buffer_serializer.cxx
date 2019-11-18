@@ -128,6 +128,10 @@ buffer_serializer::buffer_serializer(ptr<buffer>& src_buf_ptr,
     , pos_(0)
 {}
 
+size_t buffer_serializer::size() const {
+    return buf_.size();
+}
+
 void buffer_serializer::pos(size_t new_pos) {
     if (new_pos > buf_.size()) throw std::overflow_error("invalid position");
     pos_ = new_pos;

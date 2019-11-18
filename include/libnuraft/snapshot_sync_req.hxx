@@ -22,6 +22,7 @@ limitations under the License.
 #define _SNAPSHOT_SYNC_REQ_HXX_
 
 #include "buffer.hxx"
+#include "buffer_serializer.hxx"
 #include "pp_util.hxx"
 #include "ptr.hxx"
 #include "snapshot.hxx"
@@ -41,6 +42,8 @@ public:
 
 public:
     static ptr<snapshot_sync_req> deserialize(buffer& buf);
+
+    static ptr<snapshot_sync_req> deserialize(buffer_serializer& bs);
 
     snapshot& get_snapshot() const {
         return *snapshot_;

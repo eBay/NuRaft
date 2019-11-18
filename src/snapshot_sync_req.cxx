@@ -25,13 +25,18 @@ limitations under the License.
 namespace nuraft {
 
 ptr<snapshot_sync_req> snapshot_sync_req::deserialize(buffer& buf) {
-    ptr<snapshot> snp(snapshot::deserialize(buf));
-    ulong offset = buf.get_ulong();
-    bool done = buf.get_byte() == 1;
-    byte* src = buf.data();
+    buffer_serializer bs(buf);
+    return deserialize(bs);
+}
+
+ptr<snapshot_sync_req> snapshot_sync_req::deserialize(buffer_serializer& bs) {
+    ptr<snapshot> snp(snapshot::deserialize(bs));
+    ulong offset = bs.get_u64();
+    bool done = bs.get_u8() == 1;
+    byte* src = (byte*)bs.data();
     ptr<buffer> b;
-    if (buf.pos() < buf.size()) {
-        size_t sz = buf.size() - buf.pos();
+    if (bs.pos() < bs.size()) {
+        size_t sz = bs.size() - bs.pos();
         b = buffer::alloc(sz);
         ::memcpy(b->data(), src, sz);
     }
