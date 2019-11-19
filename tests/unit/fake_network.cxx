@@ -142,7 +142,7 @@ bool FakeNetwork::execReqResp(const std::string& endpoint) {
 ptr<FakeClient> FakeNetwork::findClient(const std::string& endpoint) {
     std::lock_guard<std::mutex> ll(clientsLock);
     auto entry = clients.find(endpoint);
-    assert(entry != clients.end());
+    if (entry == clients.end()) return nullptr;
     return entry->second;
 }
 
@@ -262,11 +262,13 @@ void FakeNetwork::handleAllFrom(const std::string& endpoint) {
 
 size_t FakeNetwork::getNumPendingReqs(const std::string& endpoint) {
     ptr<FakeClient> conn = findClient(endpoint);
+    if (!conn) return 0;
     return conn->pendingReqs.size();
 }
 
 size_t FakeNetwork::getNumPendingResps(const std::string& endpoint) {
     ptr<FakeClient> conn = findClient(endpoint);
+    if (!conn) return 0;
     return conn->pendingResps.size();
 }
 
