@@ -437,7 +437,10 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
     // Callback if necessary.
     cb_func::Param param(id_, leader_, -1, &req);
-    ctx_->cb_func_.call(cb_func::GotAppendEntryReqFromLeader, &param);
+    cb_func::ReturnCode cb_ret =
+        ctx_->cb_func_.call(cb_func::GotAppendEntryReqFromLeader, &param);
+    // If callback function decided to refuse this request, return here.
+    if (cb_ret != cb_func::Ok) return resp;
 
     if (req.log_entries().size() > 0) {
         // Write logs to store, start from overlapped logs
