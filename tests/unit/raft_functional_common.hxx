@@ -375,7 +375,7 @@ private:
 
 static VOID_UNUSED reset_log_files() {
     std::stringstream ss;
-    for (size_t ii=1; ii<=4; ++ii) {
+    for (size_t ii=1; ii<=10; ++ii) {
         ss << "srv" + std::to_string(ii) + ".log* ";
     }
 

@@ -653,6 +653,99 @@ int remove_node_error_cases_test() {
     return 0;
 }
 
+int remove_and_then_add_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Make a group using S1 and S2 only.
+    CHK_Z( make_group( {&s1, &s2} ) );
+
+    // Append logs to create a snapshot and then compact logs.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+
+        handlers.push_back(ret);
+    }
+    // Pre-commit and commit.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    // Wait for bg commit.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Remove S2 from leader.
+    s1.dbgLog(" --- remove ---");
+    s1.raftServer->remove_srv( s2.getTestMgr()->get_srv_config()->get_id() );
+
+    // Leave req/resp.
+    s1.fNet->execReqResp();
+    // Leave done, notify to peers.
+    s1.fNet->execReqResp();
+    // Notify new commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Now add S3 to leader.
+    s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
+    s1.fNet->execReqResp();
+    // Send the entire snapshot.
+    do {
+        s1.fNet->execReqResp();
+    } while (s3.raftServer->is_receiving_snapshot());
+    // Commit.
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // First HB.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Second HB.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // S3 should see S1 and itself.
+    CHK_EQ(2, s3.raftServer->get_config()->get_servers().size());
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int multiple_config_change_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -2016,6 +2109,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "remove node error cases test",
                remove_node_error_cases_test );
+
+    ts.doTest( "remove and then add test",
+               remove_and_then_add_test );
 
     ts.doTest( "multiple config change test",
                multiple_config_change_test );

@@ -336,9 +336,18 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 {
     bool supp_exp_warning = false;
     if (catching_up_) {
-        p_in("catch-up process is done, "
-             "will suppress following expected warnings this time");
-        catching_up_ = false;
+        // WARNING:
+        //   We should clear the `catching_up_` flag only after this node's
+        //   config has been added to the cluster config. Otherwise, if we
+        //   clear it before that, any membership change configs (which is
+        //   already outdated but committed after the received snapshot)
+        //   may cause stepping down of this node.
+        ptr<cluster_config> cur_config = get_config();
+        ptr<srv_config> my_config = cur_config->get_server(id_);
+        if (my_config) {
+            p_in("catch-up process is done, clearing the flag");
+            catching_up_ = false;
+        }
         supp_exp_warning = true;
     }
 
