@@ -38,6 +38,7 @@ public:
      * @param asio_options ASIO options.
      * @param params Raft parameters.
      * @return Raft server instance.
+     *         `nullptr` on any errors.
      */
     ptr<raft_server> init(ptr<state_machine> sm,
                           ptr<state_mgr> smgr,

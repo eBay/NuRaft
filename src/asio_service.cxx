@@ -1611,12 +1611,18 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
 ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
                                                      ptr<logger>& l )
 {
-    return cs_new< asio_rpc_listener >
-                 ( impl_,
-                   impl_->io_svc_,
-                   impl_->ssl_server_ctx_,
-                   listening_port,
-                   impl_->my_opt_.enable_ssl_,
-                   l );
+    try {
+        return cs_new< asio_rpc_listener >
+                     ( impl_,
+                       impl_->io_svc_,
+                       impl_->ssl_server_ctx_,
+                       listening_port,
+                       impl_->my_opt_.enable_ssl_,
+                       l );
+    } catch (std::exception& ee) {
+        // Most likely exception happens due to wrong endpoint.
+        p_er("got exception: %s", ee.what());
+        return nullptr;
+    }
 }
 
