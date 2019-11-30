@@ -495,6 +495,15 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         }
         if (id_ == (*it)->get_id()) {
             my_priority_ = (*it)->get_priority();
+            if (role_ == srv_role::follower &&
+                catching_up_) {
+                // If this node is newly added, start election timer
+                // without waiting for the next append_entries message.
+                p_in("now this node is the part of cluster, "
+                     "catch-up process is done, clearing the flag");
+                restart_election_timer();
+                catching_up_ = false;
+            }
         }
     }
 
