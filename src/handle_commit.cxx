@@ -501,8 +501,8 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
                 // without waiting for the next append_entries message.
                 p_in("now this node is the part of cluster, "
                      "catch-up process is done, clearing the flag");
-                restart_election_timer();
                 catching_up_ = false;
+                restart_election_timer();
             }
         }
     }
