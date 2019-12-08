@@ -120,6 +120,12 @@ void raft_server::restart_election_timer() {
         return;
     }
 
+    // If election timer was not allowed, clear the flag.
+    if (!state_->is_election_timer_allowed()) {
+        state_->allow_election_timer(true);
+        ctx_->state_mgr_->save_state(*state_);
+    }
+
     if (election_task_) {
         p_tr("cancel existing timer");
         cancel_task(election_task_);
