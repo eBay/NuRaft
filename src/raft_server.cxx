@@ -960,10 +960,6 @@ bool raft_server::update_term(ulong term) {
         become_follower();
         return true;
     }
-    if (!state_->is_election_timer_allowed()) {
-        state_->allow_election_timer(true);
-        ctx_->state_mgr_->save_state(*state_);
-    }
     return false;
 }
 

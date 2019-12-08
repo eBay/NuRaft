@@ -194,6 +194,8 @@ public:
 
     /**
      * Start the election timer on this server, if this server is a follower.
+     * It will allow the election timer permanently, if it was disabled
+     * by state manager.
      */
     void restart_election_timer();
 
