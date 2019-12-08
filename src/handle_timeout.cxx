@@ -23,6 +23,7 @@ limitations under the License.
 #include "event_awaiter.h"
 #include "peer.hxx"
 #include "state_machine.hxx"
+#include "state_mgr.hxx"
 #include "tracer.hxx"
 
 #include <cassert>
@@ -171,6 +172,8 @@ void raft_server::handle_election_timeout() {
                 }
             }
             */
+            state_->allow_election_timer(false);
+            ctx_->state_mgr_->save_state(*state_);
             reset_peer_info();
             cancel_schedulers();
             return;
