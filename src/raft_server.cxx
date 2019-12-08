@@ -115,6 +115,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     ss << "   === INIT RAFT SERVER ===\n"
        << "commit index " << sm_commit_index_ << "\n"
        << "term " << state_->get_term() << "\n"
+       << "election timer " << ( state_->is_election_timer_allowed()
+                                 ? "allowed" : "not allowed" ) << "\n"
        << "log store start " << log_store_->start_index()
        << ", end " << log_store_->next_slot() - 1 << "\n"
        << "config log idx " << c_conf->get_log_idx()
@@ -228,7 +230,16 @@ raft_server::raft_server(context* ctx, const init_options& opt)
         //   During remediation, the node (to be added) shouldn't be
         //   even a temp leader (to avoid local commit). We provide
         //   this option for that purpose.
-        p_in("skip initialization of election timer, waiting for first heartbeat");
+        p_in("skip initialization of election timer by given parameter, "
+             "waiting for the first heartbeat");
+        // Make this status persistent, so as to make it not
+        // trigger any election even after process restart.
+        state_->allow_election_timer(false);
+        ctx_->state_mgr_->save_state(*state_);
+
+    } else if (!state_->is_election_timer_allowed()) {
+        p_in("skip initialization of election timer by previously saved state, "
+             "waiting for the first heartbeat");
 
     } else {
         p_in("wait for HB, for %d + [%d, %d] ms",
@@ -941,6 +952,7 @@ bool raft_server::update_term(ulong term) {
     if (term > state_->get_term()) {
         state_->set_term(term);
         state_->set_voted_for(-1);
+        state_->allow_election_timer(true);
         election_completed_ = false;
         votes_granted_ = 0;
         votes_responded_ = 0;
@@ -948,7 +960,10 @@ bool raft_server::update_term(ulong term) {
         become_follower();
         return true;
     }
-
+    if (!state_->is_election_timer_allowed()) {
+        state_->allow_election_timer(true);
+        ctx_->state_mgr_->save_state(*state_);
+    }
     return false;
 }
 
