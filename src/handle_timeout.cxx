@@ -180,7 +180,10 @@ void raft_server::handle_election_timeout() {
             */
             state_->allow_election_timer(false);
             ctx_->state_mgr_->save_state(*state_);
-            reset_peer_info();
+
+            // Modified by Jung-Sang Ahn (Dec 24, 2019):
+            // Same as in reconfigure().
+            //reset_peer_info();
             cancel_schedulers();
             return;
         }

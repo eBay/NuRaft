@@ -471,20 +471,14 @@ int remove_node_test() {
     // Wait for bg commit for configuration change.
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
-    // Now server 1 and 2 should know each other,
-    // and server 3 only sees itself.
+    // All servers should see S1 and S2 only.
     for (auto& entry: pkgs) {
         RaftPkg* pkg = entry;
         std::vector< ptr<srv_config> > configs;
         pkg->raftServer->get_srv_config_all(configs);
 
-        if (pkg == &s3) {
-            CHK_EQ(1, configs.size());
-            ptr<srv_config>& conf = configs[0];
-            CHK_EQ(s3.myId, conf->get_id());
-        } else {
-            CHK_EQ(2, configs.size());
-        }
+        TestSuite::setInfo("id = %d", pkg->myId);
+        CHK_EQ(2, configs.size());
     }
 
     // Invoke election timer for S3, to make it step down.

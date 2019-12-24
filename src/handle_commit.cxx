@@ -560,7 +560,10 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
           it != srvs_removed.end(); ++it ) {
         int32 srv_removed = *it;
         if (srv_removed == id_ && !catching_up_) {
-            p_in("this server (%d) has been removed from the cluster\n", id_);
+            p_in("this server (%d) has been removed from the cluster, "
+                 "will step down itself soon. config log idx %zu",
+                 id_,
+                 new_config->get_log_idx());
             // this server is removed from cluster
 
             // Modified by Jung-Sang Ahn (Oct 25, 2017):
@@ -568,15 +571,17 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             // If not, this server will repeatedly request leader
             // election of the cluster that this server doesn't belong
             // to anymore.
-            reset_peer_info();
+
+            // Modified by Jung-Sang Ahn (Dec 24, 2019):
+            // Now we have a persistent flag for election timer,
+            // we don't need to append any dummy config log at the end,
+            // for the case re-joining this replica to the original cluster.
+            //reset_peer_info();
 
             cb_func::Param param(id_, leader_);
             CbReturnCode rc = ctx_->cb_func_.call( cb_func::RemovedFromCluster,
                                                    &param );
             (void)rc;
-
-            p_in("server has been removed, step down");
-            return;
         }
 
         peer_itor pit = peers_.find(srv_removed);
