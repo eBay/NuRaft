@@ -404,6 +404,7 @@ int uncommitted_conf_new_leader_test() {
     // Replicate to all.
     for (size_t ii=0; ii<=NUM_APPENDS_1; ++ii) {
         s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
     }
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
