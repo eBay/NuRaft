@@ -1421,9 +1421,11 @@ std::string asio_service_impl::get_password
 #endif
 
 void asio_service_impl::worker_entry() {
-#ifdef __linux__
     std::string thread_name = "nuraft_w_" + std::to_string(worker_id_.fetch_add(1));
+#ifdef __linux__
     pthread_setname_np(pthread_self(), thread_name.c_str());
+#elif __APPLE__
+    pthread_setname_np(thread_name.c_str());
 #endif
 
     static std::atomic<size_t> exception_count(0);

@@ -37,10 +37,13 @@ limitations under the License.
 namespace nuraft {
 
 void raft_server::append_entries_in_bg() {
-#ifdef __linux__
     std::string thread_name = "nuraft_append";
+#ifdef __linux__
     pthread_setname_np(pthread_self(), thread_name.c_str());
+#elif __APPLE__
+    pthread_setname_np(thread_name.c_str());
 #endif
+
     p_in("bg append_entries thread initiated");
     do {
         bg_append_ea_->wait();

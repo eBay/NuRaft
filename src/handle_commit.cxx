@@ -83,9 +83,11 @@ void raft_server::commit(ulong target_idx) {
 }
 
 void raft_server::commit_in_bg() {
-#ifdef __linux__
     std::string thread_name = "nuraft_commit";
+#ifdef __linux__
     pthread_setname_np(pthread_self(), thread_name.c_str());
+#elif __APPLE__
+    pthread_setname_np(thread_name.c_str());
 #endif
 
     while (true) {
