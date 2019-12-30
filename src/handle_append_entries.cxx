@@ -147,12 +147,18 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
         if ( srv_to_leave_ &&
              srv_to_leave_->get_id() == p->get_id() &&
-             msg->get_commit_idx() >= srv_to_leave_target_idx_ ) {
+             msg->get_commit_idx() >= srv_to_leave_target_idx_ &&
+             !srv_to_leave_->is_stepping_down() ) {
             // If this is the server to leave, AND
             // current request's commit index includes
             // the target log index number, step down and remove it
             // as soon as we get the corresponding response.
             srv_to_leave_->step_down();
+            p_in("srv_to_leave_ %d is safe to be erased from peer list, "
+                 "log idx %zu commit idx %zu, set flag",
+                 srv_to_leave_->get_id(),
+                 msg->get_last_log_idx(),
+                 msg->get_commit_idx());
         }
 
         p_tr("sent\n");
@@ -673,34 +679,18 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         return;
     }
 
-    if (srv_to_leave_) {
-        ulong last_active_ms = srv_to_leave_->get_active_timer_us() / 1000;
-        bool reset_srv = false;
-        if ( last_active_ms >
-                 (ulong)peer::RESPONSE_LIMIT *
-                 ctx_->get_params()->heart_beat_interval_ ) {
-            // Timeout: remove peer.
-            p_wn("server to be removed %d, activity timeout %zu ms. "
-                 "force remove now",
-                 srv_to_leave_->get_id(),
-                 last_active_ms);
-            reset_srv = true;
-
-        } else if ( srv_to_leave_->get_id() == resp.get_src() &&
-                    srv_to_leave_->is_stepping_down() ) {
-            // Catch-up is done.
-            p_in("server to be removed %d fully caught up the "
-                 "target config log %zu",
-                 srv_to_leave_->get_id(),
-                 srv_to_leave_target_idx_);
-            reset_srv = true;
-        }
-
-        if (reset_srv) {
-            remove_peer_from_peers(srv_to_leave_);
-            reset_srv_to_leave();
-            return;
-        }
+    check_srv_to_leave_timeout();
+    if ( srv_to_leave_ &&
+         srv_to_leave_->get_id() == resp.get_src() &&
+         srv_to_leave_->is_stepping_down() ) {
+        // Catch-up is done.
+        p_in("server to be removed %d fully caught up the "
+             "target config log %zu",
+             srv_to_leave_->get_id(),
+             srv_to_leave_target_idx_);
+        remove_peer_from_peers(srv_to_leave_);
+        reset_srv_to_leave();
+        return;
     }
 
     // If there are pending logs to be synced or commit index need to be advanced,
@@ -832,9 +822,7 @@ ulong raft_server::get_expected_committed_log_idx() {
     matched_indexes.push_back( precommit_index_ );
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
-
-        // Skip learner.
-        if (p->is_learner()) continue;
+        if (!is_regular_member(p)) continue;
 
         matched_indexes.push_back( p->get_matched_idx() );
     }

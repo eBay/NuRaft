@@ -592,7 +592,7 @@ int remove_node_error_cases_test() {
         // Leave req/resp.
         s1.fNet->execReqResp();
 
-        // Now config change is in progress, add S3 to S1.
+        // Now config change is in progress, remove S3.
         ptr<raft_result> ret = s1.raftServer->remove_srv(s3.myId);
 
         // May fail (depends on commit thread wake-up timing).
@@ -600,9 +600,6 @@ int remove_node_error_cases_test() {
         if (ret->get_result_code() == cmd_result_code::OK) {
             // If succeed, S3 is also removed.
             expected_cluster_size = 1;
-        } else {
-            // If not, error code should be CONFIG_CHANGNING.
-            CHK_EQ( cmd_result_code::CONFIG_CHANGING, ret->get_result_code() );
         }
 
         // Finish the task.

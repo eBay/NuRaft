@@ -340,6 +340,13 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
         return resp;
     }
 
+    check_srv_to_leave_timeout();
+    if (srv_to_leave_) {
+        p_wn("previous to-be-removed server has not left yet");
+        resp->set_result_code(cmd_result_code::SERVER_IS_LEAVING);
+        return resp;
+    }
+
     if (config_changing_) {
         // the previous config has not committed yet
         p_wn("previous config has not committed yet");
@@ -444,6 +451,17 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
                                              new_conf_buf,
                                              log_val_type::conf ) );
     store_log_entry(entry);
+
+    auto p_entry = peers_.find(srv_id);
+    if (p_entry != peers_.end()) {
+        ptr<peer> pp = p_entry->second;
+        srv_to_leave_ = pp;
+        srv_to_leave_target_idx_ = new_conf->get_log_idx();
+        p_in("set srv_to_leave_, "
+             "server %d will be removed from cluster, config %zu",
+             srv_id, srv_to_leave_target_idx_);
+    }
+
     request_append_entries();
 }
 
@@ -473,10 +491,13 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
                 pit->second->enable_hb(false);
                 peers_.erase(pit);
                 p_in("server %d is removed from cluster", p->get_id());
+            } else {
+                p_in("peer %d cannot be found, no action for removing",
+                     p->get_id());
             }
-            else {
-                p_in( "peer %d cannot be found, no action for removing",
-                      p->get_id() );
+
+            if (srv_to_leave_) {
+                reset_srv_to_leave();
             }
         }
 
@@ -504,6 +525,7 @@ void raft_server::reset_srv_to_join() {
 void raft_server::reset_srv_to_leave() {
     srv_to_leave_.reset();
     srv_to_leave_target_idx_ = 0;
+    p_in("clearing srv_to_leave_");
 }
 
 } // namespace nuraft;

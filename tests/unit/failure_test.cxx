@@ -478,14 +478,7 @@ int removed_server_late_step_down_test() {
     CHK_Z( launch_servers( pkgs ) );
     CHK_Z( make_group( pkgs ) );
 
-    // Try to remove s3 from non leader, should return error.
-    ptr< cmd_result< ptr<buffer> > > ret =
-        s2.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
-    CHK_FALSE( ret->get_accepted() );
-    CHK_EQ( cmd_result_code::NOT_LEADER, ret->get_result_code() );
-
     // Remove s3 from leader.
-    s1.dbgLog(" --- remove ---");
     s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
 
     // Leave req/resp.
@@ -511,6 +504,11 @@ int removed_server_late_step_down_test() {
             CHK_EQ(3, configs.size());
         }
     }
+
+    // Removing server again should fail.
+    ptr< cmd_result< ptr<buffer> > > ret =
+        s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+    CHK_FALSE(ret->get_accepted());
 
     // More catch-up for to-be-removed server.
     s1.fNet->execReqResp();
