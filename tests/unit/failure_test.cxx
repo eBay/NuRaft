@@ -515,6 +515,8 @@ int removed_server_late_step_down_test() {
     // More catch-up for to-be-removed server.
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
 
     // Now all servers should see S1 and S2 only.
     for (auto& entry: pkgs) {
