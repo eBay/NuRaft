@@ -79,6 +79,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , config_(ctx->state_mgr_->load_config())
     , uncommitted_config_(nullptr)
     , srv_to_join_(nullptr)
+    , srv_to_leave_(nullptr)
+    , srv_to_leave_target_idx_(0)
     , conf_to_add_(nullptr)
     , resp_handler_( (rpc_handler)std::bind( &raft_server::handle_peer_resp,
                                              this,
@@ -366,6 +368,14 @@ void raft_server::shutdown() {
         ctx_->rpc_listener_.reset();
         ctx_->rpc_cli_factory_.reset();
         ctx_->scheduler_.reset();
+    }
+
+    // Server to join/leave.
+    if (srv_to_join_) {
+        reset_srv_to_join();
+    }
+    if (srv_to_leave_) {
+        reset_srv_to_leave();
     }
 
     // Wait for BG commit thread.

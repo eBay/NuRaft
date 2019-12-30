@@ -462,6 +462,87 @@ int uncommitted_conf_new_leader_test() {
     return 0;
 }
 
+int removed_server_late_step_down_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Try to remove s3 from non leader, should return error.
+    ptr< cmd_result< ptr<buffer> > > ret =
+        s2.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+    CHK_FALSE( ret->get_accepted() );
+    CHK_EQ( cmd_result_code::NOT_LEADER, ret->get_result_code() );
+
+    // Remove s3 from leader.
+    s1.dbgLog(" --- remove ---");
+    s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+
+    // Leave req/resp.
+    s1.fNet->execReqResp();
+    // Leave done, notify to peers, but except for S3.
+    s1.fNet->execReqResp(s2_addr);
+    // Notify new commit.
+    s1.fNet->execReqResp(s2_addr);
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // S1 and S2: should see S1 and S2 only.
+    // S3: should see everyone.
+    for (auto& entry: pkgs) {
+        RaftPkg* pkg = entry;
+        std::vector< ptr<srv_config> > configs;
+        pkg->raftServer->get_srv_config_all(configs);
+
+        TestSuite::setInfo("id = %d", pkg->myId);
+        if (pkg->myId != 3) {
+            CHK_EQ(2, configs.size());
+        } else {
+            CHK_EQ(3, configs.size());
+        }
+    }
+
+    // More catch-up for to-be-removed server.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+
+    // Now all servers should see S1 and S2 only.
+    for (auto& entry: pkgs) {
+        RaftPkg* pkg = entry;
+        std::vector< ptr<srv_config> > configs;
+        pkg->raftServer->get_srv_config_all(configs);
+
+        TestSuite::setInfo("id = %d", pkg->myId);
+        CHK_EQ(2, configs.size());
+    }
+
+    // Invoke election timer for S3, to make it step down.
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    // Pending timer task should be zero in S3.
+    CHK_Z( s3.fTimer->getNumPendingTasks() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace failure_test;
 using namespace failure_test;
 
@@ -482,6 +563,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "uncommitted config for new leader test",
                uncommitted_conf_new_leader_test );
+
+    ts.doTest( "removed server late step down test",
+               removed_server_late_step_down_test );
 
     return 0;
 }

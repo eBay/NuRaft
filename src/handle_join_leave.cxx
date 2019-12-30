@@ -407,17 +407,6 @@ void raft_server::handle_leave_cluster_resp(resp_msg& resp) {
 }
 
 void raft_server::rm_srv_from_cluster(int32 srv_id) {
-    // WARNING: before removing server from configuration,
-    //          set step down flag of the peer first
-    //          to avoid HB handler doing something with it.
-    auto pit = peers_.find(srv_id);
-    if (pit == peers_.end()) {
-        p_er("trying to remove server %d, but it does not exist now", srv_id);
-    } else {
-        ptr<peer> pp = pit->second;
-        pp->step_down();
-    }
-
     ptr<cluster_config> cur_conf = get_config();
 
     // NOTE: Need to honor uncommitted config,
@@ -510,6 +499,11 @@ void raft_server::reset_srv_to_join() {
         state_machine_->free_user_snp_ctx(user_ctx);
     }
     srv_to_join_.reset();
+}
+
+void raft_server::reset_srv_to_leave() {
+    srv_to_leave_.reset();
+    srv_to_leave_target_idx_ = 0;
 }
 
 } // namespace nuraft;

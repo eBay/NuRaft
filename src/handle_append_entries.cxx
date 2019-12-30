@@ -144,6 +144,17 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
         p->send_req(p, msg, resp_handler_);
         p->reset_ls_timer();
+
+        if ( srv_to_leave_ &&
+             srv_to_leave_->get_id() == p->get_id() &&
+             msg->get_commit_idx() >= srv_to_leave_target_idx_ ) {
+            // If this is the server to leave, AND
+            // current request's commit index includes
+            // the target log index number, step down and remove it
+            // as soon as we get the corresponding response.
+            srv_to_leave_->step_down();
+        }
+
         p_tr("sent\n");
         return true;
     }
@@ -662,6 +673,36 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         return;
     }
 
+    if (srv_to_leave_) {
+        ulong last_active_ms = srv_to_leave_->get_active_timer_us() / 1000;
+        bool reset_srv = false;
+        if ( last_active_ms >
+                 (ulong)peer::RESPONSE_LIMIT *
+                 ctx_->get_params()->heart_beat_interval_ ) {
+            // Timeout: remove peer.
+            p_wn("server to be removed %d, activity timeout %zu ms. "
+                 "force remove now",
+                 srv_to_leave_->get_id(),
+                 last_active_ms);
+            reset_srv = true;
+
+        } else if ( srv_to_leave_->get_id() == resp.get_src() &&
+                    srv_to_leave_->is_stepping_down() ) {
+            // Catch-up is done.
+            p_in("server to be removed %d fully caught up the "
+                 "target config log %zu",
+                 srv_to_leave_->get_id(),
+                 srv_to_leave_target_idx_);
+            reset_srv = true;
+        }
+
+        if (reset_srv) {
+            remove_peer_from_peers(srv_to_leave_);
+            reset_srv_to_leave();
+            return;
+        }
+    }
+
     // If there are pending logs to be synced or commit index need to be advanced,
     // continue to send appendEntries to this peer
     bool need_to_catchup = true;
@@ -697,6 +738,10 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         commit( committed_index );
         need_to_catchup = p->clear_pending_commit() ||
                           resp.get_next_idx() < log_store_->next_slot();
+
+        if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) {
+
+        }
 
     } else {
         ulong prev_next_log = p->get_next_log_idx();

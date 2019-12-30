@@ -77,8 +77,6 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
         }
     }
 
-    if (p->is_stepping_down()) return;
-
     cb_func::Param param(id_, leader_, p->get_id());
     uint64_t last_log_idx = log_store_->next_slot() - 1;
     param.ctx = &last_log_idx;

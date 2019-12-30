@@ -537,6 +537,7 @@ protected:
     void handle_ext_resp_err(rpc_exception& err);
     void handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p);
     void reset_srv_to_join();
+    void reset_srv_to_leave();
     ptr<req_msg> create_append_entries_req(peer& p);
     ptr<req_msg> create_sync_snapshot_req(peer& p,
                                           ulong last_log_idx,
@@ -587,6 +588,8 @@ protected:
     ptr<resp_msg> handle_leadership_takeover(req_msg& req,
                                              ptr<custom_notification_msg> msg,
                                              ptr<resp_msg> resp);
+
+    void remove_peer_from_peers(const ptr<peer>& pp);
 
 protected:
     static const int default_snapshot_sync_block_size;
@@ -785,6 +788,15 @@ protected:
     // Server that is preparing to join,
     // protected by `lock_`.
     ptr<peer> srv_to_join_;
+
+    // Server that is agreed to leave,
+    // protected by `lock_`.
+    ptr<peer> srv_to_leave_;
+
+    // Target log index number containing the config that
+    // this server is actually removed.
+    // Connection to `srv_to_leave_` should be kept until this log.
+    ulong srv_to_leave_target_idx_;
 
     // Config of the server preparing to join,
     // protected by `lock_`.

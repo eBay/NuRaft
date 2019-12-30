@@ -588,13 +588,36 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
 
         peer_itor pit = peers_.find(srv_removed);
         if (pit != peers_.end()) {
-            pit->second->enable_hb(false);
+            // WARNING:
+            //   We should not remove the peer from the list immediately,
+            //   due to the issue described below:
+            //
+            // 0) Let's suppose there are 3 servers: S1, S2, and S3,
+            //    where S1 is the leader and S3 is going to leave.
+            // 1) Generate a conf log for removing server S3.
+            // 2) The conf log is committed by S1 and S2 only.
+            // 3) Before delivering the conf log to S3, S1 removes
+            //    the S3 peer info from the list.
+            // 4) It closes the connection to S3.
+            // 5) S3 cannot commit the config (containing removing S3).
+            // 6) Callback function for `RemovedFromCluster` will be missing,
+            //    but S3 will step down itself after 2 timeout period.
+            //
+            // To address it, we will remove S3 only after the commit index
+            // of the last config is delivered to S3.
+            // Also we will have timeout for it. If we fail to deliver the
+            // commit index, S3 will be just force removed.
 
-            sprintf(temp_buf, "remove peer %d\n", srv_removed);
-            str_buf += temp_buf;
-
-            peers_.erase(pit);
-            p_in("server %d is removed from cluster", srv_removed);
+            if (role_ == srv_role::leader) {
+                srv_to_leave_ = pit->second;
+                srv_to_leave_target_idx_ = new_config->get_log_idx();
+                p_in("server %d will be removed from cluster, config %zu",
+                     srv_removed, srv_to_leave_target_idx_);
+            } else {
+                remove_peer_from_peers(pit->second);
+                sprintf(temp_buf, "remove peer %d\n", srv_removed);
+                str_buf += temp_buf;
+            }
         } else {
             p_in("peer %d cannot be found, no action for removing", srv_removed);
         }
@@ -649,6 +672,12 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
          str_buf.c_str(), id_, leader_.load(), state_->get_term());
 
     update_target_priority();
+}
+
+void raft_server::remove_peer_from_peers(const ptr<peer>& pp) {
+    p_in("server %d is removed from cluster", pp->get_id());
+    pp->enable_hb(false);
+    peers_.erase(pp->get_id());
 }
 
 } // namespace nuraft;
