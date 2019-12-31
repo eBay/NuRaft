@@ -38,8 +38,26 @@ void raft_server::enable_hb_for_peer(peer& p) {
     schedule_task(p.get_hb_task(), p.get_current_hb_interval());
 }
 
+void raft_server::check_srv_to_leave_timeout() {
+    if (!srv_to_leave_) return;
+    ulong last_active_ms = srv_to_leave_->get_active_timer_us() / 1000;
+    if ( last_active_ms >
+             (ulong)peer::RESPONSE_LIMIT *
+             ctx_->get_params()->heart_beat_interval_ ) {
+        // Timeout: remove peer.
+        p_wn("server to be removed %d, activity timeout %zu ms. "
+             "force remove now",
+             srv_to_leave_->get_id(),
+             last_active_ms);
+        remove_peer_from_peers(srv_to_leave_);
+        reset_srv_to_leave();
+    }
+}
+
 void raft_server::handle_hb_timeout(int32 srv_id) {
     recur_lock(lock_);
+
+    check_srv_to_leave_timeout();
 
     if (write_paused_ && reelection_timer_.timeout()) {
         p_in("resign by timeout, %zu us elapsed, resign now",

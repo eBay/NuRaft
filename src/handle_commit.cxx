@@ -609,10 +609,8 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             // commit index, S3 will be just force removed.
 
             if (role_ == srv_role::leader) {
-                srv_to_leave_ = pit->second;
-                srv_to_leave_target_idx_ = new_config->get_log_idx();
-                p_in("server %d will be removed from cluster, config %zu",
-                     srv_removed, srv_to_leave_target_idx_);
+                // If leader, keep the to-be-removed server in peer list
+                // until 1) catch-up is done, or 2) timeout.
             } else {
                 remove_peer_from_peers(pit->second);
                 sprintf(temp_buf, "remove peer %d\n", srv_removed);

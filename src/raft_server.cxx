@@ -389,12 +389,22 @@ void raft_server::shutdown() {
     }
 }
 
+bool raft_server::is_regular_member(const ptr<peer>& p) {
+    // Skip to-be-removed server.
+    if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) return false;
+
+    // Skip learner.
+    if (p->is_learner()) return false;
+
+    return true;
+}
+
 // Number of nodes that are able to vote, including leader itself.
 int32 raft_server::get_num_voting_members() {
     int32 count = 0;
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
-        if (p->is_learner()) continue;
+        if (!is_regular_member(p)) continue;
         count++;
     }
     if (!im_learner_) count++;
@@ -449,8 +459,7 @@ size_t raft_server::get_not_responding_peers() {
     for (auto& entry: peers_) {
         ptr<peer> p = entry.second;
 
-        // Skip learner.
-        if (p->is_learner()) continue;
+        if (!is_regular_member(p)) continue;
 
         int32 resp_elapsed_ms = (int32)(p->get_resp_timer_us() / 1000);
         if ( resp_elapsed_ms > expiry ) {

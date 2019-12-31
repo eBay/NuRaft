@@ -482,6 +482,7 @@ protected:
     bool check_leadership_validity();
     void update_rand_timeout();
 
+    bool is_regular_member(const ptr<peer>& p);
     int32 get_num_voting_members();
     int32 get_quorum_for_election();
     int32 get_quorum_for_commit();
@@ -552,6 +553,7 @@ protected:
     void reconnect_client(peer& p);
     void become_leader();
     void become_follower();
+    void check_srv_to_leave_timeout();
     void enable_hb_for_peer(peer& p);
     void stop_election_timer();
     void handle_hb_timeout(int32 srv_id);

@@ -48,7 +48,7 @@ void raft_server::request_prevote() {
     ptr<cluster_config> c_config = get_config();
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
         ptr<peer> pp = it->second;
-        if (pp->is_learner()) continue;
+        if (!is_regular_member(pp)) continue;
         ptr<srv_config> s_config = c_config->get_server( pp->get_id() );
 
         if (s_config) {
@@ -94,7 +94,7 @@ void raft_server::request_prevote() {
 
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
         ptr<peer> pp = it->second;
-        if (pp->is_learner()) {
+        if (!is_regular_member(pp)) {
             // Do not send voting request to learner.
             continue;
         }
@@ -152,7 +152,7 @@ void raft_server::request_vote(bool ignore_priority) {
 
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
         ptr<peer> pp = it->second;
-        if (pp->is_learner()) {
+        if (!is_regular_member(pp)) {
             // Do not send voting request to learner.
             continue;
         }

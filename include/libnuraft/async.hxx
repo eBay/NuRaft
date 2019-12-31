@@ -37,18 +37,19 @@ limitations under the License.
 namespace nuraft {
 
 enum cmd_result_code {
-    OK = 0,
-    CANCELLED = -1,
-    TIMEOUT = -2,
-    NOT_LEADER = -3,
-    BAD_REQUEST = -4,
-    SERVER_ALREADY_EXISTS = -5,
-    CONFIG_CHANGING = -6,
-    SERVER_IS_JOINING = -7,
-    SERVER_NOT_FOUND = -8,
-    CANNOT_REMOVE_LEADER = -9,
+    OK                              =  0,
+    CANCELLED                       = -1,
+    TIMEOUT                         = -2,
+    NOT_LEADER                      = -3,
+    BAD_REQUEST                     = -4,
+    SERVER_ALREADY_EXISTS           = -5,
+    CONFIG_CHANGING                 = -6,
+    SERVER_IS_JOINING               = -7,
+    SERVER_NOT_FOUND                = -8,
+    CANNOT_REMOVE_LEADER            = -9,
+    SERVER_IS_LEAVING               = -10,
 
-    FAILED = -32768,
+    FAILED                          = -32768,
 };
 
 template< typename T,
