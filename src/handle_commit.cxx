@@ -130,29 +130,30 @@ void raft_server::commit_in_bg() {
 
         while ( sm_commit_index_ < quick_commit_index_ &&
                 sm_commit_index_ < log_store_->next_slot() - 1 ) {
-            sm_commit_index_ += 1;
-            ptr<log_entry> le = log_store_->entry_at(sm_commit_index_);
+            ulong sm_committing_index = sm_commit_index_ + 1;
+            ptr<log_entry> le = log_store_->entry_at(sm_committing_index);
             p_tr( "commit upto %llu, curruent idx %llu\n",
-                  quick_commit_index_.load(), sm_commit_index_.load() );
+                  quick_commit_index_.load(), sm_committing_index );
 
             if (le->get_term() == 0) {
                 // LCOV_EXCL_START
                 // Zero term means that log store is corrupted
                 // (failed to read log).
                 p_ft( "empty log at idx %llu, must be log corruption",
-                      sm_commit_index_.load() );
+                      sm_committing_index );
                 ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
                 ::exit(-1);
                 // LCOV_EXCL_STOP
             }
 
             if (le->get_val_type() == log_val_type::app_log) {
-                commit_app_log(le, need_to_handle_commit_elem);
+                commit_app_log(le, need_to_handle_commit_elem, sm_committing_index);
 
             } else if (le->get_val_type() == log_val_type::conf) {
-                commit_conf(le);
+                commit_conf(le, sm_committing_index);
             }
 
+            sm_commit_index_ = sm_committing_index;
             snapshot_and_compact(sm_commit_index_);
         }
         p_db( "DONE: commit upto %ld, curruent idx %ld\n",
@@ -191,12 +192,13 @@ void raft_server::commit_in_bg() {
 }
 
 void raft_server::commit_app_log(ptr<log_entry>& le,
-                                 bool need_to_handle_commit_elem)
+                                 bool need_to_handle_commit_elem,
+                                 ulong sm_committing_index)
 {
     ptr<buffer> ret_value = nullptr;
     ptr<buffer> buf = le->get_buf_ptr();
     buf->pos(0);
-    ulong sm_idx = sm_commit_index_.load();
+    ulong sm_idx = sm_committing_index;
     ulong pc_idx = precommit_index_.load();
     if (pc_idx < sm_idx) {
         // Pre-commit should have been invoked, must be a bug.
@@ -279,7 +281,7 @@ void raft_server::commit_app_log(ptr<log_entry>& le,
     }
 }
 
-void raft_server::commit_conf(ptr<log_entry>& le) {
+void raft_server::commit_conf(ptr<log_entry>& le, ulong sm_committing_index) {
     recur_lock(lock_);
     le->get_buf().pos(0);
     ptr<cluster_config> new_conf =
@@ -296,7 +298,7 @@ void raft_server::commit_conf(ptr<log_entry>& le) {
     }
 
     cb_func::Param param(id_, leader_);
-    uint64_t log_idx = sm_commit_index_;
+    uint64_t log_idx = sm_committing_index;
     param.ctx = &log_idx;
     ctx_->cb_func_.call(cb_func::NewConfig, &param);
 
