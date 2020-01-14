@@ -572,8 +572,10 @@ protected:
     void commit_in_bg();
     void append_entries_in_bg();
 
-    void commit_app_log(ptr<log_entry>& le, bool need_to_handle_commit_elem);
-    void commit_conf(ptr<log_entry>& le);
+    void commit_app_log(ulong idx_to_commit,
+                        ptr<log_entry>& le,
+                        bool need_to_handle_commit_elem);
+    void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
 
     ptr< cmd_result< ptr<buffer> > > send_msg_to_leader(ptr<req_msg>& req);
 
