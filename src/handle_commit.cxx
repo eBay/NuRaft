@@ -155,7 +155,6 @@ void raft_server::commit_in_bg() {
 
             ulong exp_idx = index_to_commit - 1;
             if (sm_commit_index_.compare_exchange_strong(exp_idx, index_to_commit)) {
-                sm_commit_index_ = index_to_commit;
                 snapshot_and_compact(sm_commit_index_);
             } else {
                 p_er("sm_commit_index_ has been changed to %zu, "
