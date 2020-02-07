@@ -848,7 +848,7 @@ void raft_server::become_leader() {
 
     request_append_entries();
 
-    if (my_priority_ == 0) {
+    if (my_priority_ == 0 && get_num_voting_members() > 1) {
         // If this member's priority is zero, this node owns a temporary
         // leadership. Let other node takeover shortly.
         p_in("[BECOME LEADER] my priority is 0, will resign shortly");
@@ -887,6 +887,12 @@ void raft_server::yield_leadership(bool immediate_yield) {
 
     // Not a leader, do nothing.
     if (id_ != leader_) return;
+
+    // This node is the only node, do nothing.
+    if (get_num_voting_members() <= 1) {
+        p_er("this node is the only node in the cluster, will do nothing");
+        return;
+    }
 
     recur_lock(lock_);
 
