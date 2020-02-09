@@ -874,6 +874,15 @@ bool raft_server::check_leadership_validity() {
              get_leadership_expiry(),
              min_quorum_size);
 
+        // NOTE:
+        //   For a cluster where the number of members is the same
+        //   as the size of quorum, we should not expire leadership,
+        //   since it will block the cluster doing any further actions.
+        if (num_voting_members <= min_quorum_size) {
+            p_wn("we cannot yield the leadership of this small cluster");
+            return true;
+        }
+
         p_er("will yield the leadership of this node");
         yield_leadership(true);
         return false;
