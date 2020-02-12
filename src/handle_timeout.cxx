@@ -42,7 +42,7 @@ void raft_server::check_srv_to_leave_timeout() {
     if (!srv_to_leave_) return;
     ulong last_active_ms = srv_to_leave_->get_active_timer_us() / 1000;
     if ( last_active_ms >
-             (ulong)peer::RESPONSE_LIMIT *
+             (ulong)peer::LEAVE_LIMIT *
              ctx_->get_params()->heart_beat_interval_ ) {
         // Timeout: remove peer.
         p_wn("server to be removed %d, activity timeout %zu ms. "
