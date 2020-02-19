@@ -30,28 +30,38 @@ namespace nuraft {
 
 struct raft_params {
     enum return_method_type {
-        // `append_entries()` will be a blocking call,
-        // and will return after it is committed in leader node.
+        /**
+         * `append_entries()` will be a blocking call,
+         * and will return after it is committed in leader node.
+         */
         blocking = 0x0,
 
-        // `append_entries()` will return immediately,
-        // and callback function (i.e., handler) will be
-        // invoked after it is committed in leader node.
+        /**
+         * `append_entries()` will return immediately,
+         * and callback function (i.e., handler) will be
+         * invoked after it is committed in leader node.
+         */
         async_handler = 0x1,
     };
 
     enum locking_method_type {
-        // `append_entries()` will share the same mutex with
-        // background worker threads.
+        /**
+         * `append_entries()` will share the same mutex with
+         * background worker threads.
+         */
         single_mutex = 0x0,
 
-        // `append_entries()` and background worker threads will
-        // use separate mutexes.
+        /**
+         * `append_entries()` and background worker threads will
+         * use separate mutexes.
+         */
         dual_mutex = 0x1,
 
-        // (Not supported yet)
-        // `append_entries()` will use RW-lock, which is separate to
-        // the mutex used by background worker threads.
+        /**
+         * (Not supported yet)
+         * `append_entries()` will use RW-lock, which is separate to
+         * the mutex used by background worker threads.
+         */
         dual_rw_lock = 0x2,
     };
 
@@ -311,94 +321,139 @@ struct raft_params {
     }
 
 public:
-    // Upper bound of election timer, in millisecond.
+    /**
+     * Upper bound of election timer, in millisecond.
+     */
     int32 election_timeout_upper_bound_;
 
-    // Lower bound of election timer, in millisecond.
+    /**
+     * Lower bound of election timer, in millisecond.
+     */
     int32 election_timeout_lower_bound_;
 
-    // Heartbeat interval, in millisecond.
+    /**
+     * Heartbeat interval, in millisecond.
+     */
     int32 heart_beat_interval_;
 
-    // Backoff time when RPC failure happens, in millisecond.
+    /**
+     * Backoff time when RPC failure happens, in millisecond.
+     */
     int32 rpc_failure_backoff_;
 
-    // Max number of logs that can be packed in a RPC
-    // for catch-up of joining an empty node.
+    /**
+     * Max number of logs that can be packed in a RPC
+     * for catch-up of joining an empty node.
+     */
     int32 log_sync_batch_size_;
 
-    // Log gap (the number of logs) to stop catch-up of
-    // joining a new node. Once this condition meets,
-    // that newly joinned node is added to peer list
-    // and starts to receive heartbeat from leader.
+    /**
+     * Log gap (the number of logs) to stop catch-up of
+     * joining a new node. Once this condition meets,
+     * that newly joined node is added to peer list
+     * and starts to receive heartbeat from leader.
+     *
+     * If zero, the new node will be added to the peer list
+     * immediately.
+     */
     int32 log_sync_stop_gap_;
 
-    // Log gap (the number of logs) to create a Raft snapshot.
+    /**
+     * Log gap (the number of logs) to create a Raft snapshot.
+     */
     int32 snapshot_distance_;
 
-    // (Deprecated).
+    /**
+     * (Deprecated).
+     */
     int32 snapshot_block_size_;
 
-    // Max number of logs that can be packed in a RPC
-    // for append entry request.
+    /**
+     * Max number of logs that can be packed in a RPC
+     * for append entry request.
+     */
     int32 max_append_size_;
 
-    // Minimum number of logs that will be preserved
-    // (i.e., protected from log compaction) since the
-    // last Raft snapshot.
+    /**
+     * Minimum number of logs that will be preserved
+     * (i.e., protected from log compaction) since the
+     * last Raft snapshot.
+     */
     int32 reserved_log_items_;
 
-    // Client request timeout in millisecond.
+    /**
+     * Client request timeout in millisecond.
+     */
     int32 client_req_timeout_;
 
-    // Log gap (compared to the leader's latest log)
-    // for treating this node as fresh.
+    /**
+     * Log gap (compared to the leader's latest log)
+     * for treating this node as fresh.
+     */
     int32 fresh_log_gap_;
 
-    // Log gap (compared to the leader's latest log)
-    // for treating this node as stale.
+    /**
+     * Log gap (compared to the leader's latest log)
+     * for treating this node as stale.
+     */
     int32 stale_log_gap_;
 
-    // Custom quorum size for commit.
-    // If set to zero, the default quorum size will be used.
+    /**
+     * Custom quorum size for commit.
+     * If set to zero, the default quorum size will be used.
+     */
     int32 custom_commit_quorum_size_;
 
-    // Custom quorum size for leader election.
-    // If set to zero, the default quorum size will be used.
+    /**
+     * Custom quorum size for leader election.
+     * If set to zero, the default quorum size will be used.
+     */
     int32 custom_election_quorum_size_;
 
-    // Expiration time of leadership in millisecond.
-    // If more than quorum nodes do not respond within
-    // this time, the current leader will immediately
-    // yield its leadership and become follower.
-    // If 0, it is automatically set to `heartbeat * 20`.
-    // If negative number, leadership will never be expired
-    // (the same as the original Raft logic).
+    /**
+     * Expiration time of leadership in millisecond.
+     * If more than quorum nodes do not respond within
+     * this time, the current leader will immediately
+     * yield its leadership and become follower.
+     * If 0, it is automatically set to `heartbeat * 20`.
+     * If negative number, leadership will never be expired
+     * (the same as the original Raft logic).
+     */
     int32 leadership_expiry_;
 
-    // If true, zero-priority member can initiate vote
-    // when leader is not elected long time (that can happen
-    // only the zero-priority member has the latest log).
-    // Once the zero-priority member becomes a leader,
-    // it will immediately yield leadership so that other
-    // higher priority node can takeover.
+    /**
+     * If true, zero-priority member can initiate vote
+     * when leader is not elected long time (that can happen
+     * only the zero-priority member has the latest log).
+     * Once the zero-priority member becomes a leader,
+     * it will immediately yield leadership so that other
+     * higher priority node can takeover.
+     */
     bool allow_temporary_zero_priority_leader_;
 
-    // If true, follower node will forward client request
-    // to the current leader.
-    // Otherwise, it will return error to client immediately.
+    /**
+     * If true, follower node will forward client request
+     * to the current leader.
+     * Otherwise, it will return error to client immediately.
+     */
     bool auto_forwarding_;
 
-    // If true, creating replication (append_entries) requests will be
-    // done by a backgroudn thread, instead of doing it in user threads.
-    // There can be some delay a little bit, but it improves reducing
-    // the lock contention.
+    /**
+     * If true, creating replication (append_entries) requests will be
+     * done by a backgroudn thread, instead of doing it in user threads.
+     * There can be some delay a little bit, but it improves reducing
+     * the lock contention.
+     */
     bool use_bg_thread_for_urgent_commit_;
 
-    // Choose the type of lock that will be used by user threads.
+    /**
+     * Choose the type of lock that will be used by user threads.
+     */
     locking_method_type locking_method_type_;
 
-    // To choose blocking call or asynchronous call.
+    /**
+     * To choose blocking call or asynchronous call.
+     */
     return_method_type return_method_;
 };
 

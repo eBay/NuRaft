@@ -202,7 +202,8 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     // only sync committed logs
     int32 gap = (int64_t)quick_commit_index_ - (int64_t)start_idx;
     ptr<raft_params> params = ctx_->get_params();
-    if (gap < params->log_sync_stop_gap_) {
+    if ( gap < params->log_sync_stop_gap_ ||
+         params->log_sync_stop_gap_ == 0 ) {
         p_in( "[SYNC LOG] LogSync is done for server %d "
               "with log gap %d (%zu - %zu, limit %d), "
               "now put the server into cluster",
