@@ -307,6 +307,7 @@ void raft_server::log_current_params() {
           "timeout %d - %d, heartbeat %d, "
           "leadership expiry %d, "
           "max batch %d, backoff %d, snapshot distance %d, "
+          "log sync stop gap %d, "
           "reserved logs %d, client timeout %d, "
           "auto forwarding %s, API call type %s, "
           "custom commit quorum size %d, "
@@ -318,6 +319,7 @@ void raft_server::log_current_params() {
           params->max_append_size_,
           params->rpc_failure_backoff_,
           params->snapshot_distance_,
+          params->log_sync_stop_gap_,
           params->reserved_log_items_,
           params->client_req_timeout_,
           ( params->auto_forwarding_ ? "ON" : "OFF" ),
