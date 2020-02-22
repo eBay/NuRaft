@@ -757,7 +757,14 @@ int multiple_config_change_test() {
 
     // Remove two nodes without waiting commit.
     s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
-    s1.raftServer->remove_srv( s4.getTestMgr()->get_srv_config()->get_id() );
+
+    // Cannot remove multiple servers at once, should return error.
+    ptr<raft_result> ret =
+        s1.raftServer->remove_srv( s4.getTestMgr()->get_srv_config()->get_id() );
+    CHK_GT(0, ret->get_result_code());
+
+    // Priority change is OK.
+    s1.raftServer->set_priority(s4.getTestMgr()->get_srv_config()->get_id(), 10);
 
     // Leave req/resp.
     s1.fNet->execReqResp();
@@ -770,20 +777,26 @@ int multiple_config_change_test() {
     // Wait for bg commit for configuration change.
     TestSuite::sleep_ms(COMMIT_TIME_MS);
 
-    // S3 and S4 should be removed.
+    // S3 should be removed.
     for (RaftPkg* pp: pkgs) {
-        if (pp->getTestMgr()->get_srv_config()->get_id() == 3 ||
-            pp->getTestMgr()->get_srv_config()->get_id() == 4) continue;
+        if (pp->getTestMgr()->get_srv_config()->get_id() == 3) continue;
 
         std::vector< ptr< srv_config > > configs_out;
         pp->raftServer->get_srv_config_all(configs_out);
 
-        // Only S1 and S2 should exist.
-        CHK_EQ(2, configs_out.size());
+        // Only S1, S2, and S4 should exist.
+        CHK_EQ(3, configs_out.size());
         for (auto& entry: configs_out) {
             ptr<srv_config>& s_conf = entry;
-            CHK_TRUE( s_conf->get_id() == 1 || s_conf->get_id() == 2 );
+            CHK_TRUE( s_conf->get_id() == 1 ||
+                      s_conf->get_id() == 2 ||
+                      s_conf->get_id() == 4 );
         }
+
+        // S4's priority should be 10.
+        ptr<cluster_config> c_conf = pp->raftServer->get_config();
+        ptr<srv_config> s4_conf = c_conf->get_server(4);
+        CHK_EQ(10, s4_conf->get_priority());
     }
 
     print_stats(pkgs);
