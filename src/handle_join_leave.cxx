@@ -415,6 +415,13 @@ void raft_server::handle_leave_cluster_resp(resp_msg& resp) {
 }
 
 void raft_server::rm_srv_from_cluster(int32 srv_id) {
+    if (srv_to_leave_) {
+        p_wn("to-be-removed server %d already exists, "
+             "cannot remove server %d for now",
+             srv_to_leave_->get_id(), srv_id);
+        return;
+    }
+
     ptr<cluster_config> cur_conf = get_config();
 
     // NOTE: Need to honor uncommitted config,

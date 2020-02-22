@@ -601,9 +601,9 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
     recur_lock(lock_);
     if (err) {
         int32 peer_id = err->req()->get_dst();
-        peer* pp = nullptr;
+        ptr<peer> pp = nullptr;
         auto entry = peers_.find(peer_id);
-        if (entry != peers_.end()) pp = entry->second.get();
+        if (entry != peers_.end()) pp = entry->second;
 
         int rpc_errs = 0;
         if (pp) {
@@ -616,6 +616,12 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         } else if (rpc_errs == peer::WARNINGS_LIMIT) {
             p_wn("too verbose RPC error on peer (%d), "
                  "will suppress it from now", peer_id);
+        }
+
+        if (pp && pp->is_leave_flag_set()) {
+            // If this is to-be-removed server, proceed it without
+            // waiting for the response.
+            handle_join_leave_rpc_err(msg_type::leave_cluster_request, pp);
         }
         return;
     }
@@ -767,6 +773,14 @@ void raft_server::reconnect_client(peer& p) {
 
     ptr<cluster_config> c_config = get_config();
     ptr<srv_config> s_config = c_config->get_server(p.get_id());
+
+    // NOTE: To-be-removed server will not exist in config,
+    //       but we still need to reconnect to it if we can
+    //       send the latest config to the server.
+    if (!s_config && p.is_leave_flag_set()) {
+        s_config = srv_config::deserialize( *p.get_config().serialize() );
+    }
+
     if (s_config) {
         p_db( "reset RPC client for peer %d",
               p.get_id() );
@@ -1080,8 +1094,9 @@ void raft_server::handle_ext_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err) 
 }
 
 void raft_server::handle_ext_resp_err(rpc_exception& err) {
-    p_db( "receive an rpc error response from peer server, %s", err.what() );
     ptr<req_msg> req = err.req();
+    p_in( "receive an rpc error response from peer server, %s %d",
+          err.what(), req->get_type() );
     if ( req->get_type() != msg_type::sync_log_request     &&
          req->get_type() != msg_type::join_cluster_request &&
          req->get_type() != msg_type::leave_cluster_request ) {
