@@ -343,9 +343,23 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
 
     check_srv_to_leave_timeout();
     if (srv_to_leave_) {
-        p_wn("previous to-be-removed server has not left yet");
+        p_wn("previous to-be-removed server %d has not left yet",
+             srv_to_leave_->get_id());
         resp->set_result_code(cmd_result_code::SERVER_IS_LEAVING);
         return resp;
+    }
+    // NOTE:
+    //   Although `srv_to_leave_` is not set, we should check if
+    //   there is any peer whose leave flag is set.
+    for (auto& entry: peers_) {
+        ptr<peer> pp = entry.second;
+        if (pp->is_leave_flag_set()) {
+            p_wn("leave flag of server %d is set, but the server "
+                 "has not left yet",
+                 pp->get_id());
+            resp->set_result_code(cmd_result_code::SERVER_IS_LEAVING);
+            return resp;
+        }
     }
 
     if (config_changing_) {
@@ -415,6 +429,13 @@ void raft_server::handle_leave_cluster_resp(resp_msg& resp) {
 }
 
 void raft_server::rm_srv_from_cluster(int32 srv_id) {
+    if (srv_to_leave_) {
+        p_wn("to-be-removed server %d already exists, "
+             "cannot remove server %d for now",
+             srv_to_leave_->get_id(), srv_id);
+        return;
+    }
+
     ptr<cluster_config> cur_conf = get_config();
 
     // NOTE: Need to honor uncommitted config,

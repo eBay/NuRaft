@@ -507,6 +507,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         }
         if (id_ == (*it)->get_id()) {
             my_priority_ = (*it)->get_priority();
+            steps_to_down_ = 0;
             if (role_ == srv_role::follower &&
                 catching_up_) {
                 // If this node is newly added, start election timer
@@ -594,6 +595,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             CbReturnCode rc = ctx_->cb_func_.call( cb_func::RemovedFromCluster,
                                                    &param );
             (void)rc;
+            steps_to_down_ = 2;
         }
 
         peer_itor pit = peers_.find(srv_removed);
