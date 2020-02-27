@@ -54,6 +54,8 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         return resp;
     }
 
+    // Before checking duplicate ID, confirm srv_to_leave_ is gone.
+    check_srv_to_leave_timeout();
     ptr<srv_config> srv_conf =
         srv_config::deserialize( entries[0]->get_buf() );
     if ( peers_.find( srv_conf->get_id() ) != peers_.end() ||

@@ -692,7 +692,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     check_srv_to_leave_timeout();
     if ( srv_to_leave_ &&
          srv_to_leave_->get_id() == resp.get_src() &&
-         srv_to_leave_->is_stepping_down() ) {
+         srv_to_leave_->is_stepping_down() &&
+         resp.get_next_idx() > srv_to_leave_target_idx_ ) {
         // Catch-up is done.
         p_in("server to be removed %d fully caught up the "
              "target config log %zu",
