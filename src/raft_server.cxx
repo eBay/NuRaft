@@ -311,7 +311,8 @@ void raft_server::log_current_params() {
           "reserved logs %d, client timeout %d, "
           "auto forwarding %s, API call type %s, "
           "custom commit quorum size %d, "
-          "custom election quorum size %d",
+          "custom election quorum size %d, "
+          "snapshot receiver %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -326,7 +327,8 @@ void raft_server::log_current_params() {
           ( params->return_method_ == raft_params::blocking
             ? "BLOCKING" : "ASYNC" ),
           params->custom_commit_quorum_size_,
-          params->custom_election_quorum_size_ );
+          params->custom_election_quorum_size_,
+          params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED");
 }
 
 raft_params raft_server::get_current_params() const {
@@ -429,6 +431,19 @@ int32 raft_server::get_quorum_for_election() {
 int32 raft_server::get_quorum_for_commit() {
     ptr<raft_params> params = ctx_->get_params();
     int32 num_voting_members = get_num_voting_members();
+
+    if (params->exclude_snp_receiver_from_quorum_){
+        // If the option is on, exclude any peer who is
+        // receiving snapshot.
+        for (auto& entry: peers_) {
+            ptr<peer>& p = entry.second;
+            if ( num_voting_members &&
+                 p->get_snapshot_sync_ctx() ) {
+                num_voting_members--;
+            }
+        }
+    }
+
     if ( params->custom_commit_quorum_size_ <= 0 ||
          params->custom_commit_quorum_size_ > num_voting_members ) {
         return num_voting_members / 2;

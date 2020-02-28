@@ -85,6 +85,7 @@ struct raft_params {
         , allow_temporary_zero_priority_leader_(true)
         , auto_forwarding_(false)
         , use_bg_thread_for_urgent_commit_(true)
+        , exclude_snp_receiver_from_quorum_(false)
         , locking_method_type_(dual_mutex)
         , return_method_(blocking)
         {}
@@ -445,6 +446,14 @@ public:
      * the lock contention.
      */
     bool use_bg_thread_for_urgent_commit_;
+
+    /**
+     * If true, a server who is currently receiving snapshot will not be
+     * counted in quorum. It is useful when there are only two servers
+     * in the cluster. Once the follower is receiving snapshot, the
+     * leader cannot make any progress.
+     */
+    bool exclude_snp_receiver_from_quorum_;
 
     /**
      * Choose the type of lock that will be used by user threads.
