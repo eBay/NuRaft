@@ -208,13 +208,25 @@ void raft_server::drop_all_pending_commit_elems() {
     //   Invoke all awaiting requests to return `CANCELLED`.
     if (ctx_->get_params()->return_method_ == raft_params::blocking) {
         auto_lock(commit_ret_elems_lock_);
+        ulong min_idx = std::numeric_limits<ulong>::max();
+        ulong max_idx = 0;
         for (auto& entry: commit_ret_elems_) {
             ptr<commit_ret_elem>& elem = entry.second;
             elem->ret_value_ = nullptr;
             elem->result_code_ = cmd_result_code::CANCELLED;
             elem->awaiter_.invoke();
-            p_wn("cancelled blocking client request %zu, waited %zu us",
+            if (min_idx > elem->idx_) {
+                min_idx = elem->idx_;
+            }
+            if (max_idx < elem->idx_) {
+                max_idx = elem->idx_;
+            }
+            p_db("cancelled blocking client request %zu, waited %zu us",
                  elem->idx_, elem->timer_.get_us());
+        }
+        if (!commit_ret_elems_.empty()) {
+            p_wn("cancelled %zu blocking client requests from %zu to %zu.",
+                 commit_ret_elems_.size(), min_idx, max_idx);
         }
         commit_ret_elems_.clear();
         return;
