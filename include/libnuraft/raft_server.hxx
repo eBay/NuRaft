@@ -693,6 +693,9 @@ protected:
     // `true` if background commit thread has been terminated.
     std::atomic<bool> commit_bg_stopped_;
 
+    // `true` if background append thread has been terminated.
+    std::atomic<bool> append_bg_stopped_;
+
     // `true` if write operation is paused, as the first phase of
     // leader re-election.
     std::atomic<bool> write_paused_;

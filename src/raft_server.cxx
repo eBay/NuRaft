@@ -58,6 +58,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , data_fresh_(false)
     , stopping_(false)
     , commit_bg_stopped_(false)
+    , append_bg_stopped_(false)
     , write_paused_(false)
     , next_leader_candidate_(-1)
     , im_learner_(false)
@@ -353,9 +354,13 @@ void raft_server::shutdown() {
         }
     }
 
+    p_in("sent stop signal to the commit thread.");
+
     // Cancel all scheduler tasks.
     // TODO: how do we guarantee all tasks are done?
     cancel_schedulers();
+
+    p_in("cancelled all schedulers.");
 
     // Wait until background commit thread terminates.
     while (!commit_bg_stopped_) {
@@ -364,7 +369,12 @@ void raft_server::shutdown() {
         }
         std::this_thread::yield();
     }
+
+    p_in("commit thread stopped.");
+
     drop_all_pending_commit_elems();
+
+    p_in("all pending commit elements dropped.");
 
     // Clear shared_ptrs that the current server is holding.
     {   std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
@@ -373,6 +383,8 @@ void raft_server::shutdown() {
         ctx_->rpc_cli_factory_.reset();
         ctx_->scheduler_.reset();
     }
+
+    p_in("reset all pointers.");
 
     // Server to join/leave.
     if (srv_to_join_) {
@@ -387,10 +399,20 @@ void raft_server::shutdown() {
         bg_commit_thread_.join();
     }
 
-    if (bg_append_thread_.joinable()) {
+    p_in("joined terminated commit thread.");
+
+    while (!append_bg_stopped_) {
         bg_append_ea_->invoke();
+        std::this_thread::yield();
+    }
+
+    p_in("sent stop signal to background append thread.");
+
+    if (bg_append_thread_.joinable()) {
         bg_append_thread_.join();
     }
+
+    p_in("raft_server shutdown completed.");
 }
 
 bool raft_server::is_regular_member(const ptr<peer>& p) {
