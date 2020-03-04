@@ -137,7 +137,12 @@ void raft_server::broadcast_priority_change(const int srv_id,
         v.push_back(le);
 
         ptr<peer> pp = it->second;
-        pp->send_req(pp, req, resp_handler_);
+        if (pp->make_busy()) {
+            pp->send_req(pp, req, resp_handler_);
+        } else {
+            p_er("peer %d is currently busy, cannot send request",
+                 pp->get_id());
+        }
     }
 }
 

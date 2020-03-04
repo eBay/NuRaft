@@ -759,7 +759,12 @@ void raft_server::send_reconnect_request() {
                                             leader_,
                                             0, 0, 0 );
 
-        p_leader->send_req(p_leader, req, ex_resp_handler_);
+        if (p_leader->make_busy()) {
+            p_leader->send_req(p_leader, req, ex_resp_handler_);
+        } else {
+            p_er("previous message to leader %d hasn't been responded yet",
+                 p_leader->get_id());
+        }
 
     } else {
         // LCOV_EXCL_START
@@ -860,7 +865,6 @@ void raft_server::become_leader() {
             // reconnect_client(*pp);
 
             pp->set_next_log_idx(log_store_->next_slot());
-            pp->set_free();
             enable_hb_for_peer(*pp);
         }
 
@@ -1172,7 +1176,12 @@ void raft_server::handle_ext_resp_err(rpc_exception& err) {
 void raft_server::on_retryable_req_err(ptr<peer>& p, ptr<req_msg>& req) {
     p_db( "retry the request %s for %d",
           msg_type_to_string(req->get_type()).c_str(), p->get_id() );
-    p->send_req(p, req, ex_resp_handler_);
+    if (p->make_busy()) {
+        p->send_req(p, req, ex_resp_handler_);
+    } else {
+        p_er("retry request %d failed: peer %d is busy",
+             req->get_type(), p->get_id());
+    }
 }
 
 ulong raft_server::term_for_log(ulong log_idx) {

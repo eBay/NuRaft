@@ -392,14 +392,19 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
                               id_, srv_id, 0,
                               log_store_->next_slot() - 1,
                               quick_commit_index_.load() ) );
-    p->send_req(p, leave_req, ex_resp_handler_);
     // WARNING:
     //   DO NOT reset HB counter to 0 as removing server
     //   may be requested multiple times, and anyway we should
     //   remove that server.
     p->set_leave_flag();
 
-    p_in("sent leave request to peer %d", p->get_id());
+    if (p->make_busy()) {
+        p->send_req(p, leave_req, ex_resp_handler_);
+        p_in("sent leave request to peer %d", p->get_id());
+    } else {
+        p->set_rsv_msg(leave_req, ex_resp_handler_);
+        p_in("peer %d is currently busy, keep the message", p->get_id());
+    }
 
     resp->accept(log_store_->next_slot());
     return resp;

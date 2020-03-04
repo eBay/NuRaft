@@ -42,13 +42,6 @@ public:
     using meta_cb_params = asio_service_meta_cb_params;
     using options = asio_service_options;
 
-    enum log_level {
-        debug = 0x0,
-        info,
-        warnning,
-        error
-    };
-
     asio_service(const options& _opt = options(),
                  ptr<logger> _l = nullptr);
 

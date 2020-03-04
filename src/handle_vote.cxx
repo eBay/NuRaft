@@ -45,6 +45,7 @@ bool raft_server::check_cond_for_zp_election() {
 }
 
 void raft_server::request_prevote() {
+    ptr<raft_params> params = ctx_->get_params();
     ptr<cluster_config> c_config = get_config();
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
         ptr<peer> pp = it->second;
@@ -60,11 +61,24 @@ void raft_server::request_prevote() {
             } else {
                 // Since second time: reset only if `rpc_` is null.
                 recreate = pp->need_to_reconnect();
+
+                // Or if it is not active long time, reconnect as well.
+                int32 last_active_time_ms = pp->get_active_timer_us() / 1000;
+                if ( last_active_time_ms >
+                         params->heart_beat_interval_ * peer::RECONNECT_LIMIT ) {
+                    p_wn( "connection to peer %d is not active long time: %zu ms, "
+                          "need reconnection for prevote",
+                          pp->get_id(),
+                          last_active_time_ms );
+                    recreate = true;
+                }
             }
 
             if (recreate) {
                 p_in("reset RPC client for peer %d", s_config->get_id());
                 pp->recreate_rpc(s_config, *ctx_);
+                pp->set_free();
+                pp->set_manual_free();
             }
         }
     }
@@ -107,7 +121,12 @@ void raft_server::request_prevote() {
                             term_for_log(log_store_->next_slot() - 1),
                             log_store_->next_slot() - 1,
                             quick_commit_index_.load() ) );
-        pp->send_req(pp, req, resp_handler_);
+        if (pp->make_busy()) {
+            pp->send_req(pp, req, resp_handler_);
+        } else {
+            p_wn("failed to send prevote request: peer %d (%s) is busy",
+                 pp->get_id(), pp->get_endpoint().c_str());
+        }
     }
 }
 
@@ -179,7 +198,12 @@ void raft_server::request_vote(bool ignore_priority) {
               msg_type_to_string(req->get_type()).c_str(),
               it->second->get_id(),
               state_->get_term() );
-        pp->send_req(pp, req, resp_handler_);
+        if (pp->make_busy()) {
+            pp->send_req(pp, req, resp_handler_);
+        } else {
+            p_wn("failed to send vote request: peer %d (%s) is busy",
+                 pp->get_id(), pp->get_endpoint().c_str());
+        }
     }
 }
 
@@ -291,18 +315,9 @@ void raft_server::handle_vote_resp(resp_msg& resp) {
 }
 
 ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
-    // Once we get a pre-vote request from a peer,
-    // it means that the peer has not received any messages or heartbeats,
-    // so that we should clear the busy flag of it.
     ulong next_idx_for_resp = 0;
     auto entry = peers_.find(req.get_src());
-    if (entry != peers_.end()) {
-        peer* pp = entry->second.get();
-        if (pp->is_busy()) {
-            p_in("busy_flag of peer %d was set, clear the flag.", req.get_src());
-            pp->set_free();
-        }
-    } else {
+    if (entry == peers_.end()) {
         // This node already has been removed, set a special value.
         next_idx_for_resp = std::numeric_limits<ulong>::max();
     }

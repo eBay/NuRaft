@@ -143,7 +143,10 @@ public:
 
     bool isDstOnline();
 
+    uint64_t get_id() const;
+
 private:
+    uint64_t myId;
     FakeNetwork* motherNet;
     FakeNetwork* dstNet;
     std::list<FakeNetwork::ReqPkg> pendingReqs;

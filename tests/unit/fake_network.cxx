@@ -287,10 +287,12 @@ void FakeNetwork::shutdown() {
 
 
 // === FakeClient
+static std::atomic<uint64_t> fake_client_id_counter(1);
 
 FakeClient::FakeClient(FakeNetwork* mother,
                        FakeNetwork* dst)
-    : motherNet(mother)
+    : myId(fake_client_id_counter.fetch_add(1))
+    , motherNet(mother)
     , dstNet(dst)
 {}
 
@@ -313,6 +315,10 @@ void FakeClient::dropPackets() {
 bool FakeClient::isDstOnline() {
     if (!dstNet) return false;
     return dstNet->isOnline();
+}
+
+uint64_t FakeClient::get_id() const {
+    return myId;
 }
 
 

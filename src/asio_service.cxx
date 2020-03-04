@@ -162,6 +162,7 @@ public:
 
     const asio_service::options& get_options() const { return my_opt_; }
     asio::io_service& get_io_svc() { return io_svc_; }
+    uint64_t assign_client_id() { return client_id_counter_.fetch_add(1); }
 
 private:
 #ifndef SSL_LIBRARY_NOT_FOUND
@@ -186,6 +187,7 @@ private:
     std::atomic<uint32_t> worker_id_;
     std::list< ptr<std::thread> > worker_handles_;
     asio_service::options my_opt_;
+    std::atomic<uint64_t> client_id_counter_;
     ptr<logger> l_;
     friend asio_service;
 };
@@ -741,8 +743,10 @@ public:
         , ssl_ready_(false)
         , num_send_fails_(0)
         , abandoned_(false)
+        , socket_busy_(false)
         , l_(l)
     {
+        client_id_ = impl_->assign_client_id();
         if (ssl_enabled_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
             assert(0); // Should not reach here.
@@ -769,6 +773,10 @@ public:
     }
 
 public:
+    uint64_t get_id() const {
+        return client_id_;
+    }
+
 #ifndef SSL_LIBRARY_NOT_FOUND
     bool verify_certificate(bool preverified,
                             asio::ssl::verify_context& ctx)
@@ -926,6 +934,9 @@ public:
             return;
         }
 
+        // Socket should be idle now. If not, it should be a bug.
+        set_busy_flag(true);
+
         // If we reach here, that means connection is valid.
         // Reset the counter.
         num_send_fails_ = 0;
@@ -1010,6 +1021,24 @@ public:
                               std::placeholders::_2 ) );
     }
 private:
+    void set_busy_flag(bool to) {
+        if (to == true) {
+            bool exp = false;
+            if (!socket_busy_.compare_exchange_strong(exp, true)) {
+                p_ft("socket is already in use, race happened on connection to %s:%s",
+                     host_.c_str(), port_.c_str());
+                assert(0);
+            }
+        } else {
+            bool exp = true;
+            if (!socket_busy_.compare_exchange_strong(exp, false)) {
+                p_ft("socket is already idle, race happened on connection to %s:%s",
+                     host_.c_str(), port_.c_str());
+                assert(0);
+            }
+        }
+    }
+
     void close_socket() {
         // Do nothing,
         // early closing socket before destroying this instance
@@ -1214,6 +1243,7 @@ private:
                                  std::placeholders::_1,
                                  std::placeholders::_2 ) );
         } else {
+            set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
         }
@@ -1233,6 +1263,8 @@ private:
             // just use the buffer as it is for ctx.
             ctx_buf->pos(0);
             rsp->set_ctx(ctx_buf);
+
+            set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
             return;
@@ -1281,6 +1313,7 @@ private:
             rsp->set_ctx(actual_ctx);
         }
 
+        set_busy_flag(false);
         ptr<rpc_exception> except;
         when_done(rsp, except);
     }
@@ -1324,6 +1357,8 @@ private:
     std::atomic<bool> ssl_ready_;
     std::atomic<size_t> num_send_fails_;
     std::atomic<bool> abandoned_;
+    std::atomic<bool> socket_busy_;
+    uint64_t client_id_;
     ptr<logger> l_;
 };
 
@@ -1356,6 +1391,7 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
     , num_active_workers_(0)
     , worker_id_(0)
     , my_opt_(_opt)
+    , client_id_counter_(1)
     , l_(l)
 {
     if (my_opt_.enable_ssl_) {

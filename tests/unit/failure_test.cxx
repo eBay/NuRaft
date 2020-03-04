@@ -420,6 +420,9 @@ int uncommitted_conf_new_leader_test() {
         s1.fNet->execReqResp(s2_addr);
         s1.fNet->execReqResp(s3_addr);
     }
+    // One more time, to make sure there is no message in-flight.
+    s1.fNet->execReqResp(s2_addr);
+    s1.fNet->execReqResp(s3_addr);
 
     // Now remove S2 (who was a member of the latest quorum).
     s1.raftServer->remove_srv(2);
