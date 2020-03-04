@@ -90,7 +90,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
     if (err == nilptr) {
         // Succeeded.
         {   std::lock_guard<std::mutex> l(rpc_protector_);
-            // The same as below, freeing bush flag should be done
+            // The same as below, freeing busy flag should be done
             // only if the RPC hasn't been changed.
             uint64_t cur_rpc_id = rpc_ ? rpc_->get_id() : 0;
             uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;

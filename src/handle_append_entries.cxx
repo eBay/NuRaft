@@ -163,6 +163,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             p->reset_long_pause_warnings();
 
         } else {
+            // FIXME: `manual_free` is deprecated, need to get rid of it.
+
             // It means that this is not an actual recovery,
             // but just temporarily freed busy flag.
             p->reset_manual_free();
