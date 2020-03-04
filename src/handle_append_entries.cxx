@@ -788,7 +788,12 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     if ( write_paused_ &&
          p->get_id() == next_leader_candidate_ &&
          p_matched_idx &&
-         p_matched_idx == log_store_->next_slot() - 1 ) {
+         p_matched_idx == log_store_->next_slot() - 1 &&
+         p->make_busy() ) {
+        // NOTE:
+        //   If `make_busy` fails (very unlikely to happen), next
+        //   response handler (of heartbeat, append_entries ..) will
+        //   retry this.
         p_in("ready to resign, server id %d, "
              "latest log index %zu, "
              "%zu us elapsed, resign now",
