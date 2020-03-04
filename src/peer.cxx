@@ -89,8 +89,28 @@ void peer::handle_rpc_result( ptr<peer> myself,
 
     if (err == nilptr) {
         // Succeeded.
+        {   std::lock_guard<std::mutex> l(rpc_protector_);
+            // The same as below, freeing bush flag should be done
+            // only if the RPC hasn't been changed.
+            uint64_t cur_rpc_id = rpc_ ? rpc_->get_id() : 0;
+            uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;
+            if (cur_rpc_id != given_rpc_id) {
+                p_wn( "[EDGE CASE] got stale RPC response from %d: "
+                      "current %p (%zu), from parameter %p (%zu). "
+                      "will ignore this response",
+                      config_->get_id(),
+                      rpc_.get(),
+                      cur_rpc_id,
+                      my_rpc_client.get(),
+                      given_rpc_id );
+                return;
+            }
+        }
+
         if ( req->get_type() == msg_type::append_entries_request ||
-             req->get_type() == msg_type::install_snapshot_request ) {
+             req->get_type() == msg_type::install_snapshot_request ||
+             req->get_type() == msg_type::request_vote_request ||
+             req->get_type() == msg_type::pre_vote_request ) {
             set_free();
         }
 
@@ -115,10 +135,14 @@ void peer::handle_rpc_result( ptr<peer> myself,
         // Destroy this connection, we MUST NOT re-use existing socket.
         // Next append operation will create a new one.
         {   std::lock_guard<std::mutex> l(rpc_protector_);
-            if (rpc_.get() == my_rpc_client.get()) {
+            uint64_t cur_rpc_id = rpc_ ? rpc_->get_id() : 0;
+            uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;
+            if (cur_rpc_id == given_rpc_id) {
                 rpc_.reset();
                 if ( req->get_type() == msg_type::append_entries_request ||
-                     req->get_type() == msg_type::install_snapshot_request ) {
+                     req->get_type() == msg_type::install_snapshot_request ||
+                     req->get_type() == msg_type::request_vote_request ||
+                     req->get_type() == msg_type::pre_vote_request ) {
                     set_free();
                 }
 
@@ -128,10 +152,12 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 //   error. Those two are different instances and we
                 //   SHOULD NOT reset the new one.
                 p_wn( "[EDGE CASE] RPC for %d has been reset before "
-                      "returning error: current %p, from parameter %p",
+                      "returning error: current %p (%zu), from parameter %p (%zu)",
                       config_->get_id(),
                       rpc_.get(),
-                      my_rpc_client.get() );
+                      cur_rpc_id,
+                      my_rpc_client.get(),
+                      given_rpc_id );
             }
         }
     }
