@@ -110,7 +110,8 @@ void peer::handle_rpc_result( ptr<peer> myself,
         if ( req->get_type() == msg_type::append_entries_request ||
              req->get_type() == msg_type::install_snapshot_request ||
              req->get_type() == msg_type::request_vote_request ||
-             req->get_type() == msg_type::pre_vote_request ) {
+             req->get_type() == msg_type::pre_vote_request ||
+             req->get_type() == msg_type::leave_cluster_request ) {
             set_free();
         }
 
@@ -142,7 +143,8 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 if ( req->get_type() == msg_type::append_entries_request ||
                      req->get_type() == msg_type::install_snapshot_request ||
                      req->get_type() == msg_type::request_vote_request ||
-                     req->get_type() == msg_type::pre_vote_request ) {
+                     req->get_type() == msg_type::pre_vote_request ||
+                     req->get_type() == msg_type::leave_cluster_request ) {
                     set_free();
                 }
 

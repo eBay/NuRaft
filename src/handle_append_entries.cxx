@@ -121,8 +121,23 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
     if (p->make_busy()) {
         p_tr("send request to %d\n", (int)p->get_id());
-        ptr<req_msg> msg = create_append_entries_req(*p);
+
+        // If reserved message exists, process it first.
+        ptr<req_msg> msg = p->get_rsv_msg();
+        rpc_handler m_handler = p->get_rsv_msg_handler();
+        if (msg) {
+            // Clear the reserved message.
+            p->set_rsv_msg(nullptr, nullptr);
+            p_in("found reserved message to peer %d, type %d",
+                 p->get_id(), msg->get_type());
+
+        } else {
+            // Normal message.
+            msg = create_append_entries_req(*p);
+            m_handler = resp_handler_;
+        }
         if (!msg) {
+            // Even normal message doesn't exist.
             p->set_free();
             return true;
         }
@@ -153,7 +168,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             p->reset_manual_free();
         }
 
-        p->send_req(p, msg, resp_handler_);
+        p->send_req(p, msg, m_handler);
         p->reset_ls_timer();
 
         if ( srv_to_leave_ &&

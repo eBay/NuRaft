@@ -89,6 +89,8 @@ public:
         , reconn_backoff_(0)
         , suppress_following_error_(false)
         , abandoned_(false)
+        , rsv_msg_(nullptr)
+        , rsv_msg_handler_(nullptr)
         , l_(logger)
     {
         reset_ls_timer();
@@ -292,6 +294,14 @@ public:
         return suppress_following_error_.compare_exchange_strong(exp, desired);
     }
 
+    void set_rsv_msg(const ptr<req_msg>& m, const rpc_handler& h) {
+        rsv_msg_ = m;
+        rsv_msg_handler_ = h;
+    }
+
+    ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
+    rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
+
 private:
     void handle_rpc_result(ptr<peer> myself,
                            ptr<rpc_client> my_rpc_client,
@@ -409,6 +419,12 @@ private:
     // if `true`, this peer is removed and shut down.
     // All operations on this peer should be rejected.
     std::atomic<bool> abandoned_;
+
+    // Reserved message that should be sent next time.
+    ptr<req_msg> rsv_msg_;
+
+    // Handler for reserved message.
+    rpc_handler rsv_msg_handler_;
 
     // Logger instance.
     ptr<logger> l_;
