@@ -870,6 +870,7 @@ void raft_server::become_leader() {
 
         // If there are uncommitted logs, search if conf log exists.
         ptr<cluster_config> last_config = get_config();
+
         ulong s_idx = sm_commit_index_ + 1;
         ulong e_idx = log_store_->next_slot();
         for (ulong ii = s_idx; ii < e_idx; ++ii) {
@@ -881,8 +882,11 @@ void raft_server::become_leader() {
             last_config = cluster_config::deserialize(le->get_buf());
         }
 
-        last_config->set_log_idx(log_store_->next_slot());
-        ptr<buffer> conf_buf = last_config->serialize();
+        // WARNING: WE SHOULD NOT CHANGE THE ORIGINAL CONTENTS DIRECTLY!
+        ptr<cluster_config> last_config_cloned =
+            cluster_config::deserialize( *last_config->serialize() );
+        last_config_cloned->set_log_idx(log_store_->next_slot());
+        ptr<buffer> conf_buf = last_config_cloned->serialize();
         ptr<log_entry> entry
             ( cs_new<log_entry>
               ( state_->get_term(), conf_buf, log_val_type::conf ) );
