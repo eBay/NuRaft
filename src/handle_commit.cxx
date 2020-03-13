@@ -619,12 +619,23 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             // of the last config is delivered to S3.
             // Also we will have timeout for it. If we fail to deliver the
             // commit index, S3 will be just force removed.
+            const ptr<peer>& pp = pit->second;
 
-            if (role_ == srv_role::leader) {
+            if (role_ == srv_role::leader && srv_to_leave_) {
                 // If leader, keep the to-be-removed server in peer list
                 // until 1) catch-up is done, or 2) timeout.
+
+                // However, if `srv_to_leave_` is NULL,
+                // it is replaying old config. We can remove it
+                // immediately without setting `srv_to_leave_`.
+
             } else {
-                remove_peer_from_peers(pit->second);
+                if (!srv_to_leave_) {
+                    p_in("srv_to_leave_ is currently empty "
+                         "on config for removing %d",
+                         pp->get_id());
+                }
+                remove_peer_from_peers(pp);
                 sprintf(temp_buf, "remove peer %d\n", srv_removed);
                 str_buf += temp_buf;
             }

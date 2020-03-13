@@ -496,7 +496,7 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
 
 void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
     if (t_msg == msg_type::leave_cluster_request) {
-        p_in( "rpc failed again for the removing server (%d), "
+        p_in( "rpc failed for removing server (%d), "
               "will remove this server directly",
               p->get_id() );
 
