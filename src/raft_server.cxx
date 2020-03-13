@@ -1320,5 +1320,12 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
     return log_index;
 }
 
+CbReturnCode raft_server::invoke_callback( cb_func::Type type,
+                                           cb_func::Param* param )
+{
+    CbReturnCode rc = ctx_->cb_func_.call(type, param);
+    return rc;
+}
+
 } // namespace nuraft;
 
