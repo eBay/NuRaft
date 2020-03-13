@@ -110,6 +110,11 @@ public:
         _s_info(ll) << msg;
     }
 
+    void localLog(const std::string& msg) {
+        SimpleLogger* ll = myLogWrapper->getLogger();
+        _s_info(ll) << msg;
+    }
+
     int myId;
     std::string myEndpoint;
     ptr<FakeNetworkBase> fBase;

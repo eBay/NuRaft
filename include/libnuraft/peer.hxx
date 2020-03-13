@@ -281,9 +281,13 @@ public:
     bool need_to_reconnect() {
         if (abandoned_) return false;
 
-        if (reconn_scheduled_ && reconn_timer_.timeout()) return true;
+        if (reconn_scheduled_ && reconn_timer_.timeout()) {
+            return true;
+        }
         {   std::lock_guard<std::mutex> l(rpc_protector_);
-            if (!rpc_.get()) return true;
+            if (!rpc_.get()) {
+                return true;
+            }
         }
         return false;
     }

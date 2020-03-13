@@ -546,6 +546,51 @@ int removed_server_late_step_down_test() {
     return 0;
 }
 
+int remove_server_on_pending_configs_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Make some dummy configs by setting user ctx.
+    s1.raftServer->set_user_ctx("a");
+    s1.raftServer->set_user_ctx("aa");
+
+    // Without commit & replication of above configs,
+    // remove S2.
+    s1.raftServer->remove_srv(2);
+
+    // Make failure.
+    s1.fNet->makeReqFailAll(s2_addr);
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->makeReqFailAll(s2_addr);
+
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Adding server should succeed without error about duplicate ID.
+    ptr< cmd_result< ptr<buffer> > > ret =
+        s1.raftServer->add_srv( *s2.getTestMgr()->get_srv_config() );
+    CHK_Z( ret->get_result_code() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace failure_test;
 using namespace failure_test;
 
@@ -559,7 +604,7 @@ int main(int argc, char** argv) {
 
     ts.doTest( "remove not responding server with quorum test",
                rmv_not_resp_srv_wq_test,
-               TestRange<bool>({false, true}));
+               TestRange<bool>({false, true}) );
 
     ts.doTest( "force log compaction test",
                force_log_compaction_test );
@@ -569,6 +614,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "removed server late step down test",
                removed_server_late_step_down_test );
+
+    ts.doTest( "remove server on pending configs test",
+               remove_server_on_pending_configs_test );
 
     return 0;
 }
