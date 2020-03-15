@@ -452,6 +452,17 @@ public:
                                        ptr<state_mgr>& s_mgr,
                                        std::string& err_msg);
 
+    /**
+     * Invoke internal callback function given by user,
+     * with given type and parameters.
+     *
+     * @param type Callback event type.
+     * @param param Parameters.
+     * @return cb_func::ReturnCode.
+     */
+    CbReturnCode invoke_callback(cb_func::Type type,
+                                 cb_func::Param* param);
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 

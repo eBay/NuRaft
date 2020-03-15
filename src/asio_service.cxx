@@ -28,6 +28,7 @@ limitations under the License.
 #include "asio_service.hxx"
 
 #include "buffer_serializer.hxx"
+#include "callback.hxx"
 #include "crc32.hxx"
 #include "internal_timer.hxx"
 #include "rpc_listener.hxx"
@@ -251,6 +252,7 @@ public:
                              std::placeholders::_1 ) );
 #endif
         } else {
+            invoke_connection_callback(true);
             this->start(self);
         }
     }
@@ -262,6 +264,7 @@ public:
                   session_id_,
                   socket_.remote_endpoint().address().to_string().c_str(),
                   socket_.remote_endpoint().port() );
+            invoke_connection_callback(true);
             this->start(self);
 
         } else {
@@ -371,6 +374,7 @@ public:
     }
 
     void stop() {
+        invoke_connection_callback(false);
         close_socket();
         if (callback_) {
             callback_(this->shared_from_this());
@@ -383,6 +387,20 @@ public:
     }
 
 private:
+    void invoke_connection_callback(bool is_open) {
+        cb_func::ConnectionArgs
+            args( session_id_,
+                  socket_.remote_endpoint().address().to_string(),
+                  socket_.remote_endpoint().port() );
+        cb_func::Param cb_param( handler_->get_id(),
+                                 handler_->get_leader(),
+                                 -1,
+                                 &args );
+        handler_->invoke_callback
+            ( is_open ? cb_func::ConnectionOpened : cb_func::ConnectionClosed,
+              &cb_param );
+    }
+
     void close_socket() {
         // MONSTOR-9378: Do nothing (the same as in `asio_rpc_client`),
         // early closing socket before destroying this instance
