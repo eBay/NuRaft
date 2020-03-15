@@ -791,7 +791,7 @@ public:
     }
 
 public:
-    uint64_t get_id() const {
+    uint64_t get_id() const override {
         return client_id_;
     }
 

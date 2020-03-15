@@ -19,6 +19,7 @@ limitations under the License.
 #define _CALLBACK_H_
 
 #include <functional>
+#include <string>
 
 namespace nuraft {
 
