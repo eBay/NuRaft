@@ -463,6 +463,11 @@ public:
     CbReturnCode invoke_callback(cb_func::Type type,
                                  cb_func::Param* param);
 
+    /**
+     * Set a custom callback function for increasing term.
+     */
+    void set_inc_term_func(srv_state::inc_term_func func);
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 

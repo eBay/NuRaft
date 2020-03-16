@@ -25,6 +25,8 @@ limitations under the License.
 #include "buffer_serializer.hxx"
 
 #include <atomic>
+#include <cassert>
+#include <functional>
 
 namespace nuraft {
 
@@ -41,6 +43,14 @@ public:
         , voted_for_(voted_for)
         , election_timer_allowed_(et_allowed)
         {}
+
+    /**
+     * Callback function type for increasing term.
+     *
+     * @param Current term.
+     * @return New term, it should be greater than current term.
+     */
+    using inc_term_func = std::function< ulong(ulong) >;
 
     __nocopy__(srv_state);
 
@@ -69,12 +79,35 @@ public:
         return cs_new<srv_state>(term, voted_for, et_allowed);
     }
 
-    ulong   get_term() const        { return term_; }
-    void    set_term(ulong term)    { term_ = term; }
-    void    inc_term()              { term_++; }
+    void set_inc_term_func(inc_term_func to) {
+        inc_term_cb_ = to;
+    }
 
-    int     get_voted_for() const           { return voted_for_; }
-    void    set_voted_for(int voted_for)    { voted_for_ = voted_for; }
+    ulong get_term() const {
+        return term_;
+    }
+
+    void set_term(ulong term) {
+        term_ = term;
+    }
+
+    void inc_term() {
+        if (inc_term_cb_) {
+            ulong new_term = inc_term_cb_(term_);
+            assert(new_term > term_);
+            term_ = new_term;
+            return;
+        }
+        term_++;
+    }
+
+    int get_voted_for() const {
+        return voted_for_;
+    }
+
+    void set_voted_for(int voted_for) {
+        voted_for_ = voted_for;
+    }
 
     bool is_election_timer_allowed() const {
         return election_timer_allowed_;
@@ -117,15 +150,27 @@ public:
 private:
     const uint8_t CURRENT_VERSION = 1;
 
-    // Term.
+    /**
+     * Term.
+     */
     std::atomic<ulong> term_;
 
-    // Server ID that this server voted for.
-    // `-1` if not voted.
+    /**
+     * Server ID that this server voted for.
+     * `-1` if not voted.
+     */
     std::atomic<int> voted_for_;
 
-    // `true` if election timer is allowed.
+    /**
+     * `true` if election timer is allowed.
+     */
     std::atomic<bool> election_timer_allowed_;
+
+    /**
+     * Custom callback function for increasing term.
+     * If not given, term will be increased by 1.
+     */
+    std::function< ulong(ulong) > inc_term_cb_;
 };
 
 }
