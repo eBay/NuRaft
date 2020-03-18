@@ -1327,5 +1327,11 @@ CbReturnCode raft_server::invoke_callback( cb_func::Type type,
     return rc;
 }
 
+void raft_server::set_inc_term_func(srv_state::inc_term_func func) {
+    recur_lock(lock_);
+    if (!state_) return;
+    state_->set_inc_term_func(func);
+}
+
 } // namespace nuraft;
 

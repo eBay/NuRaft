@@ -2088,6 +2088,73 @@ int apply_config_test() {
     return 0;
 }
 
+int custom_term_counter_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    auto custom_term = [](ulong cur_term) -> ulong {
+        // Increase by 10.
+        return (cur_term / 10) + 10;
+    };
+    for (RaftPkg* rp: pkgs) {
+        rp->raftServer->set_inc_term_func(custom_term);
+    }
+
+    // Trigger election timer of S2.
+    s2.dbgLog(" --- invoke election timer of S2 ---");
+    s2.fTimer->invoke( timer_task_type::election_timer );
+    // Send pre-vote requests, and probably rejected by S1 and S3.
+    s2.fNet->execReqResp();
+
+    // Trigger election timer of S3.
+    s3.dbgLog(" --- invoke election timer of S3 ---");
+    s3.fTimer->invoke( timer_task_type::election_timer );
+
+    // Send pre-vote requests, it will be rejected by S1, accepted by S2.
+    // As a part of resp handling, it will initiate vote request.
+    s3.fNet->execReqResp();
+    // Send vote requests, S3 will be elected as a leader.
+    s3.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Send new config as a new leader.
+    s3.fNet->execReqResp();
+    // Follow-up: commit.
+    s3.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    CHK_FALSE( s1.raftServer->is_leader() );
+    CHK_FALSE( s2.raftServer->is_leader() );
+    CHK_TRUE( s3.raftServer->is_leader() );
+
+    // Check S3's term. It should be 10.
+    CHK_EQ( 10, s3.raftServer->get_term() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace raft_server_test;
 using namespace raft_server_test;
 
@@ -2161,6 +2228,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "apply config log entry test",
                apply_config_test );
+
+    ts.doTest( "custom term counter test",
+               custom_term_counter_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
