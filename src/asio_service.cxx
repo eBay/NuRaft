@@ -218,6 +218,8 @@ public:
         , header_(buffer::alloc(RPC_REQ_HEADER_SIZE))
         , l_(logger)
         , callback_(callback)
+        , src_id_(-1)
+        , is_leader_(false)
     {
         p_tr("asio rpc session created: %p", this);
     }
@@ -252,7 +254,6 @@ public:
                              std::placeholders::_1 ) );
 #endif
         } else {
-            invoke_connection_callback(true);
             this->start(self);
         }
     }
@@ -264,7 +265,6 @@ public:
                   session_id_,
                   socket_.remote_endpoint().address().to_string().c_str(),
                   socket_.remote_endpoint().port() );
-            invoke_connection_callback(true);
             this->start(self);
 
         } else {
@@ -388,10 +388,17 @@ public:
 
 private:
     void invoke_connection_callback(bool is_open) {
+        if (is_leader_ && src_id_ != handler_->get_leader()) {
+            // Leader has been changed without closing session.
+            is_leader_ = false;
+        }
+
         cb_func::ConnectionArgs
             args( session_id_,
                   socket_.remote_endpoint().address().to_string(),
-                  socket_.remote_endpoint().port() );
+                  socket_.remote_endpoint().port(),
+                  src_id_,
+                  is_leader_ );
         cb_func::Param cb_param( handler_->get_id(),
                                  handler_->get_leader(),
                                  -1,
@@ -441,6 +448,44 @@ private:
         ulong last_term = hdr->get_ulong();
         ulong last_idx = hdr->get_ulong();
         ulong commit_idx = hdr->get_ulong();
+
+        if (src_id_ == -1) {
+            // It means this is the first message on this session.
+            // Invoke callback function of new connection.
+            src_id_ = src;
+            invoke_connection_callback(true);
+
+        } else if (is_leader_ && src_id_ != handler_->get_leader()) {
+            // Leader has been changed without closing session.
+            is_leader_ = false;
+        }
+
+        if (!is_leader_) {
+            // If leader flag is not set, we identify whether the endpoint
+            // server is leader based on the message type (only leader
+            // can send below message types).
+            if ( t == msg_type::append_entries_request ||
+                 t == msg_type::sync_log_request ||
+                 t == msg_type::join_cluster_request ||
+                 t == msg_type::leave_cluster_request ||
+                 t == msg_type::install_snapshot_request ||
+                 t == msg_type::priority_change_request ||
+                 t == msg_type::custom_notification_request ) {
+                is_leader_ = true;
+                cb_func::ConnectionArgs
+                    args( session_id_,
+                          socket_.remote_endpoint().address().to_string(),
+                          socket_.remote_endpoint().port(),
+                          src_id_,
+                          is_leader_ );
+                cb_func::Param cb_param( handler_->get_id(),
+                                         handler_->get_leader(),
+                                         -1,
+                                         &args );
+                handler_->invoke_callback( cb_func::NewSessionFromLeader,
+                                           &cb_param );
+            }
+        }
 
         std::string meta_str;
         ptr<req_msg> req = cs_new<req_msg>
@@ -612,6 +657,20 @@ private:
     ptr<buffer> header_;
     ptr<logger> l_;
     session_closed_callback callback_;
+
+    /**
+     * Source server (endpoint) ID, used to check whether it is leader.
+     * This value is `-1` at the beginning, which denotes this session
+     * hasn't received any message from the endpoint.
+     * Note that this ID should not be changed throughout the life time
+     * of the session.
+     */
+    int32 src_id_;
+
+    /**
+     * `true` if the endpoint server was leader when it was last seen.
+     */
+    bool is_leader_;
 };
 
 // rpc listener implementation

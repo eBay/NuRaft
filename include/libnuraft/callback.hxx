@@ -142,6 +142,14 @@ public:
          * ctx: pointer to `ConnectionArgs`.
          */
         ConnectionClosed = 17,
+
+        /**
+         * Invoked when a session receives a message from the valid leader
+         * first time. This callback is preceded by `ConnectionOpened`
+         * event.
+         * ctx: pointer to `ConnectionArgs`.
+         */
+        NewSessionFromLeader = 18,
     };
 
     struct Param {
@@ -173,11 +181,35 @@ public:
     struct ConnectionArgs {
         ConnectionArgs(uint64_t id = 0,
                        const std::string& addr = std::string(),
-                       uint32_t p = 0)
-            : sessionId(id), address(addr), port(p) {}
+                       uint32_t p = 0,
+                       int32_t srv_id = -1,
+                       bool is_leader = false)
+            : sessionId(id), address(addr), port(p)
+            , srvId(srv_id), isLeader(is_leader) {}
+        /**
+         * ID of session.
+         */
         uint64_t sessionId;
+
+        /**
+         * Endpoint address.
+         */
         std::string address;
+
+        /**
+         * Endpoint port.
+         */
         uint32_t port;
+
+        /**
+         * Endpoint server ID if given.
+         */
+        int32_t srvId;
+
+        /**
+         * `true` if the endpoint server is leader.
+         */
+        bool isLeader;
     };
 
     using func_type = std::function<ReturnCode(Type, Param*)>;
