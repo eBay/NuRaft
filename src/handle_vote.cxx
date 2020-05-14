@@ -84,6 +84,7 @@ void raft_server::request_prevote() {
     }
 
     hb_alive_ = false;
+    leader_ = -1;
     pre_vote_.reset(state_->get_term());
     // Count for myself.
     pre_vote_.dead_++;
@@ -147,7 +148,11 @@ void raft_server::initiate_vote(bool ignore_priority) {
         ctx_->state_mgr_->save_state(*state_);
         request_vote(ignore_priority);
     }
-    hb_alive_ = false;
+
+    if (role_ != srv_role::leader) {
+        hb_alive_ = false;
+        leader_ = -1;
+    }
 }
 
 void raft_server::request_vote(bool ignore_priority) {
