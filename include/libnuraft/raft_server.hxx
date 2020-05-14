@@ -323,7 +323,13 @@ public:
      * @return Leader ID
      *         -1 if there is no live leader.
      */
-    int32 get_leader() const { return leader_; }
+    int32 get_leader() const {
+        // We should handle the case when `role_` is already
+        // updated, but `leader_` value is stale.
+        if ( leader_ == id_ &&
+             role_ != srv_role::leader ) return -1;
+        return leader_;
+    }
 
     /**
      * Check if this server is leader.
