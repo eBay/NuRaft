@@ -55,15 +55,34 @@ public:
         , params_( cs_new<raft_params>(params) )
         {}
 
+    /**
+     * Register an event callback function.
+     *
+     * @param func Callback function to register.
+     */
     void set_cb_func(cb_func::func_type func) {
         cb_func_ = cb_func(func);
     }
 
+    /**
+     * Return the pointer to current Raft parameters.
+     *
+     * WARNING:
+     *   It is just a pointer so that the contents
+     *   shouldn't be changed directly.
+     *
+     * @return Pointer to parameter instance.
+     */
     ptr<raft_params> get_params() const {
         std::lock_guard<std::mutex> l(ctx_lock_);
         return params_;
     }
 
+    /**
+     * Update Raft parameters.
+     *
+     * @param to New Raft parameters to set.
+     */
     void set_params(ptr<raft_params>& to) {
         std::lock_guard<std::mutex> l(ctx_lock_);
         params_ = to;
@@ -72,31 +91,49 @@ public:
     __nocopy__(context);
 
 public:
-    // State manager instance.
+    /**
+     * State manager instance.
+     */
     ptr<state_mgr> state_mgr_;
 
-    // State machine instance.
+    /**
+     * State machine instance.
+     */
     ptr<state_machine> state_machine_;
 
-    // RPC listener instance.
+    /**
+     * RPC listener instance.
+     */
     ptr<rpc_listener> rpc_listener_;
 
-    // System logger instance.
+    /**
+     * System logger instance.
+     */
     ptr<logger> logger_;
 
-    // RPC client factory.
+    /**
+     * RPC client factory.
+     */
     ptr<rpc_client_factory> rpc_cli_factory_;
 
-    // Timer instance.
+    /**
+     * Timer instance.
+     */
     ptr<delayed_task_scheduler> scheduler_;
 
-    // Raft parameters.
+    /**
+     * Raft parameters.
+     */
     std::shared_ptr<raft_params> params_;
 
-    // Callback function for hooking the operation.
+    /**
+     * Callback function for hooking the operation.
+     */
     cb_func cb_func_;
 
-    // Lock.
+    /**
+     * Lock.
+     */
     mutable std::mutex ctx_lock_;
 };
 
