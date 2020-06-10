@@ -60,6 +60,13 @@ public:
      */
     static const int32 LEAVE_LIMIT      = 5;
 
+    /**
+     * For 2-node cluster, if the other peer is not responding for
+     * pre-vote more than this limit, adjust quorum size.
+     * Enabled only when `auto_adjust_quorum_for_small_cluster_` is on.
+     */
+    static const int32 VOTE_LIMIT       = 10;
+
     peer( ptr<srv_config>& config,
           const context& ctx,
           timer_task<int32>::executor& hb_exec,

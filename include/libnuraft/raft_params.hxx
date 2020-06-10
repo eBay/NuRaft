@@ -86,6 +86,7 @@ struct raft_params {
         , auto_forwarding_(false)
         , use_bg_thread_for_urgent_commit_(true)
         , exclude_snp_receiver_from_quorum_(false)
+        , auto_adjust_quorum_for_small_cluster_(false)
         , locking_method_type_(dual_mutex)
         , return_method_(blocking)
         {}
@@ -454,6 +455,13 @@ public:
      * leader cannot make any progress.
      */
     bool exclude_snp_receiver_from_quorum_;
+
+    /**
+     * If `true` and the size of the cluster is 2, the quorum size
+     * will be adjusted to 1 automatically, once one of two nodes
+     * becomes offline.
+     */
+    bool auto_adjust_quorum_for_small_cluster_;
 
     /**
      * Choose the type of lock that will be used by user threads.
