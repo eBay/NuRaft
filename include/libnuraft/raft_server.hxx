@@ -482,6 +482,7 @@ protected:
     struct pre_vote_status_t {
         pre_vote_status_t()
             : quorum_reject_count_(0)
+            , failure_count_(0)
             { reset(0); }
         void reset(ulong _term) {
             term_ = _term;
@@ -493,7 +494,16 @@ protected:
         std::atomic<int32> live_;
         std::atomic<int32> dead_;
         std::atomic<int32> abandoned_;
+
+        /**
+         * Number of pre-vote rejections by quorum.
+         */
         std::atomic<int32> quorum_reject_count_;
+
+        /**
+         * Number of pre-vote failures due to not-responding peers.
+         */
+        std::atomic<int32> failure_count_;
     };
 
 protected:

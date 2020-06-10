@@ -83,6 +83,34 @@ void raft_server::request_prevote() {
         }
     }
 
+    int quorum_size = get_quorum_for_election();
+    if ( pre_vote_.live_ + pre_vote_.dead_ > 0 &&
+         pre_vote_.live_ + pre_vote_.dead_ < quorum_size + 1) {
+        // Pre-vote failed due to non-responding voters.
+        pre_vote_.failure_count_++;
+        p_wn("total %zu nodes (including this node) responded for pre-vote "
+             "(term %zu, live %zu, dead %zu), at least %zu nodes should "
+             "respond. failure count %zu",
+             pre_vote_.live_.load() + pre_vote_.dead_.load(),
+             pre_vote_.term_,
+             pre_vote_.live_.load(),
+             pre_vote_.dead_.load(),
+             quorum_size + 1,
+             pre_vote_.failure_count_.load());
+    }
+    int num_voting_members = get_num_voting_members();
+    if ( params->auto_adjust_quorum_for_small_cluster_ &&
+         num_voting_members == 2 &&
+         pre_vote_.failure_count_ > peer::VOTE_LIMIT ) {
+        // 2-node cluster's pre-vote failed due to offline node.
+        p_wn("2-node cluster's pre-vote is failing long time, "
+             "adjust quorum to 1");
+        ptr<raft_params> clone = cs_new<raft_params>(*params);
+        clone->custom_commit_quorum_size_ = 1;
+        clone->custom_election_quorum_size_ = 1;
+        ctx_->set_params(clone);
+    }
+
     hb_alive_ = false;
     leader_ = -1;
     pre_vote_.reset(state_->get_term());

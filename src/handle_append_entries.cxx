@@ -77,6 +77,8 @@ void raft_server::request_append_entries() {
 }
 
 bool raft_server::request_append_entries(ptr<peer> p) {
+    static timer_helper chk_timer(1000*1000);
+
     // Checking the validity of role first.
     if (role_ != srv_role::leader) {
         // WARNING: We should allow `write_paused_` state for
@@ -92,6 +94,34 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     }
 
     ptr<raft_params> params = ctx_->get_params();
+
+    if ( params->auto_adjust_quorum_for_small_cluster_ &&
+         get_num_voting_members() == 2 &&
+         chk_timer.timeout_and_reset() ) {
+        // If auto adjust mode is on for 2-node cluster, and
+        // the follower is not responding, adjust the quorum.
+        size_t num_not_responding_peers = get_not_responding_peers();
+        size_t cur_quorum_size = get_quorum_for_commit();
+        if ( num_not_responding_peers > 0 &&
+             cur_quorum_size >= 1 ) {
+            p_wn("2-node cluster's follower is not responding long time, "
+                 "adjust quorum to 1");
+            ptr<raft_params> clone = cs_new<raft_params>(*params);
+            clone->custom_commit_quorum_size_ = 1;
+            clone->custom_election_quorum_size_ = 1;
+            ctx_->set_params(clone);
+
+        } else if ( num_not_responding_peers == 0 &&
+                    cur_quorum_size == 0 ) {
+            // Recovered.
+            p_wn("2-node cluster's follower is responding now, "
+                 "restore quorum with default value");
+            ptr<raft_params> clone = cs_new<raft_params>(*params);
+            clone->custom_commit_quorum_size_ = 0;
+            clone->custom_election_quorum_size_ = 0;
+            ctx_->set_params(clone);
+        }
+    }
 
     bool need_to_reconnect = p->need_to_reconnect();
     int32 last_active_time_ms = p->get_active_timer_us() / 1000;

@@ -752,6 +752,216 @@ int async_append_handler_test() {
     return 0;
 }
 
+int auto_quorum_size_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+
+    RaftAsioPkg s1(1, s1_addr);
+    std::shared_ptr<RaftAsioPkg> s2 = std::make_shared<RaftAsioPkg>(2, s2_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, s2.get()};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    // Set custom term counter, and enable auto quorum size mode.
+    auto custom_inc_term = [](uint64_t cur_term) -> uint64_t {
+        return (cur_term / 10) + 10;
+    };
+    s1.raftServer->set_inc_term_func(custom_inc_term);
+    s2->raftServer->set_inc_term_func(custom_inc_term);
+
+    raft_params params = s1.raftServer->get_current_params();
+    params.auto_adjust_quorum_for_small_cluster_ = true;
+    s1.raftServer->update_params(params);
+    s2->raftServer->update_params(params);
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2->raftServer->get_leader());
+
+    // Replication.
+    for (size_t ii=0; ii<10; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+    uint64_t committed_idx = s1.raftServer->get_committed_log_idx();
+
+    // State machine should be identical.
+    CHK_OK( s2->getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // Shutdown S2.
+    s2->raftServer->shutdown();
+    s2.reset();
+
+    TestSuite::sleep_ms( RaftAsioPkg::HEARTBEAT_MS * 30,
+                         "wait for quorum adjust" );
+
+    // More replication.
+    for (size_t ii=10; ii<11; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+
+    // Replication should succeed: committed index should be moved forward.
+    TestSuite::sleep_sec(1, "wait for replication");
+    CHK_EQ( committed_idx + 1,
+            s1.raftServer->get_committed_log_idx() );
+
+    // Restart S2.
+    _msg("launching S2 again\n");
+    RaftAsioPkg s2_new(2, s2_addr);
+    CHK_Z( launch_servers({&s2_new}, false) );
+    TestSuite::sleep_sec(1, "wait for S2 ready");
+    CHK_EQ( committed_idx + 1,
+            s2_new.raftServer->get_committed_log_idx() );
+
+    // More replication.
+    for (size_t ii=11; ii<12; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+
+    // Both of them should have the same commit number.
+    TestSuite::sleep_sec(1, "wait for replication");
+    CHK_EQ( committed_idx + 2,
+            s1.raftServer->get_committed_log_idx() );
+    CHK_EQ( committed_idx + 2,
+            s2_new.raftServer->get_committed_log_idx() );
+
+    s1.raftServer->shutdown();
+    s2_new.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int auto_quorum_size_election_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+
+    std::shared_ptr<RaftAsioPkg> s1 = std::make_shared<RaftAsioPkg>(1, s1_addr);
+    std::shared_ptr<RaftAsioPkg> s2 = std::make_shared<RaftAsioPkg>(2, s2_addr);
+    std::vector<RaftAsioPkg*> pkgs = {s1.get(), s2.get()};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    // Set custom term counter, and enable auto quorum size mode.
+    auto custom_inc_term = [](uint64_t cur_term) -> uint64_t {
+        return (cur_term / 10) + 10;
+    };
+    s1->raftServer->set_inc_term_func(custom_inc_term);
+    s2->raftServer->set_inc_term_func(custom_inc_term);
+
+    raft_params params = s1->raftServer->get_current_params();
+    params.auto_adjust_quorum_for_small_cluster_ = true;
+    s1->raftServer->update_params(params);
+    s2->raftServer->update_params(params);
+
+    CHK_TRUE( s1->raftServer->is_leader() );
+    CHK_EQ(1, s1->raftServer->get_leader());
+    CHK_EQ(1, s2->raftServer->get_leader());
+
+    // Replication.
+    for (size_t ii=0; ii<10; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1->raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // State machine should be identical.
+    CHK_OK( s2->getTestSm()->isSame( *s1->getTestSm() ) );
+
+    // Shutdown S1.
+    s1->raftServer->shutdown();
+    s1.reset();
+
+    // Wait for adjust quorum and self election.
+    TestSuite::sleep_ms( RaftAsioPkg::HEARTBEAT_MS * 50,
+                         "wait for quorum adjust" );
+
+    // S2 should be a leader.
+    CHK_TRUE( s2->raftServer->is_leader() );
+    CHK_EQ(2, s2->raftServer->get_leader());
+    uint64_t committed_idx = s2->raftServer->get_committed_log_idx();
+
+    // More replication.
+    for (size_t ii=10; ii<11; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s2->raftServer->append_entries( {msg} );
+    }
+
+    // Replication should succeed: committed index should be moved forward.
+    TestSuite::sleep_sec(1, "wait for replication");
+    CHK_EQ( committed_idx + 1,
+            s2->raftServer->get_committed_log_idx() );
+
+    // Restart S1.
+    _msg("launching S1 again\n");
+    RaftAsioPkg s1_new(1, s1_addr);
+    CHK_Z( launch_servers({&s1_new}, false) );
+    TestSuite::sleep_sec(1, "wait for S2 ready");
+    CHK_EQ( committed_idx + 1,
+            s1_new.raftServer->get_committed_log_idx() );
+
+    // S2 should remain as a leader.
+    CHK_TRUE( s2->raftServer->is_leader() );
+    CHK_EQ(2, s1_new.raftServer->get_leader());
+    CHK_EQ(2, s2->raftServer->get_leader());
+
+    // More replication.
+    for (size_t ii=11; ii<12; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s2->raftServer->append_entries( {msg} );
+    }
+
+    // Both of them should have the same commit number.
+    TestSuite::sleep_sec(1, "wait for replication");
+    CHK_EQ( committed_idx + 2,
+            s1_new.raftServer->get_committed_log_idx() );
+    CHK_EQ( committed_idx + 2,
+            s2->raftServer->get_committed_log_idx() );
+
+    s2->raftServer->shutdown();
+    s1_new.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -787,6 +997,12 @@ int main(int argc, char** argv) {
 
     ts.doTest( "async append handler test",
                async_append_handler_test );
+
+    ts.doTest( "auto quorum size test",
+               auto_quorum_size_test );
+
+    ts.doTest( "auto quorum size for election test",
+               auto_quorum_size_election_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

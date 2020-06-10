@@ -905,6 +905,7 @@ void raft_server::become_leader() {
     next_leader_candidate_ = -1;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
+    pre_vote_.failure_count_ = 0;
     data_fresh_ = true;
 
     request_append_entries();
@@ -1035,6 +1036,7 @@ void raft_server::become_follower() {
         initialized_ = true;
         uncommitted_config_.reset();
         pre_vote_.quorum_reject_count_ = 0;
+        pre_vote_.failure_count_ = 0;
 
         // Drain all pending callback functions.
         drop_all_pending_commit_elems();
