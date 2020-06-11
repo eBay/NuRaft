@@ -65,7 +65,8 @@ void raft_server::request_prevote() {
                 // Or if it is not active long time, reconnect as well.
                 int32 last_active_time_ms = pp->get_active_timer_us() / 1000;
                 if ( last_active_time_ms >
-                         params->heart_beat_interval_ * peer::RECONNECT_LIMIT ) {
+                         params->heart_beat_interval_ *
+                             raft_server::raft_limits_.reconnect_limit_ ) {
                     p_wn( "connection to peer %d is not active long time: %zu ms, "
                           "need reconnection for prevote",
                           pp->get_id(),
@@ -84,24 +85,27 @@ void raft_server::request_prevote() {
     }
 
     int quorum_size = get_quorum_for_election();
-    if ( pre_vote_.live_ + pre_vote_.dead_ > 0 &&
-         pre_vote_.live_ + pre_vote_.dead_ < quorum_size + 1) {
-        // Pre-vote failed due to non-responding voters.
-        pre_vote_.failure_count_++;
-        p_wn("total %zu nodes (including this node) responded for pre-vote "
-             "(term %zu, live %zu, dead %zu), at least %zu nodes should "
-             "respond. failure count %zu",
-             pre_vote_.live_.load() + pre_vote_.dead_.load(),
-             pre_vote_.term_,
-             pre_vote_.live_.load(),
-             pre_vote_.dead_.load(),
-             quorum_size + 1,
-             pre_vote_.failure_count_.load());
+    if (pre_vote_.live_ + pre_vote_.dead_ > 0) {
+        if (pre_vote_.live_ + pre_vote_.dead_ < quorum_size + 1) {
+            // Pre-vote failed due to non-responding voters.
+            pre_vote_.failure_count_++;
+            p_wn("total %zu nodes (including this node) responded for pre-vote "
+                 "(term %zu, live %zu, dead %zu), at least %zu nodes should "
+                 "respond. failure count %zu",
+                 pre_vote_.live_.load() + pre_vote_.dead_.load(),
+                 pre_vote_.term_,
+                 pre_vote_.live_.load(),
+                 pre_vote_.dead_.load(),
+                 quorum_size + 1,
+                 pre_vote_.failure_count_.load());
+        } else {
+            pre_vote_.failure_count_ = 0;
+        }
     }
     int num_voting_members = get_num_voting_members();
     if ( params->auto_adjust_quorum_for_small_cluster_ &&
          num_voting_members == 2 &&
-         pre_vote_.failure_count_ > peer::VOTE_LIMIT ) {
+         pre_vote_.failure_count_ > raft_server::raft_limits_.vote_limit_ ) {
         // 2-node cluster's pre-vote failed due to offline node.
         p_wn("2-node cluster's pre-vote is failing long time, "
              "adjust quorum to 1");
@@ -449,7 +453,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
         p_wn("[PRE-VOTE] rejected by quorum, count %zu",
              pre_vote_.quorum_reject_count_.load());
         if ( pre_vote_.quorum_reject_count_ >=
-                 raft_server::PRE_VOTE_REJECTION_LIMIT ) {
+                 raft_server::raft_limits_.pre_vote_rejection_limit_ ) {
             p_ft("too many pre-vote rejections, probably this node is not "
                  "receiving heartbeat from leader. "
                  "we should re-establish the network connection");

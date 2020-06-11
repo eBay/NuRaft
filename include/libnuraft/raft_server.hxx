@@ -57,21 +57,91 @@ struct context;
 struct raft_params;
 class raft_server {
 public:
-    static const int32 PRE_VOTE_REJECTION_LIMIT = 20;
-
     struct init_options {
         init_options()
             : skip_initial_election_timeout_(false)
             {}
 
-        // If `true`, the election timer will not be initiated
-        // automatically, so that this node will never trigger
-        // leader election until it gets the first heartbeat
-        // from any valid leader.
-        //
-        // Purpose: to avoid becoming leader when there is only one
-        //          node in the cluster.
+        /**
+         * If `true`, the election timer will not be initiated
+         * automatically, so that this node will never trigger
+         * leader election until it gets the first heartbeat
+         * from any valid leader.
+         *
+         * Purpose: to avoid becoming leader when there is only one
+         *          node in the cluster.
+         */
         bool skip_initial_election_timeout_;
+    };
+
+    struct limits {
+        limits()
+            : pre_vote_rejection_limit_(20)
+            , warning_limit_(20)
+            , response_limit_(20)
+            , leadership_limit_(20)
+            , reconnect_limit_(50)
+            , leave_limit_(5)
+            , vote_limit_(5)
+            {}
+
+        limits(const limits& src) {
+            *this = src;
+        }
+
+        limits& operator=(const limits& src) {
+            pre_vote_rejection_limit_ = src.pre_vote_rejection_limit_.load();
+            warning_limit_ = src.warning_limit_.load();
+            response_limit_ = src.response_limit_.load();
+            leadership_limit_  = src.leadership_limit_.load();
+            reconnect_limit_ = src.reconnect_limit_.load();
+            leave_limit_ = src.leave_limit_.load();
+            vote_limit_ = src.vote_limit_.load();
+            return *this;
+        }
+
+        /**
+         * If pre-vote rejection count is greater than this limit,
+         * Raft will re-establish the network connection;
+         */
+        std::atomic<int32> pre_vote_rejection_limit_;
+
+        /**
+         * Max number of warnings before suppressing it.
+         */
+        std::atomic<int32> warning_limit_;
+
+        /**
+         * If a node is not responding more than this limit,
+         * we treat that node as dead.
+         */
+        std::atomic<int32> response_limit_;
+
+        /**
+         * Default value of leadership expiration
+         * (multiplied by heartbeat interval).
+         */
+        std::atomic<int32> leadership_limit_;
+
+        /**
+         * If connection is silent longer than this limit
+         * (multiplied by heartbeat interval), we re-establish
+         * the connection.
+         */
+        std::atomic<int32> reconnect_limit_;
+
+        /**
+         * If removed node is not responding more than this limit,
+         * just force remove it from server list.
+         */
+        std::atomic<int32> leave_limit_;
+
+        /**
+         * For 2-node cluster, if the other peer is not responding for
+         * pre-vote more than this limit, adjust quorum size.
+         * Active only when `auto_adjust_quorum_for_small_cluster_` is enabled.
+         */
+        std::atomic<int32> vote_limit_;
     };
 
     raft_server(context* ctx, const init_options& opt = init_options());
@@ -459,6 +529,20 @@ public:
                                        std::string& err_msg);
 
     /**
+     * Get the current Raft limit values.
+     *
+     * @return Raft limit values.
+     */
+    static limits get_raft_limits();
+
+    /**
+     * Update the Raft limits with given values.
+     *
+     * @param new_limits New values to set.
+     */
+    static void set_raft_limits(const limits& new_limits);
+
+    /**
      * Invoke internal callback function given by user,
      * with given type and parameters.
      *
@@ -629,6 +713,11 @@ protected:
 
 protected:
     static const int default_snapshot_sync_block_size;
+
+    /**
+     * Current limit values.
+     */
+    static limits raft_limits_;
 
     /**
      * (Read-only)

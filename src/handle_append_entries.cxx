@@ -126,7 +126,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     bool need_to_reconnect = p->need_to_reconnect();
     int32 last_active_time_ms = p->get_active_timer_us() / 1000;
     if ( last_active_time_ms >
-             params->heart_beat_interval_ * peer::RECONNECT_LIMIT ) {
+             params->heart_beat_interval_ *
+                 raft_server::raft_limits_.reconnect_limit_ ) {
         if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) {
             // We should not re-establish the connection to
             // to-be-removed server, as it will block removing it
@@ -174,7 +175,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
         if (!p->is_manual_free()) {
             // Actual recovery.
-            if (p->get_long_puase_warnings() >= peer::WARNINGS_LIMIT) {
+            if ( p->get_long_puase_warnings() >=
+                     raft_server::raft_limits_.warning_limit_ ) {
                 int32 last_ts_ms = p->get_ls_timer_us() / 1000;
                 p->inc_recovery_cnt();
                 p_wn( "recovered from long pause to peer %d, %d warnings, "
@@ -229,12 +231,13 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     if ( last_ts_ms > params->heart_beat_interval_ ) {
         // Waiting time becomes longer than HB interval, warning.
         p->inc_long_pause_warnings();
-        if (p->get_long_puase_warnings() < peer::WARNINGS_LIMIT) {
+        if (p->get_long_puase_warnings() < raft_server::raft_limits_.warning_limit_) {
             p_wn("skipped sending msg to %d too long time, "
                  "last msg sent %d ms ago",
                  p->get_id(), last_ts_ms);
 
-        } else if (p->get_long_puase_warnings() == peer::WARNINGS_LIMIT) {
+        } else if ( p->get_long_puase_warnings() ==
+                        raft_server::raft_limits_.warning_limit_ ) {
             p_wn("long pause warning to %d is too verbose, "
                  "will suppress it from now", p->get_id());
         }

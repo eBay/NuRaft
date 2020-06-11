@@ -42,7 +42,7 @@ void raft_server::check_srv_to_leave_timeout() {
     if (!srv_to_leave_) return;
     ulong last_resp_ms = srv_to_leave_->get_resp_timer_us() / 1000;
     if ( last_resp_ms >
-             (ulong)peer::LEAVE_LIMIT *
+             (ulong)raft_server::raft_limits_.leave_limit_ *
              ctx_->get_params()->heart_beat_interval_ ) {
         // Timeout: remove peer.
         p_wn("server to be removed %d, response timeout %zu ms. "
@@ -87,7 +87,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
         p_in("peer %d is not responding for %d HBs since leave request",
              p->get_id(), cur_cnt);
 
-        if (cur_cnt >= peer::LEAVE_LIMIT) {
+        if (cur_cnt >= raft_server::raft_limits_.leave_limit_) {
             // Force remove the server.
             p_er("force remove peer %d", p->get_id());
             handle_join_leave_rpc_err(msg_type::leave_cluster_request, p);
