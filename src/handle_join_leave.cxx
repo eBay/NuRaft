@@ -85,7 +85,7 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
              last_active_ms);
 
         if ( last_active_ms <=
-                 (ulong)peer::RESPONSE_LIMIT *
+                 (ulong)raft_server::raft_limits_.response_limit_ *
                  ctx_->get_params()->heart_beat_interval_ ) {
             resp->set_result_code(cmd_result_code::SERVER_IS_JOINING);
             return resp;

@@ -36,37 +36,6 @@ namespace nuraft {
 class snapshot;
 class peer {
 public:
-    /**
-     * Max number of warnings before suppressing it.
-     */
-    static const int32 WARNINGS_LIMIT   = 20;
-
-    /**
-     * If a node is not responding more than this limit,
-     * we treat that node as dead.
-     */
-    static const int32 RESPONSE_LIMIT   = 20;
-
-    /**
-     * If connection is silent longer than this limit
-     * (multiplied by heartbeat interval), re-establish
-     * the connection.
-     */
-    static const int32 RECONNECT_LIMIT  = 50;
-
-    /**
-     * If removed node is not responding more than this limit,
-     * just force remove it from server list.
-     */
-    static const int32 LEAVE_LIMIT      = 5;
-
-    /**
-     * For 2-node cluster, if the other peer is not responding for
-     * pre-vote more than this limit, adjust quorum size.
-     * Enabled only when `auto_adjust_quorum_for_small_cluster_` is on.
-     */
-    static const int32 VOTE_LIMIT       = 10;
-
     peer( ptr<srv_config>& config,
           const context& ctx,
           timer_task<int32>::executor& hb_exec,

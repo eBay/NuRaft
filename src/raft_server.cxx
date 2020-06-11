@@ -39,6 +39,8 @@ namespace nuraft {
 
 const int raft_server::default_snapshot_sync_block_size = 4 * 1024;
 
+raft_server::limits raft_server::raft_limits_;
+
 raft_server::raft_server(context* ctx, const init_options& opt)
     : initialized_(false)
     , leader_(-1)
@@ -478,7 +480,8 @@ int32 raft_server::get_leadership_expiry() {
     int expiry = params->leadership_expiry_;
     if (expiry == 0) {
         // If 0, default expiry: 20x of heartbeat.
-        expiry = params->heart_beat_interval_ * peer::RESPONSE_LIMIT;
+        expiry = params->heart_beat_interval_ *
+                     raft_server::raft_limits_.leadership_limit_;
     }
     return expiry;
 }
@@ -648,9 +651,9 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
             rpc_errs = pp->get_rpc_errs();
         }
 
-        if (rpc_errs < peer::WARNINGS_LIMIT) {
+        if (rpc_errs < raft_server::raft_limits_.warning_limit_) {
             p_wn("peer (%d) response error: %s", peer_id, err->what());
-        } else if (rpc_errs == peer::WARNINGS_LIMIT) {
+        } else if (rpc_errs == raft_server::raft_limits_.warning_limit_) {
             p_wn("too verbose RPC error on peer (%d), "
                  "will suppress it from now", peer_id);
         }
@@ -685,7 +688,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         if (entry != peers_.end()) {
             peer* pp = entry->second.get();
             int rpc_errs = pp->get_rpc_errs();
-            if (rpc_errs >= peer::WARNINGS_LIMIT) {
+            if (rpc_errs >= raft_server::raft_limits_.warning_limit_) {
                 p_wn("recovered from RPC failure from peer %d, %d errors",
                      resp->get_src(), rpc_errs);
             }
@@ -1333,6 +1336,14 @@ void raft_server::set_inc_term_func(srv_state::inc_term_func func) {
     recur_lock(lock_);
     if (!state_) return;
     state_->set_inc_term_func(func);
+}
+
+raft_server::limits raft_server::get_raft_limits() {
+    return raft_limits_;
+}
+
+void raft_server::set_raft_limits(const raft_server::limits& new_limits) {
+    raft_limits_ = new_limits;
 }
 
 } // namespace nuraft;
