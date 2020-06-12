@@ -112,7 +112,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             ctx_->set_params(clone);
 
         } else if ( num_not_responding_peers == 0 &&
-                    cur_quorum_size == 0 ) {
+                    params->custom_commit_quorum_size_ == 1 ) {
             // Recovered.
             p_wn("2-node cluster's follower is responding now, "
                  "restore quorum with default value");
