@@ -494,7 +494,15 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
               local_snp->get_last_log_idx() == req.get_last_log_idx() &&
               local_snp->get_last_log_term() == req.get_last_log_term() );
 
-    p_lv( (log_okay ? L_TRACE : (supp_exp_warning ? L_INFO : L_WARN) ),
+    int log_lv = log_okay ? L_TRACE : (supp_exp_warning ? L_INFO : L_WARN);
+    static timer_helper log_timer(500*1000, true);
+    if (log_lv == L_WARN) {
+        // To avoid verbose logs.
+        if (!log_timer.timeout_and_reset()) {
+            log_lv = L_TRACE;
+        }
+    }
+    p_lv( log_lv,
           "[LOG %s] req log idx: %zu, req log term: %zu, my last log idx: %zu, "
           "my log (%zu) term: %zu",
           (log_okay ? "OK" : "XX"),
@@ -506,14 +514,14 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
     if ( req.get_term() < state_->get_term() ||
          log_okay == false ) {
-        p_lv( (supp_exp_warning ? L_INFO : L_WARN),
+        p_lv( log_lv,
               "deny, req term %zu, my term %zu, req log idx %zu, my log idx %zu",
               req.get_term(), state_->get_term(),
               req.get_last_log_idx(), log_store_->next_slot() - 1 );
         if (local_snp) {
-            p_wn("snp idx %zu term %zu",
-                 local_snp->get_last_log_idx(),
-                 local_snp->get_last_log_term());
+            p_lv( log_lv, "snp idx %zu term %zu",
+                  local_snp->get_last_log_idx(),
+                  local_snp->get_last_log_term() );
         }
         resp->set_next_batch_size_hint_in_bytes(
                 state_machine_->get_next_batch_size_hint_in_bytes() );
@@ -834,7 +842,16 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_next_log_idx(p->get_next_log_idx() - 1);
         }
         bool suppress = p->need_to_suppress_error();
-        p_lv( (suppress ? L_INFO : L_WARN),
+
+        // To avoid verbose logs here.
+        static timer_helper log_timer(500*1000, true);
+        int log_lv = suppress ? L_INFO : L_WARN;
+        if (log_lv == L_WARN) {
+            if (!log_timer.timeout_and_reset()) {
+                log_lv = L_TRACE;
+            }
+        }
+        p_lv( log_lv,
               "declined append: peer %d, prev next log idx %zu, "
               "resp next %zu, new next log idx %zu",
               p->get_id(), prev_next_log,
