@@ -92,6 +92,11 @@ void peer::handle_rpc_result( ptr<peer> myself,
         msg_type::priority_change_request
     } );
 
+    if (abandoned_) {
+        p_in("peer %d has been shut down, ignore response.", config_->get_id());
+        return;
+    }
+
     if (req) {
         p_tr( "resp of req %d -> %d, type %s, %s",
               req->get_src(),
@@ -127,6 +132,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
         reset_active_timer();
         resume_hb_speed();
         ptr<rpc_exception> no_except;
+        resp->set_peer(myself);
         pending_result->set_result(resp, no_except);
 
         reconn_backoff_.reset();
