@@ -27,6 +27,7 @@ limitations under the License.
 namespace nuraft {
 
 class resp_msg;
+class peer;
 using resp_cb =
     std::function<ptr<resp_msg>(ptr<resp_msg>)>;
 
@@ -83,6 +84,14 @@ public:
         return ctx_;
     }
 
+    void set_peer(ptr<peer> peer) {
+        peer_ = peer;
+    }
+
+    ptr<peer> get_peer() const {
+        return peer_;
+    }
+
     void set_cb(resp_cb _func) {
         cb_func_ = _func;
     }
@@ -122,6 +131,7 @@ private:
     ulong next_batch_size_hint_in_bytes_;
     bool accepted_;
     ptr<buffer> ctx_;
+    ptr<peer> peer_;
     resp_cb cb_func_;
     resp_async_cb async_cb_func_;
     cmd_result_code result_code_;

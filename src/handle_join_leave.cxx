@@ -184,7 +184,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
 }
 
 void raft_server::handle_join_cluster_resp(resp_msg& resp) {
-    if (srv_to_join_) {
+    if (srv_to_join_ && srv_to_join_ == resp.get_peer()) {
         if (resp.get_accepted()) {
             p_in("new server (%d) confirms it will join, "
                  "start syncing logs to it", srv_to_join_->get_id());
@@ -548,10 +548,12 @@ void raft_server::reset_srv_to_join() {
         void*& user_ctx = sync_ctx->get_user_snp_ctx();
         state_machine_->free_user_snp_ctx(user_ctx);
     }
+    srv_to_join_->shutdown();
     srv_to_join_.reset();
 }
 
 void raft_server::reset_srv_to_leave() {
+    srv_to_leave_->shutdown();
     srv_to_leave_.reset();
     srv_to_leave_target_idx_ = 0;
     p_in("clearing srv_to_leave_");
