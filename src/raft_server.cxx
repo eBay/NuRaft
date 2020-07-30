@@ -955,7 +955,9 @@ bool raft_server::check_leadership_validity() {
     return true;
 }
 
-void raft_server::yield_leadership(bool immediate_yield) {
+void raft_server::yield_leadership(bool immediate_yield,
+                                   int successor_id)
+{
     // Leader reelection is already happening.
     if (write_paused_) return;
 
@@ -979,31 +981,61 @@ void raft_server::yield_leadership(bool immediate_yield) {
         return;
     }
 
-    // Not immediate yield, find the highest priority node
-    // whose response time is not expired.
+    // Not immediate yield, nominate the successor.
     int max_priority = 0;
     int candidate_id = -1;
-    std::string candidate_endpoint;
     uint64_t last_resp_ms = 0;
+    std::string candidate_endpoint;
     size_t hb_interval_ms = ctx_->get_params()->heart_beat_interval_;
-    for (auto& entry: peers_) {
-        int32 srv_id = entry.first;
-        ptr<peer>& pp = entry.second;
-        uint64_t pp_last_resp_ms = pp->get_resp_timer_us() / 1000;
-
-        if ( srv_id != id_ &&
-             pp_last_resp_ms <= hb_interval_ms &&
-             pp->get_config().get_priority() > max_priority ) {
+    if (successor_id >= 0) {
+        // If successor is given, find that one.
+        auto entry = peers_.find(successor_id);
+        if (entry != peers_.end()) {
+            int32 srv_id = entry->first;
+            ptr<peer>& pp = entry->second;
             max_priority = pp->get_config().get_priority();
             candidate_id = srv_id;
             candidate_endpoint = pp->get_config().get_endpoint();
-            last_resp_ms = pp_last_resp_ms;
+            last_resp_ms = pp->get_resp_timer_us() / 1000;
         }
     }
 
-    p_in("got graceful re-elect request, pause write from now");
+    // Successor is not given or the given successor is incorrect,
+    // find the highest priority node whose response time is not expired.
+    if (candidate_id == -1) {
+        for (auto& entry: peers_) {
+            int32 srv_id = entry.first;
+            ptr<peer>& pp = entry.second;
+            uint64_t pp_last_resp_ms = pp->get_resp_timer_us() / 1000;
+
+            if ( srv_id != id_ &&
+                 pp_last_resp_ms <= hb_interval_ms &&
+                 pp->get_config().get_priority() > max_priority ) {
+                max_priority = pp->get_config().get_priority();
+                candidate_id = srv_id;
+                candidate_endpoint = pp->get_config().get_endpoint();
+                last_resp_ms = pp_last_resp_ms;
+            }
+        }
+    }
+
+    if (successor_id >= 0) {
+        p_in("got graceful re-elect request (designated successor %d), "
+             "pause write from now",
+             successor_id);
+
+        if ( successor_id >= 0 &&
+             successor_id != candidate_id ) {
+            p_wn("could not find given successor %d", successor_id);
+        }
+
+    } else {
+        p_in("got graceful re-elect request, pause write from now");
+    }
+
     if (candidate_id > -1) {
-        p_in("next leader candidate: %d %s priority %d last response %zu ms ago",
+        p_in("next leader candidate: id %d endpoint %s priority %d "
+             "last response %zu ms ago",
              candidate_id, candidate_endpoint.c_str(), max_priority,
              last_resp_ms);
         next_leader_candidate_ = candidate_id;;
