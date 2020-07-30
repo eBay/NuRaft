@@ -245,22 +245,29 @@ public:
                                    const int new_priority);
 
     /**
-     * Yield current leadership and becomes follower.
-     * Only leader will accept this operation.
+     * Yield current leadership and becomes a follower. Only a leader
+     * will accept this operation.
      *
-     * If given `immediate_yield` flag is `true`, it will
-     * become follower immediately, and next leader election will
-     * be totally random so that there is always a chance that
-     * this server becomes next leader again.
+     * If given `immediate_yield` flag is `true`, it will become a
+     * follower immediately. The subsequent leader election will be
+     * totally random so that there is always a chance that this
+     * server becomes the next leader again.
      *
-     * Otherwise, this server will pause write first, wait until
-     * highest priority server (except for this server) finishes
-     * the catch-up of the latest log, and then resign.
-     * In such case, next leader will be much more predictable.
+     * Otherwise, this server will pause write operations first, wait
+     * until the successor (except for this server) finishes the
+     * catch-up of the latest log, and then resign. In such a case,
+     * the next leader will be much more predictable.
+     *
+     * Users can designate the successor. If not given, this API will
+     * automatically choose the highest priority server as a successor.
      *
      * @param immediate_yield If `true`, yield immediately.
+     * @param successor_id The server ID of the successor.
+     *                     If `-1`, the successor will be chosen
+     *                     automatically.
      */
-    void yield_leadership(bool immediate_yield = false);
+    void yield_leadership(bool immediate_yield = false,
+                          int successor_id = -1);
 
     /**
      * Start the election timer on this server, if this server is a follower.

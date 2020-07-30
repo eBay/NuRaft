@@ -1130,6 +1130,125 @@ int leadership_takeover_basic_test() {
     return 0;
 }
 
+int leadership_takeover_designated_successor_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Set the priority of S2 to 10.
+    s1.raftServer->set_priority(2, 10);
+    // Send priority change reqs.
+    s1.fNet->execReqResp();
+    // Send reqs again for commit.
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Set the priority of S3 to 5.
+    s1.raftServer->set_priority(3, 5);
+    // Send priority change reqs.
+    s1.fNet->execReqResp();
+    // Send reqs again for commit.
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Yield leadership to S3.
+    s1.dbgLog(" --- yield leadership ---");
+    s1.raftServer->yield_leadership(false, 3);
+    // Send heartbeat.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    // After getting response of heartbeat, S1 will resign.
+    s1.fNet->execReqResp();
+
+    // Now S3 should have received takeover request.
+    // Send vote requests.
+    s3.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Send new config as a new leader.
+    s3.fNet->execReqResp();
+    // Follow-up: commit.
+    s3.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    CHK_FALSE( s1.raftServer->is_leader() );
+    CHK_FALSE( s2.raftServer->is_leader() );
+    CHK_TRUE( s3.raftServer->is_leader() );
+
+    // Re-yield leadership to S2.
+    s3.dbgLog(" --- yield leadership ---");
+    s3.raftServer->yield_leadership(false, 2);
+    // Send heartbeat.
+    s3.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s3.fNet->execReqResp();
+    // After getting response of heartbeat, S3 will resign.
+    s3.fNet->execReqResp();
+
+    // Now S2 should have received takeover request.
+    // Send vote requests.
+    s2.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Send new config as a new leader.
+    s2.fNet->execReqResp();
+    // Follow-up: commit.
+    s2.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    CHK_FALSE( s1.raftServer->is_leader() );
+    CHK_TRUE( s2.raftServer->is_leader() );
+    CHK_FALSE( s3.raftServer->is_leader() );
+
+    // Re-yield leadership with wrong successor,
+    // S1 (highest priority server) will take over.
+    s2.dbgLog(" --- yield leadership ---");
+    s2.raftServer->yield_leadership(false, 12345);
+    // Send heartbeat.
+    s2.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s2.fNet->execReqResp();
+    // After getting response of heartbeat, S2 will resign.
+    s2.fNet->execReqResp();
+
+    // Now S1 should have received takeover request.
+    // Send vote requests.
+    s1.fNet->execReqResp();
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    // Send new config as a new leader.
+    s1.fNet->execReqResp();
+    // Follow-up: commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    TestSuite::sleep_ms(COMMIT_TIME_MS);
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_FALSE( s2.raftServer->is_leader() );
+    CHK_FALSE( s3.raftServer->is_leader() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int leadership_takeover_offline_candidate_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -2198,6 +2317,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "leadership takeover basic test",
                leadership_takeover_basic_test );
+
+    ts.doTest( "leadership takeover with designated successor test",
+               leadership_takeover_designated_successor_test );
 
     ts.doTest( "leadership takeover with offline candidate test",
                leadership_takeover_offline_candidate_test );
