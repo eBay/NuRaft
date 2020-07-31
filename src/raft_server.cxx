@@ -24,6 +24,7 @@ limitations under the License.
 #include "context.hxx"
 #include "error_code.hxx"
 #include "handle_client_request.hxx"
+#include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
 #include "state_machine.hxx"
@@ -1050,6 +1051,50 @@ void raft_server::yield_leadership(bool immediate_yield,
     reelection_timer_.set_duration_ms
                       ( ctx_->get_params()->election_timeout_upper_bound_ );
     reelection_timer_.reset();
+}
+
+bool raft_server::request_leadership() {
+    // If this server is already a leader, do nothing.
+    if (id_ == leader_ || is_leader()) {
+        p_er("cannot request leadership: this server is already a leader");
+        return false;
+    }
+    if (leader_ == -1) {
+        p_er("cannot request leadership: cannot find leader");
+        return false;
+    }
+
+    recur_lock(lock_);
+    auto entry = peers_.find(leader_);
+    if (entry == peers_.end()) {
+        p_er("cannot request leadership: cannot find peer for "
+             "leader id %d", leader_.load());
+        return false;
+    }
+    ptr<peer> pp = entry->second;
+
+    // Send resignation message to the follower.
+    ptr<req_msg> req = cs_new<req_msg>
+                       ( state_->get_term(),
+                         msg_type::custom_notification_request,
+                         id_, leader_,
+                         term_for_log(log_store_->next_slot() - 1),
+                         log_store_->next_slot() - 1,
+                         quick_commit_index_.load() );
+
+    // Create a notification.
+    ptr<custom_notification_msg> custom_noti =
+        cs_new<custom_notification_msg>
+        ( custom_notification_msg::request_resignation );
+
+    // Wrap it using log_entry.
+    ptr<log_entry> custom_noti_le =
+        cs_new<log_entry>(0, custom_noti->serialize(), log_val_type::custom);
+
+    req->log_entries().push_back(custom_noti_le);
+    pp->send_req(pp, req, resp_handler_);
+    p_in("sent leadership request to leader %d", leader_.load());
+    return true;
 }
 
 void raft_server::become_follower() {

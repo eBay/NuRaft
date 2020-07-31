@@ -165,6 +165,9 @@ ptr<resp_msg> raft_server::handle_custom_notification_req(req_msg& req) {
     case custom_notification_msg::leadership_takeover: {
         return handle_leadership_takeover(req, msg, resp);
     }
+    case custom_notification_msg::request_resignation: {
+        return handle_resignation_request(req, msg, resp);
+    }
     default:
         break;
     }
@@ -218,6 +221,22 @@ ptr<resp_msg> raft_server::handle_leadership_takeover
 
     // Initiate force vote (ignoring priority).
     initiate_vote(true);
+    return resp;
+}
+
+ptr<resp_msg> raft_server::handle_resignation_request
+                           ( req_msg& req,
+                             ptr<custom_notification_msg> msg,
+                             ptr<resp_msg> resp )
+{
+    if (!is_leader()) {
+        p_er("got resignation request from peer %d, "
+             "but I'm not a leader", req.get_src());
+        return resp;
+    }
+    p_in("[RESIGNATION REQUEST] got request");
+
+    yield_leadership(false, req.get_src());
     return resp;
 }
 
