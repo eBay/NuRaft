@@ -29,6 +29,7 @@ public:
     enum type {
         out_of_log_range_warning    = 1,
         leadership_takeover         = 2,
+        request_resignation         = 3,
     };
 
     custom_notification_msg(type t = out_of_log_range_warning)

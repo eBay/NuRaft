@@ -270,6 +270,15 @@ public:
                           int successor_id = -1);
 
     /**
+     * Send a request to the current leader to yield its leadership,
+     * and become the next leader.
+     *
+     * @return `true` on success. But it does not guarantee to become
+     *         the next leader due to various failures.
+     */
+    bool request_leadership();
+
+    /**
      * Start the election timer on this server, if this server is a follower.
      * It will allow the election timer permanently, if it was disabled
      * by state manager.
@@ -713,6 +722,10 @@ protected:
                                         ptr<resp_msg> resp);
 
     ptr<resp_msg> handle_leadership_takeover(req_msg& req,
+                                             ptr<custom_notification_msg> msg,
+                                             ptr<resp_msg> resp);
+
+    ptr<resp_msg> handle_resignation_request(req_msg& req,
                                              ptr<custom_notification_msg> msg,
                                              ptr<resp_msg> resp);
 
