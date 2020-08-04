@@ -151,11 +151,11 @@ public:
         next_log_idx_ = idx;
     }
 
-    ulong get_next_batch_size_hint_in_bytes() const {
+    int64 get_next_batch_size_hint_in_bytes() const {
         return next_batch_size_hint_in_bytes_;
     }
 
-    void set_next_batch_size_hint_in_bytes(ulong batch_size) {
+    void set_next_batch_size_hint_in_bytes(int64 batch_size) {
         next_batch_size_hint_in_bytes_ = batch_size;
     }
 
@@ -346,7 +346,7 @@ private:
     /**
      * Hint of the next log batch size in bytes.
      */
-    std::atomic<ulong> next_batch_size_hint_in_bytes_;
+    std::atomic<int64> next_batch_size_hint_in_bytes_;
 
     /**
      * The last log index whose term matches up with the leader.

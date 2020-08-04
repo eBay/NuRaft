@@ -218,7 +218,7 @@ public:
         customBatchSize = to;
     }
 
-    ulong get_next_batch_size_hint_in_bytes() {
+    int64 get_next_batch_size_hint_in_bytes() {
         return customBatchSize;
     }
 

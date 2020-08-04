@@ -109,10 +109,14 @@ ptr< std::vector< ptr<log_entry> > >
 ptr<std::vector<ptr<log_entry>>>
     inmem_log_store::log_entries_ext(ulong start,
                                      ulong end,
-                                     ulong batch_size_hint_in_bytes)
+                                     int64 batch_size_hint_in_bytes)
 {
     ptr< std::vector< ptr<log_entry> > > ret =
         cs_new< std::vector< ptr<log_entry> > >();
+
+    if (batch_size_hint_in_bytes < 0) {
+        return ret;
+    }
 
     size_t accum_size = 0;
     for (ulong ii = start ; ii < end ; ++ii) {

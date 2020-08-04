@@ -760,7 +760,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         restart_election_timer();
     }
 
-    ulong bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
+    int64 bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
     p_tr("batch size hint: %zu bytes", bs_hint);
 
@@ -799,7 +799,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
          (int)p->get_id(), (int)resp.get_next_idx());
 
-    ulong bs_hint = resp.get_next_batch_size_hint_in_bytes();
+    int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
     p_tr("peer %d batch size hint: %zu bytes", p->get_id(), bs_hint);
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
@@ -811,7 +811,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_next_log_idx(resp.get_next_idx());
             prev_matched_idx = p->get_matched_idx();
             new_matched_idx = resp.get_next_idx() - 1;
-            p_tr("peer %d, prev idx: %ld, next idx: %ld",
+            p_tr("peer %d, prev matched idx: %ld, new matched idx: %ld",
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
         }
