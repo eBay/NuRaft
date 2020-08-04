@@ -762,7 +762,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
     int64 bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
-    p_tr("batch size hint: %zu bytes", bs_hint);
+    p_tr("batch size hint: %ld bytes", bs_hint);
 
     out_of_log_range_ = false;
 
@@ -800,7 +800,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
          (int)p->get_id(), (int)resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
-    p_tr("peer %d batch size hint: %zu bytes", p->get_id(), bs_hint);
+    p_tr("peer %d batch size hint: %ld bytes", p->get_id(), bs_hint);
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {

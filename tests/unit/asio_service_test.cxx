@@ -644,7 +644,9 @@ int response_hint_test(bool with_meta) {
         ee->getTestSm()->set_next_batch_size_hint_in_bytes(-1);
     }
 
-    for (size_t ii=0; ii<NUM; ++ii) {
+    // on Mac, due to sync append, leader reelect will happen
+    // on Ubuntu, due to sync append, 100 times append are very slow
+    for (size_t ii=0; ii<3; ++ii) {
         std::string msg_str = "2nd_" + std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
@@ -653,7 +655,7 @@ int response_hint_test(bool with_meta) {
     }
     TestSuite::sleep_sec(1, "wait for replication");
 
-    // State machine should be identical.
+    // State machine should be identical. All are not committed.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 

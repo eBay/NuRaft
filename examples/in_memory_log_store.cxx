@@ -132,7 +132,7 @@ ptr<std::vector<ptr<log_entry>>>
         ret->push_back(make_clone(src));
         accum_size += src->get_buf().size();
         if (batch_size_hint_in_bytes &&
-            accum_size >= batch_size_hint_in_bytes) break;
+            accum_size >= (ulong)batch_size_hint_in_bytes) break;
     }
     return ret;
 }
