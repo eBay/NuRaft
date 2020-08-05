@@ -130,7 +130,7 @@ public:
      *         `positive value` indicates at least one log can be sent,
      *         (the size of that log may be bigger than this hint size).
      *         `negative value` indicates no log should be sent since this
-     *          follower is busy handling pending logs.
+     *         follower is busy handling pending logs.
      */
     virtual int64 get_next_batch_size_hint_in_bytes() { return 0; }
 
