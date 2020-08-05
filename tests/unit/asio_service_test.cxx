@@ -662,6 +662,8 @@ int response_hint_test(bool with_meta) {
         ee->getTestSm()->set_next_batch_size_hint_in_bytes(-1);
     }
 
+    TestSuite::sleep_sec(1, "wait peer's hint size info refreshed in leader side");
+
     // With negative hint size, append_entries will timeout due to
     // raft server can not commit. Set timeout to a small value.
     raft_params params = s1.raftServer->get_current_params();
