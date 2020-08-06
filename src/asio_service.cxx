@@ -574,7 +574,7 @@ private:
             // Hint is given, set the flag.
             flags |= INCLUDE_HINT;
             // For future extension, we will put 2-byte version and 2-byte length.
-            resp_hint_size += sizeof(uint16_t) * 2 + sizeof(ulong);
+            resp_hint_size += sizeof(uint16_t) * 2 + sizeof(int64);
         }
 
         size_t carried_data_size = resp_meta_size + resp_hint_size + resp_ctx_size;
@@ -610,7 +610,7 @@ private:
             const uint16_t CUR_HINT_VERSION = 0;
             bs.put_u16(CUR_HINT_VERSION);
             bs.put_u16(sizeof(ulong));
-            bs.put_u64(resp->get_next_batch_size_hint_in_bytes());
+            bs.put_i64(resp->get_next_batch_size_hint_in_bytes());
         }
 
         if (resp_ctx_size) {
@@ -1377,7 +1377,7 @@ private:
             uint16_t hint_version = bs.get_u16();
             (void)hint_version;
             hint_len = bs.get_u16();
-            rsp->set_next_batch_size_hint_in_bytes(bs.get_u64());
+            rsp->set_next_batch_size_hint_in_bytes(bs.get_i64());
             remaining_len -= sizeof(uint16_t) * 2 + hint_len;
         }
 

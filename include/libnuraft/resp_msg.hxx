@@ -59,11 +59,11 @@ public:
         return next_idx_;
     }
 
-    ulong get_next_batch_size_hint_in_bytes() const {
+    int64 get_next_batch_size_hint_in_bytes() const {
         return next_batch_size_hint_in_bytes_;
     }
 
-    void set_next_batch_size_hint_in_bytes(ulong bytes) {
+    void set_next_batch_size_hint_in_bytes(int64 bytes) {
         next_batch_size_hint_in_bytes_ = bytes;
     }
 
@@ -128,7 +128,7 @@ public:
 
 private:
     ulong next_idx_;
-    ulong next_batch_size_hint_in_bytes_;
+    int64 next_batch_size_hint_in_bytes_;
     bool accepted_;
     ptr<buffer> ctx_;
     ptr<peer> peer_;

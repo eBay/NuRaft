@@ -123,13 +123,16 @@ public:
      * Return a hint about the preferred size (in number of bytes)
      * of the next batch of logs to be sent from the leader.
      *
-     * Return 0 to indicate no preferred size (any size is good).
-     *
      * Only applicable on followers.
      *
-     * @return the preferred size of the next log batch
+     * @return The preferred size of the next log batch.
+     *         `0` indicates no preferred size (any size is good).
+     *         `positive value` indicates at least one log can be sent,
+     *         (the size of that log may be bigger than this hint size).
+     *         `negative value` indicates no log should be sent since this
+     *         follower is busy handling pending logs.
      */
-    virtual ulong get_next_batch_size_hint_in_bytes() { return 0; }
+    virtual int64 get_next_batch_size_hint_in_bytes() { return 0; }
 
     /**
      * (Deprecated)

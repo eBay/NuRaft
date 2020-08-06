@@ -760,9 +760,9 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         restart_election_timer();
     }
 
-    ulong bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
+    int64 bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
-    p_tr("batch size hint: %zu bytes", bs_hint);
+    p_tr("batch size hint: %ld bytes", bs_hint);
 
     out_of_log_range_ = false;
 
@@ -799,8 +799,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
          (int)p->get_id(), (int)resp.get_next_idx());
 
-    ulong bs_hint = resp.get_next_batch_size_hint_in_bytes();
-    p_tr("peer %d batch size hint: %zu bytes", p->get_id(), bs_hint);
+    int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
+    p_tr("peer %d batch size hint: %ld bytes", p->get_id(), bs_hint);
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {
@@ -811,7 +811,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_next_log_idx(resp.get_next_idx());
             prev_matched_idx = p->get_matched_idx();
             new_matched_idx = resp.get_next_idx() - 1;
-            p_tr("peer %d, prev idx: %ld, next idx: %ld",
+            p_tr("peer %d, prev matched idx: %ld, new matched idx: %ld",
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
         }
@@ -826,10 +826,6 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         commit( committed_index );
         need_to_catchup = p->clear_pending_commit() ||
                           resp.get_next_idx() < log_store_->next_slot();
-
-        if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) {
-
-        }
 
     } else {
         ulong prev_next_log = p->get_next_log_idx();
@@ -913,6 +909,13 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         req->log_entries().push_back(custom_noti_le);
         p->send_req(p, req, resp_handler_);
         return;
+    }
+
+    if (bs_hint < 0) {
+        // If hint is a negative number, we should set `need_to_catchup`
+        // to `false` to avoid sending meaningless messages continuously
+        // which eats up CPU. Then the leader will send heartbeats only.
+        need_to_catchup = false;
     }
 
     // This may not be a leader anymore,

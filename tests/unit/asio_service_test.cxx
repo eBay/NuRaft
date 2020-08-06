@@ -611,7 +611,7 @@ int response_hint_test(bool with_meta) {
     }
     CHK_Z( launch_servers(pkgs, false) );
 
-    _msg("enable batch size hint\n");
+    _msg("enable batch size hint with positive value\n");
     for (RaftAsioPkg* ee: pkgs) {
         ee->getTestSm()->set_next_batch_size_hint_in_bytes(1);
     }
@@ -654,6 +654,32 @@ int response_hint_test(bool with_meta) {
     TestSuite::sleep_sec(1, "wait for replication");
 
     // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    _msg("enable batch size hint with negative value\n");
+    for (RaftAsioPkg* ee: pkgs) {
+        ee->getTestSm()->set_next_batch_size_hint_in_bytes(-1);
+    }
+
+    TestSuite::sleep_sec(1, "wait peer's hint size info refreshed in leader side");
+
+    // With negative hint size, append_entries will timeout due to
+    // raft server can not commit. Set timeout to a small value.
+    raft_params params = s1.raftServer->get_current_params();
+    params.with_client_req_timeout(1000);
+    s1.raftServer->update_params(params);
+
+    for (size_t ii=0; ii<3; ++ii) {
+        std::string msg_str = "3rd_" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication but actually no replication happen");
+
+    // State machine should be identical. All are not committed.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
