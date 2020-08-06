@@ -827,10 +827,6 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         need_to_catchup = p->clear_pending_commit() ||
                           resp.get_next_idx() < log_store_->next_slot();
 
-        if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) {
-
-        }
-
     } else {
         ulong prev_next_log = p->get_next_log_idx();
         std::lock_guard<std::mutex> guard(p->get_lock());
@@ -913,6 +909,13 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         req->log_entries().push_back(custom_noti_le);
         p->send_req(p, req, resp_handler_);
         return;
+    }
+
+    if (bs_hint < 0) {
+        // If hint is a negative number, we should set `need_to_catchup`
+        // to `false` to avoid sending meaningless messages continuously
+        // which eats up CPU. Then the leader will send heartbeats only.
+        need_to_catchup = false;
     }
 
     // This may not be a leader anymore,

@@ -108,8 +108,9 @@ public:
      *
      * @param start The start log index number (inclusive).
      * @param end The end log index number (exclusive).
-     * @param batch_size_hint_in_bytes total size (in bytes) of the returned entries,
-     *        see value's meaning at state_machine::get_next_batch_size_hint_in_bytes()
+     * @param batch_size_hint_in_bytes Total size (in bytes) of the returned entries,
+     *        see the detailed comment at
+     *        `state_machine::get_next_batch_size_hint_in_bytes()`.
      * @return The log entries between [start, end) and limited by the total size
      *         given by the batch_size_hint_in_bytes.
      */

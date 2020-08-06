@@ -125,7 +125,7 @@ public:
      *
      * Only applicable on followers.
      *
-     * @return the preferred size of the next log batch
+     * @return The preferred size of the next log batch.
      *         `0` indicates no preferred size (any size is good).
      *         `positive value` indicates at least one log can be sent,
      *         (the size of that log may be bigger than this hint size).
