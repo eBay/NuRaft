@@ -530,7 +530,22 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
             }
         }
 
-        rm_srv_from_cluster(p->get_id());
+        if (srv_to_leave_) {
+            // WARNING:
+            //   If `srv_to_leave_` is already set, this function is probably
+            //   invoked by `handle_hb_timeout`. In such a case, the server
+            //   to be removed does not respond while the leader already
+            //   generated the log for the configuration change. We should
+            //   abandon the peer entry from `peers_`.
+            p_wn("srv_to_leave_ is already set to %d, will remove it from "
+                 "peer list", srv_to_leave_->get_id());
+            remove_peer_from_peers(srv_to_leave_);
+            reset_srv_to_leave();
+
+        } else {
+            // Set `srv_to_leave_` and generate a log for configuration change.
+            rm_srv_from_cluster(p->get_id());
+        }
 
     } else {
         p_in( "rpc failed again for the new coming server (%d), "
