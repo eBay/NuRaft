@@ -179,6 +179,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
         } else {
             if (resp->get_accepted()) {
                 resp_ctx = resp->get_ctx();
+                presult->accept();
             }
         }
 
