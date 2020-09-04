@@ -268,6 +268,16 @@ public:
         return empty_result_;
     }
 
+    /**
+     * Blocks until set_result is called.
+     *
+     * @return void.
+     */
+    void wait() {
+        std::unique_lock<std::mutex> lock(lock_);
+        cv_.wait(lock);
+    }
+
 private:
     T empty_result_;
     T result_;

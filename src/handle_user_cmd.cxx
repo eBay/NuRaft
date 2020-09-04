@@ -186,6 +186,12 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
         presult->set_result(resp_ctx, perr);
     };
     rpc_cli->send(req, handler);
+
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->return_method_ == raft_params::blocking) {
+        presult->wait();
+    }
+
     return presult;
 // LCOV_EXCL_STOP
 }
