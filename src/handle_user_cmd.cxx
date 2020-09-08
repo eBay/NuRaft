@@ -189,7 +189,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
 
     ptr<raft_params> params = ctx_->get_params();
     if (params->return_method_ == raft_params::blocking) {
-        presult->wait();
+        presult->get();
     }
 
     return presult;
