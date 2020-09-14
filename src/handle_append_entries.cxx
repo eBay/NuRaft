@@ -50,11 +50,15 @@ void raft_server::append_entries_in_bg() {
         bg_append_ea_->reset();
         if (stopping_) break;
 
-        recur_lock(lock_);
-        request_append_entries();
+        append_entries_in_bg_exec();
     } while (!stopping_);
     append_bg_stopped_ = true;
     p_in("bg append_entries thread terminated");
+}
+
+void raft_server::append_entries_in_bg_exec() {
+    recur_lock(lock_);
+    request_append_entries();
 }
 
 void raft_server::request_append_entries() {

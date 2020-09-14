@@ -988,6 +988,115 @@ int auto_quorum_size_election_test() {
     return 0;
 }
 
+int global_mgr_basic_test() {
+    reset_log_files();
+
+    nuraft_global_mgr::init();
+
+    std::string s1_addr = "127.0.0.1:20010";
+    std::string s2_addr = "127.0.0.1:20020";
+    std::string s3_addr = "127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    for (size_t ii=0; ii<10; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+        // To utilize thread pool, have enough break time
+        // between each `append_entries`. If we don't have this,
+        // append_entries's response handler will trigger the
+        // next request, not by the global thread pool.
+        TestSuite::sleep_ms(100);
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    nuraft_global_mgr::shutdown();
+    return 0;
+}
+
+int global_mgr_heavy_test() {
+    reset_log_files();
+
+    nuraft_global_config g_config;
+    g_config.num_commit_threads_ = 2;
+    g_config.num_append_threads_ = 2;
+    nuraft_global_mgr::init(g_config);
+    const size_t NUM_SERVERS = 10;
+
+    std::vector<RaftAsioPkg*> pkgs;
+    for (size_t ii = 0; ii < NUM_SERVERS; ++ii) {
+        std::string addr = "127.0.0.1:" + std::to_string(20000 + (ii+1) * 10);
+        RaftAsioPkg* pkg = new RaftAsioPkg(ii+1, addr);
+        pkgs.push_back(pkg);
+    }
+
+    CHK_Z( launch_servers(pkgs, false) );
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    // Set async.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    for (size_t ii=0; ii<500; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+
+        for (auto& entry: pkgs) {
+            RaftAsioPkg* pkg = entry;
+            pkg->raftServer->append_entries( {msg} );
+        }
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pkg = entry;
+        pkg->raftServer->shutdown();
+        delete pkg;
+    }
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    nuraft_global_mgr::shutdown();
+    return 0;
+}
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -1029,6 +1138,12 @@ int main(int argc, char** argv) {
 
     ts.doTest( "auto quorum size for election test",
                auto_quorum_size_election_test );
+
+    ts.doTest( "global manager basic test",
+               global_mgr_basic_test );
+
+    ts.doTest( "global manager heavy test",
+               global_mgr_heavy_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

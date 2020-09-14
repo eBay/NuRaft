@@ -55,7 +55,8 @@ class state_machine;
 class state_mgr;
 struct context;
 struct raft_params;
-class raft_server {
+class raft_server : public std::enable_shared_from_this<raft_server> {
+    friend class nuraft_global_mgr;
 public:
     struct init_options {
         init_options()
@@ -613,6 +614,7 @@ protected:
     void cancel_task(ptr<delayed_task>& task);
     bool check_leadership_validity();
     void update_rand_timeout();
+    void cancel_global_requests();
 
     bool is_regular_member(const ptr<peer>& p);
     int32 get_num_voting_members();
@@ -702,7 +704,10 @@ protected:
     ulong term_for_log(ulong log_idx);
 
     void commit_in_bg();
+    bool commit_in_bg_exec(size_t timeout_ms = 0);
+
     void append_entries_in_bg();
+    void append_entries_in_bg_exec();
 
     void commit_app_log(ulong idx_to_commit,
                         ptr<log_entry>& le,

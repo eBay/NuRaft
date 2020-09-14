@@ -26,13 +26,6 @@ namespace nuraft {
 std::atomic<stat_mgr*> stat_mgr::instance_(nullptr);
 std::mutex stat_mgr::instance_lock_;
 
-struct auto_destroyer {
-    ~auto_destroyer() {
-        stat_mgr::destroy();
-    }
-};
-static auto_destroyer auto_destroyer_;
-
 // === stat_elem ==============================================================
 
 stat_elem::stat_elem(Type _type, const std::string& _name)

@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "context.hxx"
 #include "error_code.hxx"
+#include "global_mgr.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
 #include "tracer.hxx"
@@ -53,7 +54,14 @@ ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req) {
     // Urgent commit, so that the commit will not depend on hb.
     if (params->use_bg_thread_for_urgent_commit_) {
         // Let background generate request (some delay may happen).
-        bg_append_ea_->invoke();
+        nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+        if (mgr) {
+            // Global thread pool exists, request it.
+            p_tr("found global thread pool");
+            mgr->request_append( this->shared_from_this() );
+        } else {
+            bg_append_ea_->invoke();
+        }
     } else {
         // Directly generate request in user thread.
         recur_lock(lock_);

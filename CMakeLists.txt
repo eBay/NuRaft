@@ -221,6 +221,7 @@ set(RAFT_CORE
     ${ROOT_SRC}/cluster_config.cxx
     ${ROOT_SRC}/crc32.cxx
     ${ROOT_SRC}/error_code.cxx
+    ${ROOT_SRC}/global_mgr.cxx
     ${ROOT_SRC}/handle_append_entries.cxx
     ${ROOT_SRC}/handle_client_request.cxx
     ${ROOT_SRC}/handle_custom_notification.cxx

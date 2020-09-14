@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "error_code.hxx"
 #include "handle_client_request.hxx"
+#include "global_mgr.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
 #include "state_machine.hxx"
@@ -60,9 +61,18 @@ void raft_server::commit(ulong target_idx) {
 
     if ( log_store_->next_slot() - 1 > sm_commit_index_ &&
          quick_commit_index_ > sm_commit_index_ ) {
-        p_tr("commit_cv_ notify\n");
-        std::unique_lock<std::mutex> lock(commit_cv_lock_);
-        commit_cv_.notify_one();
+
+        nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+        if (mgr) {
+            // Global thread pool exists, request it.
+            p_tr("request commit to global thread pool");
+            mgr->request_commit( this->shared_from_this() );
+        } else {
+            p_tr("commit_cv_ notify (local thread)");
+            std::unique_lock<std::mutex> lock(commit_cv_lock_);
+            commit_cv_.notify_one();
+        }
+
     } else {
         /*
          * After raft server (re-)start, if its log entry is as fresh as leader,
@@ -108,81 +118,16 @@ void raft_server::commit_in_bg() {
                 commit_bg_stopped_ = true;
                 return;
             }
+
+            // NOTE:
+            //   Even though commit_cv_ is invoked (by commit()), we don't
+            //   need to execute it if the current commit index number of
+            //   the state machine is greater than either
+            //     1) requested commit index or
+            //     2) log store's latest log index.
         }
 
-        p_db( "commit upto %ld, curruent idx %ld\n",
-              quick_commit_index_.load(), sm_commit_index_.load() );
-
-        ulong log_start_idx = log_store_->start_index();
-        if ( log_start_idx &&
-             sm_commit_index_ < log_start_idx - 1 ) {
-            p_wn("current commit idx %llu is smaller than log start idx %llu - 1, "
-                 "adjust it to %llu",
-                 sm_commit_index_.load(),
-                 log_start_idx,
-                 log_start_idx - 1);
-            sm_commit_index_ = log_start_idx - 1;
-        }
-
-        ptr<cluster_config> cur_config = get_config();
-        bool need_to_handle_commit_elem = ( is_leader() &&
-                                            !cur_config->is_async_replication() );
-
-        while ( sm_commit_index_ < quick_commit_index_ &&
-                sm_commit_index_ < log_store_->next_slot() - 1 ) {
-            ulong index_to_commit = sm_commit_index_ + 1;
-            ptr<log_entry> le = log_store_->entry_at(index_to_commit);
-            p_tr( "commit upto %llu, curruent idx %llu\n",
-                  quick_commit_index_.load(), index_to_commit );
-
-            if (le->get_term() == 0) {
-                // LCOV_EXCL_START
-                // Zero term means that log store is corrupted
-                // (failed to read log).
-                p_ft( "empty log at idx %llu, must be log corruption",
-                      index_to_commit );
-                ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
-                ::exit(-1);
-                // LCOV_EXCL_STOP
-            }
-
-            if (le->get_val_type() == log_val_type::app_log) {
-                commit_app_log(index_to_commit, le, need_to_handle_commit_elem);
-
-            } else if (le->get_val_type() == log_val_type::conf) {
-                commit_conf(index_to_commit, le);
-            }
-
-            ulong exp_idx = index_to_commit - 1;
-            if (sm_commit_index_.compare_exchange_strong(exp_idx, index_to_commit)) {
-                snapshot_and_compact(sm_commit_index_);
-            } else {
-                p_er("sm_commit_index_ has been changed to %zu, "
-                     "this thread attempted %zu",
-                     exp_idx,
-                     index_to_commit);
-            }
-        }
-        p_db( "DONE: commit upto %ld, curruent idx %ld\n",
-              quick_commit_index_.load(), sm_commit_index_.load() );
-        if (role_ == srv_role::follower) {
-            ulong leader_idx = leader_commit_index_.load();
-            ulong local_idx = sm_commit_index_.load();
-            ptr<raft_params> params = ctx_->get_params();
-
-            if (data_fresh_.load() &&
-                leader_idx > local_idx + params->stale_log_gap_) {
-                data_fresh_.store(false);
-                cb_func::Param param(id_, leader_);
-                (void) ctx_->cb_func_.call(cb_func::BecomeStale, &param);
-
-            } else if (!data_fresh_.load() &&
-                       leader_idx < local_idx + params->fresh_log_gap_) {
-                data_fresh_.store(true);
-                cb_func::Param param(id_, leader_);
-                (void) ctx_->cb_func_.call(cb_func::BecomeFresh, &param);
-            }
-        }
+        commit_in_bg_exec();
 
      } catch (std::exception& err) {
         // LCOV_EXCL_START
@@ -196,6 +141,93 @@ void raft_server::commit_in_bg() {
      }
     }
     commit_bg_stopped_ = true;
+}
+
+bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
+    bool finished_in_time = true;
+    timer_helper tt(timeout_ms * 1000);
+
+    p_db( "commit upto %ld, curruent idx %ld\n",
+          quick_commit_index_.load(), sm_commit_index_.load() );
+
+    ulong log_start_idx = log_store_->start_index();
+    if ( log_start_idx &&
+         sm_commit_index_ < log_start_idx - 1 ) {
+        p_wn("current commit idx %llu is smaller than log start idx %llu - 1, "
+             "adjust it to %llu",
+             sm_commit_index_.load(),
+             log_start_idx,
+             log_start_idx - 1);
+        sm_commit_index_ = log_start_idx - 1;
+    }
+
+    ptr<cluster_config> cur_config = get_config();
+    bool need_to_handle_commit_elem = ( is_leader() &&
+                                        !cur_config->is_async_replication() );
+
+    while ( sm_commit_index_ < quick_commit_index_ &&
+            sm_commit_index_ < log_store_->next_slot() - 1 ) {
+        ulong index_to_commit = sm_commit_index_ + 1;
+        ptr<log_entry> le = log_store_->entry_at(index_to_commit);
+        p_tr( "commit upto %llu, curruent idx %llu\n",
+              quick_commit_index_.load(), index_to_commit );
+
+        if (le->get_term() == 0) {
+            // LCOV_EXCL_START
+            // Zero term means that log store is corrupted
+            // (failed to read log).
+            p_ft( "empty log at idx %llu, must be log corruption",
+                  index_to_commit );
+            ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
+            ::exit(-1);
+            // LCOV_EXCL_STOP
+        }
+
+        if (le->get_val_type() == log_val_type::app_log) {
+            commit_app_log(index_to_commit, le, need_to_handle_commit_elem);
+
+        } else if (le->get_val_type() == log_val_type::conf) {
+            commit_conf(index_to_commit, le);
+        }
+
+        ulong exp_idx = index_to_commit - 1;
+        if (sm_commit_index_.compare_exchange_strong(exp_idx, index_to_commit)) {
+            snapshot_and_compact(sm_commit_index_);
+        } else {
+            p_er("sm_commit_index_ has been changed to %zu, "
+                 "this thread attempted %zu",
+                 exp_idx,
+                 index_to_commit);
+        }
+
+        if (timeout_ms && tt.timeout()) {
+            p_db( "abort commit due to timeout (%zu ms), %zu ms elapsed\n",
+                  timeout_ms, tt.get_ms() );
+            finished_in_time = false;
+            break;
+        }
+    }
+    p_db( "DONE: commit upto %ld, curruent idx %ld\n",
+          quick_commit_index_.load(), sm_commit_index_.load() );
+    if (role_ == srv_role::follower) {
+        ulong leader_idx = leader_commit_index_.load();
+        ulong local_idx = sm_commit_index_.load();
+        ptr<raft_params> params = ctx_->get_params();
+
+        if (data_fresh_.load() &&
+            leader_idx > local_idx + params->stale_log_gap_) {
+            data_fresh_.store(false);
+            cb_func::Param param(id_, leader_);
+            (void) ctx_->cb_func_.call(cb_func::BecomeStale, &param);
+
+        } else if (!data_fresh_.load() &&
+                   leader_idx < local_idx + params->fresh_log_gap_) {
+            data_fresh_.store(true);
+            cb_func::Param param(id_, leader_);
+            (void) ctx_->cb_func_.call(cb_func::BecomeFresh, &param);
+        }
+    }
+    return finished_in_time;
 }
 
 void raft_server::commit_app_log(ulong idx_to_commit,
