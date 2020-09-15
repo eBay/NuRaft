@@ -23,10 +23,12 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "context.hxx"
 #include "error_code.hxx"
+#include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
+#include "stat_mgr.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
 #include "tracer.hxx"
@@ -42,8 +44,17 @@ const int raft_server::default_snapshot_sync_block_size = 4 * 1024;
 
 raft_server::limits raft_server::raft_limits_;
 
+struct auto_destroyer {
+    ~auto_destroyer() {
+        stat_mgr::destroy();
+        nuraft_global_mgr::shutdown();
+    }
+};
+static auto_destroyer auto_destroyer_;
+
 raft_server::raft_server(context* ctx, const init_options& opt)
-    : initialized_(false)
+    : bg_append_ea_(nullptr)
+    , initialized_(false)
     , leader_(-1)
     , id_(ctx->state_mgr_->server_id())
     , target_priority_(srv_config::INIT_PRIORITY)
@@ -226,10 +237,21 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     print_msg += temp_buf;
     p_in(print_msg.c_str());
 
-    bg_commit_thread_ = std::thread(std::bind(&raft_server::commit_in_bg, this));
+    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    if (mgr) {
+        p_in("global manager is detected. will use shared thread pool");
+        commit_bg_stopped_ = true;
+        append_bg_stopped_ = true;
+        mgr->init_raft_server(this);
 
-    bg_append_ea_ = new EventAwaiter();
-    bg_append_thread_ = std::thread(std::bind(&raft_server::append_entries_in_bg, this));
+    } else {
+        p_in("global manager does not exist. "
+             "will use local thread for commit and append");
+        bg_commit_thread_ = std::thread(std::bind(&raft_server::commit_in_bg, this));
+
+        bg_append_ea_ = new EventAwaiter();
+        bg_append_thread_ = std::thread(std::bind(&raft_server::append_entries_in_bg, this));
+    }
 
     if (opt.skip_initial_election_timeout_) {
         // Issue #23:
@@ -261,6 +283,10 @@ raft_server::raft_server(context* ctx, const init_options& opt)
 }
 
 raft_server::~raft_server() {
+    // For the case that user does not call shutdown() and directly
+    // destroy the current `raft_server` instance.
+    cancel_global_requests();
+
     recur_lock(lock_);
     stopping_ = true;
     std::unique_lock<std::mutex> commit_lock(commit_cv_lock_);
@@ -346,8 +372,18 @@ void raft_server::stop_server() {
     drop_all_pending_commit_elems();
 }
 
+void raft_server::cancel_global_requests() {
+    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    if (mgr) {
+        mgr->close_raft_server(this);
+    }
+}
+
 void raft_server::shutdown() {
     p_in("shutting down raft core");
+
+    // If the global manager exists, cancel all pending requests.
+    cancel_global_requests();
 
     // Terminate background commit thread.
     {   recur_lock(lock_);
@@ -404,7 +440,7 @@ void raft_server::shutdown() {
 
     p_in("joined terminated commit thread.");
 
-    while (!append_bg_stopped_) {
+    while (bg_append_ea_ && !append_bg_stopped_) {
         bg_append_ea_->invoke();
         std::this_thread::yield();
     }
