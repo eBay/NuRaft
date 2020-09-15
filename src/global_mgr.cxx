@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "global_mgr.hxx"
 
+#include "event_awaiter.h"
 #include "logger.hxx"
 #include "raft_server.hxx"
 #include "tracer.hxx"
@@ -28,29 +29,40 @@ namespace nuraft {
 std::atomic<nuraft_global_mgr*> nuraft_global_mgr::instance_(nullptr);
 std::mutex nuraft_global_mgr::instance_lock_;
 
+struct nuraft_global_mgr::worker_handle {
+    worker_handle(size_t id = 0)
+        : id_(id)
+        , thread_(nullptr)
+        , stopping_(false)
+        , status_(SLEEPING)
+        {}
 
-nuraft_global_mgr::worker_handle::worker_handle(size_t id)
-    : id_(id)
-    , thread_(nullptr)
-    , stopping_(false)
-    , status_(SLEEPING)
-{
-}
-
-nuraft_global_mgr::worker_handle::~worker_handle() {
-    shutdown();
-}
-
-void nuraft_global_mgr::worker_handle::shutdown() {
-    stopping_ = true;
-    if (thread_) {
-        if (thread_->joinable()) {
-            ea_.invoke();
-            thread_->join();
-        }
-        thread_.reset();
+    ~worker_handle() {
+        shutdown();
     }
-}
+
+    void shutdown() {
+        stopping_ = true;
+        if (thread_) {
+            if (thread_->joinable()) {
+                ea_.invoke();
+                thread_->join();
+            }
+            thread_.reset();
+        }
+    }
+
+    enum status {
+        SLEEPING = 0,
+        WORKING = 1,
+    };
+
+    size_t id_;
+    EventAwaiter ea_;
+    ptr<std::thread> thread_;
+    bool stopping_;
+    std::atomic<status> status_;
+};
 
 nuraft_global_mgr::nuraft_global_mgr()
     : thread_id_counter_(0)

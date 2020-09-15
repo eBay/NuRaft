@@ -20,7 +20,6 @@ limitations under the License.
 #pragma once
 
 #include "basic_types.hxx"
-#include "event_awaiter.h"
 #include "pp_util.hxx"
 #include "ptr.hxx"
 
@@ -121,22 +120,7 @@ public:
     void request_commit(ptr<raft_server> server);
 
 private:
-    struct worker_handle {
-        worker_handle(size_t id = 0);
-        ~worker_handle();
-        void shutdown();
-
-        enum status {
-            SLEEPING = 0,
-            WORKING = 1,
-        };
-
-        size_t id_;
-        EventAwaiter ea_;
-        ptr<std::thread> thread_;
-        bool stopping_;
-        std::atomic<status> status_;
-    };
+    struct worker_handle;
 
     static std::mutex instance_lock_;
     static std::atomic<nuraft_global_mgr*> instance_;
