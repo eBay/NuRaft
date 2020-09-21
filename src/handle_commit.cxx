@@ -144,8 +144,17 @@ void raft_server::commit_in_bg() {
 }
 
 bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
-    bool finished_in_time = true;
-    timer_helper tt(timeout_ms * 1000);
+    std::unique_lock<std::mutex> ll(commit_lock_, std::try_to_lock);
+    if (!ll.owns_lock()) {
+        // Other thread is already doing commit.
+        // This is caused by global workers only, as there is only one
+        // thread running `commit_in_bg`. Raft server can request a new commit
+        // while other worker is doing commit for that Raft server, and the
+        // new request will be accepted since the global queue doesn't contain
+        // the request for that Raft server (as it is popped by the worker).
+        // In such a case, we can just ignore it.
+        return true;
+    }
 
     p_db( "commit upto %ld, curruent idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
@@ -165,8 +174,20 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     bool need_to_handle_commit_elem = ( is_leader() &&
                                         !cur_config->is_async_replication() );
 
+    bool first_loop_exec = true;
+    bool finished_in_time = true;
+    timer_helper tt(timeout_ms * 1000);
     while ( sm_commit_index_ < quick_commit_index_ &&
             sm_commit_index_ < log_store_->next_slot() - 1 ) {
+        // NOTE: Skip timeout checking for the first loop execution.
+        if (!first_loop_exec && timeout_ms && tt.timeout()) {
+            p_wn( "abort commit due to timeout (%zu ms), %zu ms elapsed\n",
+                  timeout_ms, tt.get_ms() );
+            finished_in_time = false;
+            break;
+        }
+        first_loop_exec = false;
+
         ulong index_to_commit = sm_commit_index_ + 1;
         ptr<log_entry> le = log_store_->entry_at(index_to_commit);
         p_tr( "commit upto %llu, curruent idx %llu\n",
@@ -194,17 +215,11 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         if (sm_commit_index_.compare_exchange_strong(exp_idx, index_to_commit)) {
             snapshot_and_compact(sm_commit_index_);
         } else {
-            p_er("sm_commit_index_ has been changed to %zu, "
+            p_er("sm_commit_index_ has been changed from %zu to %zu, "
                  "this thread attempted %zu",
+                 index_to_commit - 1,
                  exp_idx,
                  index_to_commit);
-        }
-
-        if (timeout_ms && tt.timeout()) {
-            p_db( "abort commit due to timeout (%zu ms), %zu ms elapsed\n",
-                  timeout_ms, tt.get_ms() );
-            finished_in_time = false;
-            break;
         }
     }
     p_db( "DONE: commit upto %ld, curruent idx %ld\n",
