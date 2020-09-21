@@ -1088,6 +1088,11 @@ protected:
     std::mutex commit_cv_lock_;
 
     /**
+     * Lock to allow only one thread for commit.
+     */
+    std::mutex commit_lock_;
+
+    /**
      * Lock for auto forwarding.
      */
     std::mutex rpc_clients_lock_;

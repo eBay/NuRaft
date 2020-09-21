@@ -41,7 +41,7 @@ struct nuraft_global_config {
     nuraft_global_config()
         : num_commit_threads_(1)
         , num_append_threads_(1)
-        , max_scheduling_unit_ms_(20)
+        , max_scheduling_unit_ms_(200)
         {}
 
     /**
