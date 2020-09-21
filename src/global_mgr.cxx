@@ -65,7 +65,8 @@ struct nuraft_global_mgr::worker_handle {
 };
 
 nuraft_global_mgr::nuraft_global_mgr()
-    : thread_id_counter_(0)
+    : asio_service_(nullptr)
+    , thread_id_counter_(0)
     {}
 
 nuraft_global_mgr::~nuraft_global_mgr() {

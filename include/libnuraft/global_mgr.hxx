@@ -19,6 +19,7 @@ limitations under the License.
 
 #pragma once
 
+#include "asio_service_options.hxx"
 #include "basic_types.hxx"
 #include "pp_util.hxx"
 #include "ptr.hxx"
@@ -32,6 +33,8 @@ limitations under the License.
 
 namespace nuraft {
 
+class asio_service;
+class logger;
 class raft_server;
 
 /**
@@ -92,6 +95,26 @@ public:
     static nuraft_global_mgr* get_instance();
 
     /**
+     * Initialize a global Asio service.
+     * Return the existing one if already initialized.
+     *
+     * @param asio_opt Asio service options.
+     * @param logger_inst Logger instance.
+     * @return Asio service instance.
+     */
+    static ptr<asio_service> init_asio_service(
+        const asio_service_options& asio_opt = asio_service_options(),
+        ptr<logger> logger_inst = nullptr);
+
+    /**
+     * Get the global Asio service instance.
+     *
+     * @return Asio service instance.
+     *         `nullptr` if not initialized.
+     */
+    static ptr<asio_service> get_asio_service();
+
+    /**
      * This function is called by the constructor of `raft_server`.
      *
      * @param server Raft server instance.
@@ -122,9 +145,6 @@ public:
 private:
     struct worker_handle;
 
-    static std::mutex instance_lock_;
-    static std::atomic<nuraft_global_mgr*> instance_;
-
     nuraft_global_mgr();
 
     ~nuraft_global_mgr();
@@ -145,6 +165,26 @@ private:
      * Loop for append worker threads.
      */
     void append_worker_loop(ptr<worker_handle> handle);
+
+    /**
+     * Lock for global manager instance.
+     */
+    static std::mutex instance_lock_;
+
+    /**
+     * Global manager instance.
+     */
+    static std::atomic<nuraft_global_mgr*> instance_;
+
+    /**
+     * Lock for global Asio service instance.
+     */
+    std::mutex asio_service_lock_;
+
+    /**
+     * Global Asio service instance.
+     */
+    ptr<asio_service> asio_service_;
 
     /**
      * Global config.

@@ -30,14 +30,15 @@ using namespace raft_functional_common;
 namespace asio_service_test {
 
 int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
-                   bool enable_ssl)
+                   bool enable_ssl,
+                   bool use_global_asio = false)
 {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
     for (auto& entry: pkgs) {
         RaftAsioPkg* pp = entry;
-        pp->initServer(enable_ssl);
+        pp->initServer(enable_ssl, use_global_asio);
     }
     // Wait longer than upper timeout.
     TestSuite::sleep_sec(1);
@@ -1002,7 +1003,7 @@ int global_mgr_basic_test() {
     RaftAsioPkg s3(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, true) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
@@ -1021,7 +1022,9 @@ int global_mgr_basic_test() {
     CHK_EQ(1, s3.raftServer->get_leader());
     TestSuite::sleep_sec(1, "wait for Raft group ready");
 
-    for (size_t ii=0; ii<10; ++ii) {
+    const size_t NUM_OP = 500;
+    TestSuite::Progress prog(NUM_OP, "append op");
+    for (size_t ii=0; ii<NUM_OP; ++ii) {
         std::string msg_str = std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
@@ -1031,8 +1034,10 @@ int global_mgr_basic_test() {
         // between each `append_entries`. If we don't have this,
         // append_entries's response handler will trigger the
         // next request, not by the global thread pool.
-        TestSuite::sleep_ms(100);
+        TestSuite::sleep_ms(10);
+        prog.update(ii);
     }
+    prog.done();
     TestSuite::sleep_sec(1, "wait for replication");
 
     s1.raftServer->shutdown();
@@ -1052,7 +1057,7 @@ int global_mgr_heavy_test() {
     g_config.num_commit_threads_ = 2;
     g_config.num_append_threads_ = 2;
     nuraft_global_mgr::init(g_config);
-    const size_t NUM_SERVERS = 10;
+    const size_t NUM_SERVERS = 50;
 
     std::vector<RaftAsioPkg*> pkgs;
     for (size_t ii = 0; ii < NUM_SERVERS; ++ii) {
@@ -1061,7 +1066,7 @@ int global_mgr_heavy_test() {
         pkgs.push_back(pkg);
     }
 
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, true) );
     TestSuite::sleep_sec(1, "wait for Raft group ready");
 
     // Set async.

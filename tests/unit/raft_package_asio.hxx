@@ -79,7 +79,8 @@ public:
         return false;
     }
 
-    void initServer(bool enable_ssl = false) {
+    void initServer(bool enable_ssl = false,
+                    bool use_global_asio = false) {
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
         myLogWrapper = cs_new<logger_wrapper>(log_file_name);
         myLog = myLogWrapper;
@@ -106,7 +107,9 @@ public:
         asio_opt.invoke_req_cb_on_empty_meta_ = alwaysInvokeCb;
         asio_opt.invoke_resp_cb_on_empty_meta_ = alwaysInvokeCb;
 
-        asioSvc = cs_new<asio_service>(asio_opt, myLog);
+        asioSvc = use_global_asio
+                  ? nuraft_global_mgr::init_asio_service(asio_opt, myLog)
+                  : cs_new<asio_service>(asio_opt, myLog);
 
         int raft_port = 20000 + myId * 10;
         ptr<rpc_listener> listener
