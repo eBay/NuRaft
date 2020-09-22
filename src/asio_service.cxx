@@ -30,6 +30,7 @@ limitations under the License.
 #include "buffer_serializer.hxx"
 #include "callback.hxx"
 #include "crc32.hxx"
+#include "global_mgr.hxx"
 #include "internal_timer.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
@@ -1739,5 +1740,36 @@ ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
         p_er("got exception: %s", ee.what());
         return nullptr;
     }
+}
+
+// ==========================
+// NOTE:
+//   We put Asio-related global manager functions to here,
+//   to avoid unnecessary dependency requirements (e.g., SSL)
+//   for those who don't want to use Asio.
+ptr<asio_service> nuraft_global_mgr::init_asio_service
+                  ( const asio_service_options& asio_opt,
+                    ptr<logger> logger_inst )
+{
+    nuraft_global_mgr* mgr = get_instance();
+    if (!mgr) return nullptr;
+
+    std::lock_guard<std::mutex> l(mgr->asio_service_lock_);
+    if (mgr->asio_service_) return mgr->asio_service_;
+
+    mgr->asio_service_ = cs_new<asio_service>(asio_opt, logger_inst);
+    return mgr->asio_service_;
+}
+
+ptr<asio_service> nuraft_global_mgr::get_asio_service() {
+    // NOTE:
+    //   Basic assumption is that this function is not called frequently,
+    //   only once at the initialization time. Hence it is ok to acquire
+    //   lock for a such read-only operation.
+    nuraft_global_mgr* mgr = get_instance();
+    if (!mgr) return nullptr;
+
+    std::lock_guard<std::mutex> l(mgr->asio_service_lock_);
+    return mgr->asio_service_;
 }
 
