@@ -1429,9 +1429,7 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
 
         if ( role_ == srv_role::leader ) {
             // Need to progress precommit index for config.
-            if (precommit_index_ < log_index) {
-                precommit_index_ = log_index;
-            }
+            try_update_precommit_index(log_index);
         }
     }
 

@@ -668,6 +668,8 @@ protected:
     void handle_reconnect_resp(resp_msg& resp);
     void handle_custom_notification_resp(resp_msg& resp);
 
+    bool try_update_precommit_index(ulong desired, const size_t MAX_ATTEMPTS = 10);
+
     void handle_ext_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
     void handle_ext_resp_err(rpc_exception& err);
     void handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p);
