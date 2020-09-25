@@ -720,25 +720,10 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     //   be greater than the last log index this server already has. We should
     //   always compare the target index with current precommit index, and take
     //   it only when it is greater than the previous one.
-    const size_t MAX_ATTEMPTS = 10;
-    size_t num_attempts = 0;
-    ulong prev_precommit_index = precommit_index_;
-    while ( prev_precommit_index < target_precommit_index &&
-            num_attempts < MAX_ATTEMPTS ) {
-        if ( precommit_index_.compare_exchange_strong( prev_precommit_index,
-                                                       target_precommit_index ) ) {
-            break;
-        }
-        // Otherwise: retry until `precommit_index_` is equal to or greater than
-        //            `target_precommit_index`.
-        num_attempts++;
-    }
-    if (num_attempts >= MAX_ATTEMPTS) {
+    bool pc_updated = try_update_precommit_index(target_precommit_index);
+    if (!pc_updated) {
         // If updating `precommit_index_` failed, we SHOULD NOT update
         // commit index as well.
-        p_er("updating precommit_index_ failed after %zu attempts, "
-             "last seen precommit_index_ %zu, target %zu",
-             num_attempts, prev_precommit_index, target_precommit_index);
     } else {
         commit( std::min( req.get_commit_idx(), target_precommit_index ) );
     }
@@ -771,6 +756,29 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     out_of_log_range_ = false;
 
     return resp;
+}
+
+bool raft_server::try_update_precommit_index(ulong desired, const size_t MAX_ATTEMPTS) {
+    // If `MAX_ATTEMPTS == 0`, try forever.
+    size_t num_attempts = 0;
+    ulong prev_precommit_index = precommit_index_;
+    while ( prev_precommit_index < desired &&
+            num_attempts < MAX_ATTEMPTS ) {
+        if ( precommit_index_.compare_exchange_strong( prev_precommit_index,
+                                                       desired ) ) {
+            return true;
+        }
+        // Otherwise: retry until `precommit_index_` is equal to or greater than
+        //            `desired`.
+        num_attempts++;
+    }
+    if (precommit_index_ >= desired) {
+        return true;
+    }
+    p_er("updating precommit_index_ failed after %zu/%zu attempts, "
+         "last seen precommit_index_ %zu, target %zu",
+         num_attempts, MAX_ATTEMPTS, prev_precommit_index, desired);
+    return false;
 }
 
 void raft_server::handle_append_entries_resp(resp_msg& resp) {

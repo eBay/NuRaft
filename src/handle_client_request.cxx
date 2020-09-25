@@ -105,7 +105,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
     if (num_entries) {
         log_store_->end_of_append_batch(last_idx - num_entries, num_entries);
     }
-    precommit_index_ = last_idx;
+    try_update_precommit_index(last_idx);
     resp_idx = log_store_->next_slot();
 
     // Finished appending logs and pre_commit of itself.
