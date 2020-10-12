@@ -106,18 +106,29 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         // the follower is not responding, adjust the quorum.
         size_t num_not_responding_peers = get_not_responding_peers();
         size_t cur_quorum_size = get_quorum_for_commit();
-        if ( num_not_responding_peers > 0 &&
-             cur_quorum_size >= 1 ) {
-            p_wn("2-node cluster's follower is not responding long time, "
-                 "adjust quorum to 1");
-            ptr<raft_params> clone = cs_new<raft_params>(*params);
-            clone->custom_commit_quorum_size_ = 1;
-            clone->custom_election_quorum_size_ = 1;
-            ctx_->set_params(clone);
+        size_t num_stale_peers = get_num_stale_peers();
+        if (cur_quorum_size >= 1) {
+            bool do_adjustment = false;
+            if (num_not_responding_peers) {
+                p_wn("2-node cluster's follower is not responding long time, "
+                     "adjust quorum to 1");
+                do_adjustment = true;
+            } else if (num_stale_peers) {
+                p_wn("2-node cluster's follower is lagging behind, "
+                     "adjust quorum to 1");
+                do_adjustment = true;
+            }
+            if (do_adjustment) {
+                ptr<raft_params> clone = cs_new<raft_params>(*params);
+                clone->custom_commit_quorum_size_ = 1;
+                clone->custom_election_quorum_size_ = 1;
+                ctx_->set_params(clone);
+            }
 
         } else if ( num_not_responding_peers == 0 &&
+                    num_stale_peers == 0 &&
                     params->custom_commit_quorum_size_ == 1 ) {
-            // Recovered.
+            // Recovered, both cases should be clear.
             p_wn("2-node cluster's follower is responding now, "
                  "restore quorum with default value");
             ptr<raft_params> clone = cs_new<raft_params>(*params);
