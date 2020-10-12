@@ -548,6 +548,21 @@ size_t raft_server::get_not_responding_peers() {
     return num_not_resp_nodes;
 }
 
+size_t raft_server::get_num_stale_peers() {
+    // Check the number of peers lagging more than `stale_log_gap_`.
+    if (leader_ != id_) return 0;
+
+    size_t count = 0;
+    for (auto& entry: peers_) {
+        ptr<peer>& pp = entry.second;
+        if ( get_last_log_idx() > pp->get_matched_idx() +
+                                  ctx_->get_params()->stale_log_gap_ ) {
+            count++;
+        }
+    }
+    return count;
+}
+
 ptr<resp_msg> raft_server::process_req(req_msg& req) {
     cb_func::Param param(id_, leader_);
     param.ctx = &req;
