@@ -89,6 +89,7 @@ struct raft_params {
         , auto_adjust_quorum_for_small_cluster_(false)
         , locking_method_type_(dual_mutex)
         , return_method_(blocking)
+        , skip_initial_election_timeout_(false)
         {}
 
     /**
@@ -472,6 +473,17 @@ public:
      * To choose blocking call or asynchronous call.
      */
     return_method_type return_method_;
+
+    /**
+     * If `true`, the election timer will not be initiated
+     * automatically, so that this node will never trigger
+     * leader election until it gets the first heartbeat
+     * from any valid leader.
+     *
+     * Purpose: to avoid becoming leader when there is only one
+     *          node in the cluster.
+     */
+    bool skip_initial_election_timeout_;
 };
 
 }

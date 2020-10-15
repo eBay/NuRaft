@@ -41,6 +41,9 @@ ptr<raft_server> raft_launcher::init(ptr<state_machine> sm,
     ptr<delayed_task_scheduler> scheduler = asio_svc_;
     ptr<rpc_client_factory> rpc_cli_factory = asio_svc_;
 
+    raft_server::init_options opt;
+    opt.skip_initial_election_timeout_ = params_given.skip_initial_election_timeout_;
+
     context* ctx = new context( smgr,
                                 sm,
                                 asio_listener_,
@@ -48,7 +51,7 @@ ptr<raft_server> raft_launcher::init(ptr<state_machine> sm,
                                 rpc_cli_factory,
                                 scheduler,
                                 params_given );
-    raft_instance_ = cs_new<raft_server>(ctx);
+    raft_instance_ = cs_new<raft_server>(ctx, opt);
     asio_listener_->listen( raft_instance_ );
     return raft_instance_;
 }
