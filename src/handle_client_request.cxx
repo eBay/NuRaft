@@ -121,13 +121,16 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         elem->idx_ = last_idx;
         elem->result_code_ = cmd_result_code::TIMEOUT;
 
-        {   auto_lock(commit_ret_elems_lock_);
-            auto entry = commit_ret_elems_.find(last_idx);
-            if (entry != commit_ret_elems_.end()) {
-                // Commit thread was faster than this.
-                elem = entry->second;
-            } else {
-                commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
+        {
+            {
+                auto_lock(commit_ret_elems_lock_);
+                auto entry = commit_ret_elems_.find(last_idx);
+                if (entry != commit_ret_elems_.end()) {
+                    // Commit thread was faster than this.
+                    elem = entry->second;
+                } else {
+                    commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
+                }
             }
 
             switch (ctx_->get_params()->return_method_) {

@@ -269,12 +269,10 @@ void raft_server::commit_app_log(ulong idx_to_commit,
     if (need_to_handle_commit_elem) {
         std::unique_lock<std::mutex> cre_lock(commit_ret_elems_lock_);
         bool match_found = false;
-        auto entry = commit_ret_elems_.begin();
-        while (entry != commit_ret_elems_.end()) {
+        auto entry = commit_ret_elems_.find(sm_idx);
+        if (entry != commit_ret_elems_.end()) {
             ptr<commit_ret_elem> elem = entry->second;
-            if (elem->idx_ > sm_idx) {
-                break;
-            } else if (elem->idx_ == sm_idx) {
+            if (elem->idx_ == sm_idx) {
                 elem->result_code_ = cmd_result_code::OK;
                 elem->ret_value_ = ret_value;
                 match_found = true;
@@ -284,20 +282,22 @@ void raft_server::commit_app_log(ulong idx_to_commit,
                 case raft_params::blocking:
                 default:
                     // Blocking mode: invoke waiting function.
+                    cre_lock.unlock();
                     elem->awaiter_.invoke();
-                    entry++;
                     break;
 
                 case raft_params::async_handler:
                     // Async handler: put into list.
+                    commit_ret_elems_.erase(entry);
+                    cre_lock.unlock();
                     async_elems.push_back(elem);
-                    entry = commit_ret_elems_.erase(entry);
                     break;
                 }
-
-            } else {
-                entry++;
             }
+        }
+        if (cre_lock.owns_lock())
+        {
+            cre_lock.unlock();
         }
 
         if (!match_found) {
@@ -311,7 +311,9 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             case raft_params::blocking:
             default:
                 elem->awaiter_.invoke(); // Callback will not sleep.
+                cre_lock.lock();
                 commit_ret_elems_.insert( std::make_pair(sm_idx, elem) );
+                cre_lock.unlock();
                 break;
             case raft_params::async_handler:
                 // Async handler: put into list.

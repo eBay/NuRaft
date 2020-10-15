@@ -34,7 +34,7 @@ if (BOOST_INCLUDE_PATH AND BOOST_LIBRARY_PATH)
 
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_BOOST_ASIO")
 
-    set(ASIO_INCLUDE_DIR ${BOOST_INCLUDE_PATH})
+    set(ASIO_INCLUDE_DIR ${BOOST_INCLUDE_PATH}/boost)
     set(LIBBOOST_SYSTEM "${BOOST_LIBRARY_PATH}/libboost_system.a")
 
 else ()
@@ -60,6 +60,10 @@ endif ()
 
 # === Includes ===
 include_directories(BEFORE ./)
+if (BOOST_INCLUDE_PATH)
+    message(STATUS "Boost include path: " ${BOOST_INCLUDE_PATH})
+    include_directories(BEFORE ${BOOST_INCLUDE_PATH})
+endif ()
 include_directories(BEFORE ${ASIO_INCLUDE_DIR})
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include/libnuraft)
