@@ -37,6 +37,7 @@ public:
      * @param port_number Port number.
      * @param asio_options ASIO options.
      * @param params Raft parameters.
+     * @param raft_callback Callback function for hooking the operation.
      * @return Raft server instance.
      *         `nullptr` on any errors.
      */
@@ -45,7 +46,8 @@ public:
                           ptr<logger> lg,
                           int port_number,
                           const asio_service::options& asio_options,
-                          const raft_params& params);
+                          const raft_params& params,
+                          cb_func::func_type raft_callback = nullptr);
 
     /**
      * Shutdown Raft server and ASIO service.
