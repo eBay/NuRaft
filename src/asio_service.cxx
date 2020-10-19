@@ -1458,8 +1458,13 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
 asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                                      ptr<logger> l)
     : io_svc_()
-    , ssl_server_ctx_(ssl_context::sslv23)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
+    , ssl_server_ctx_(ssl_context::tlsv12_server)
+    , ssl_client_ctx_(ssl_context::tlsv12_client)
+#else
+    , ssl_server_ctx_(ssl_context::sslv23)  // Any version
     , ssl_client_ctx_(ssl_context::sslv23)
+#endif
     , asio_timer_(io_svc_)
     , continue_(1)
     , logger_list_lock_()
