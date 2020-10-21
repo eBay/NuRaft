@@ -1,4 +1,5 @@
 .vscode/
+build
 debug/
 Debug/
 .vs/

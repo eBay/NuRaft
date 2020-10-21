@@ -298,12 +298,13 @@ int force_log_compaction_test() {
             ff->initServer();
         } else {
             // S3: set callback function to detect out of log range.
-            auto func = std::bind( ool_detect_cb,
+            raft_server::init_options opt;
+            opt.raft_callback_ = std::bind( ool_detect_cb,
                                    &invoked,
                                    PURGE_UPTO,
                                    std::placeholders::_1,
                                    std::placeholders::_2 );
-            ff->initServer(nullptr, raft_server::init_options(), func);
+            ff->initServer(nullptr, opt);
         }
         ff->fNet->listen(ff->raftServer);
         ff->fTimer->invoke( timer_task_type::election_timer );

@@ -49,9 +49,8 @@ public:
     }
 
     void initServer(raft_params* given_params = nullptr,
-                    const raft_server::init_options opt =
-                        raft_server::init_options(),
-                    cb_func::func_type raft_callback = nullptr)
+                    const raft_server::init_options& opt =
+                        raft_server::init_options())
     {
         fNet = cs_new<FakeNetwork>( myEndpoint, fBase );
         fBase->addNetwork(fNet);
@@ -84,9 +83,6 @@ public:
 
         ctx = new context( sMgr, sm, listener, myLog,
                            rpcCliFactory, scheduler, params );
-        if (raft_callback) {
-            ctx->set_cb_func(raft_callback);
-        }
         raftServer = cs_new<raft_server>(ctx, opt);
     }
 

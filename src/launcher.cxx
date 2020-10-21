@@ -32,7 +32,8 @@ ptr<raft_server> raft_launcher::init(ptr<state_machine> sm,
                                      ptr<logger> lg,
                                      int port_number,
                                      const asio_service::options& asio_options,
-                                     const raft_params& params_given)
+                                     const raft_params& params_given,
+                                     const raft_server::init_options& opt)
 {
     asio_svc_ = cs_new<asio_service>(asio_options, lg);
     asio_listener_ = asio_svc_->create_rpc_listener(port_number, lg);
@@ -48,7 +49,7 @@ ptr<raft_server> raft_launcher::init(ptr<state_machine> sm,
                                 rpc_cli_factory,
                                 scheduler,
                                 params_given );
-    raft_instance_ = cs_new<raft_server>(ctx);
+    raft_instance_ = cs_new<raft_server>(ctx, opt);
     asio_listener_->listen( raft_instance_ );
     return raft_instance_;
 }
