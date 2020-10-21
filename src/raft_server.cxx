@@ -110,6 +110,10 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     char temp_buf[4096];
     std::string print_msg;
 
+    if (opt.raft_callback_) {
+        ctx->set_cb_func(opt.raft_callback_);
+    }
+
     ptr<raft_params> params = ctx_->get_params();
     if (params->stale_log_gap_ < params->fresh_log_gap_) {
         params->stale_log_gap_ = params->fresh_log_gap_;

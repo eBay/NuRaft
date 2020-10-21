@@ -48,8 +48,7 @@ public:
                           int port_number,
                           const asio_service::options& asio_options,
                           const raft_params& params,
-                          const raft_server::init_options opt = raft_server::init_options(),
-                          cb_func::func_type raft_callback = nullptr);
+                          const raft_server::init_options& opt = raft_server::init_options());
 
     /**
      * Shutdown Raft server and ASIO service.
