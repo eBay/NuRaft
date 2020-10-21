@@ -73,6 +73,11 @@ public:
          *          node in the cluster.
          */
         bool skip_initial_election_timeout_;
+
+        /**
+         * Callback function for hooking the operation.
+         */
+        cb_func::func_type raft_callback_;
     };
 
     struct limits {
