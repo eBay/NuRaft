@@ -150,6 +150,12 @@ public:
          * ctx: pointer to `ConnectionArgs`.
          */
         NewSessionFromLeader = 18,
+
+        /**
+         * Executed a log in the state machine.
+         * ctx: pointer to the log index.
+         */
+        StateMachineExecution = 19,
     };
 
     struct Param {

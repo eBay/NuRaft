@@ -214,6 +214,12 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         ulong exp_idx = index_to_commit - 1;
         if (sm_commit_index_.compare_exchange_strong(exp_idx, index_to_commit)) {
             snapshot_and_compact(sm_commit_index_);
+
+            cb_func::Param param(id_, leader_);
+            // Copy to other local variable to be safe.
+            uint64_t log_idx = index_to_commit;
+            param.ctx = &log_idx;
+            ctx_->cb_func_.call(cb_func::StateMachineExecution, &param);
         } else {
             p_er("sm_commit_index_ has been changed from %zu to %zu, "
                  "this thread attempted %zu",

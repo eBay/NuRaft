@@ -17,10 +17,13 @@ limitations under the License.
 
 #include "raft_functional_common.hxx"
 
+#include "event_awaiter.h"
+
 using namespace nuraft;
 using namespace raft_functional_common;
 
-static size_t COMMIT_TIME_MS = 50;
+static size_t ATTR_UNUSED COMMIT_TIME_MS = 50;
+static size_t ATTR_UNUSED COMMIT_TIMEOUT_SEC = 3;
 
 class RaftPkg {
 public:
@@ -128,14 +131,82 @@ public:
     ptr<raft_server> raftServer;
 };
 
+// ===== Helper functions waiting for the execution of state machine ====
+// NOTE: A single thread at a time (not MT-safe).
+static std::atomic<bool> commit_done(false);
+static std::vector<RaftPkg*> pkgs_to_watch;
+static std::mutex pkgs_to_watch_lock;
+static EventAwaiter ea_wait_for_commit;
+
+static bool ATTR_UNUSED check_pkgs() {
+    // Check if all current committed logs are executed in
+    // their state machines.
+    std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
+    for (RaftPkg* pp: pkgs_to_watch) {
+        if ( pp->raftServer->get_committed_log_idx() <
+             pp->raftServer->get_target_committed_log_idx() ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int ATTR_UNUSED wait_for_sm_exec(const std::vector<RaftPkg*>& pkgs,
+                                        size_t timeout_sec)
+{
+    {
+        std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
+        pkgs_to_watch = pkgs;
+    }
+    TestSuite::GcFunc gc_pkgs([&]() {
+        // Auto clear.
+        std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
+        pkgs_to_watch.clear();
+    });
+
+    ea_wait_for_commit.reset();
+    commit_done = false;
+    if (check_pkgs()) {
+        // Already executed even before sleeping.
+        return 0;
+    }
+    ea_wait_for_commit.wait_ms(timeout_sec * 1000);
+
+    if (commit_done) {
+        return 0;
+    }
+    return -1;
+}
+
+static cb_func::ReturnCode ATTR_UNUSED cb_default(
+    cb_func::Type type, cb_func::Param* param)
+{
+    if (type == cb_func::Type::StateMachineExecution) {
+        if (check_pkgs()) {
+            // Multiple commit threads may enter here at the same time,
+            // but only one thread should invoke the EA.
+            bool exp = false;
+            if (commit_done.compare_exchange_strong(exp, true)) {
+                ea_wait_for_commit.invoke();
+            }
+        }
+    }
+    return cb_func::ReturnCode::Ok;
+}
+// ==============
+
+
 static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
                                  raft_params* custom_params = nullptr) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
+    raft_server::init_options opt;
+    opt.raft_callback_ = cb_default;
+
     for (size_t ii = 0; ii < num_srvs; ++ii) {
         RaftPkg* ff = pkgs[ii];
-        ff->initServer(custom_params);
+        ff->initServer(custom_params, opt);
         ff->fNet->listen(ff->raftServer);
         ff->fTimer->invoke( timer_task_type::election_timer );
     }
@@ -162,7 +233,7 @@ static INT_UNUSED make_group(const std::vector<RaftPkg*>& pkgs) {
         // Notify new commit.
         leader->fNet->execReqResp();
         // Wait for bg commit for configuration change.
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         // Now heartbeat to new node is enabled.
 
@@ -172,7 +243,7 @@ static INT_UNUSED make_group(const std::vector<RaftPkg*>& pkgs) {
         // the new config (membership change), and now be the part of cluster.
         leader->fNet->execReqResp();
         // Wait for bg commit for new node.
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         // One more heartbeat.
         leader->fTimer->invoke( timer_task_type::heartbeat_timer );
@@ -181,7 +252,7 @@ static INT_UNUSED make_group(const std::vector<RaftPkg*>& pkgs) {
         // Need one-more req/resp.
         leader->fNet->execReqResp();
         // Wait for bg commit for new node.
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
     }
     return 0;
 }

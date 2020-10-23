@@ -71,12 +71,12 @@ int simple_conflict_test() {
     // Packet for commit.
     s1.fNet->execReqResp();
     // Wait for bg commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // One more time to make sure.
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Check if all messages are committed.
     for (size_t ii=0; ii<NUM; ++ii) {
@@ -111,7 +111,7 @@ int simple_conflict_test() {
     s2.fNet->execReqResp( s3_addr );
     s2.fNet->execReqResp( s3_addr );
     s2.fNet->execReqResp( s3_addr );
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
     // Now S2 should be the new leader.
     s2.dbgLog(" --- Now S2 is leader ---");
 
@@ -146,7 +146,7 @@ int simple_conflict_test() {
     s2.fNet->execReqResp();
     s2.fNet->execReqResp();
     s2.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Check if all messages are committed.
     for (size_t ii=0; ii<NUM+MORE2; ++ii) {
@@ -232,7 +232,7 @@ int rmv_not_resp_srv_wq_test(bool explicit_failure) {
     }
 
     // Wait for commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // For server 1 and 2, only 2 servers should exist.
     for (auto& entry: pkgs) {
@@ -271,7 +271,10 @@ cb_func::ReturnCode ool_detect_cb(std::atomic<bool>* invoked,
         if (chk_func() == 0) {
             invoked->store(true);
         }
+    } else {
+        return cb_default(type, params);
     }
+
     return cb_func::ReturnCode::Ok;
 }
 
@@ -294,16 +297,17 @@ int force_log_compaction_test() {
     std::atomic<bool> invoked(false);
     for (size_t ii = 0; ii < pkgs.size(); ++ii) {
         RaftPkg* ff = pkgs[ii];
+        raft_server::init_options opt;
         if (ii < 2) {
-            ff->initServer();
+            opt.raft_callback_ = cb_default;
+            ff->initServer(nullptr, opt);
         } else {
             // S3: set callback function to detect out of log range.
-            raft_server::init_options opt;
             opt.raft_callback_ = std::bind( ool_detect_cb,
-                                   &invoked,
-                                   PURGE_UPTO,
-                                   std::placeholders::_1,
-                                   std::placeholders::_2 );
+                                            &invoked,
+                                            PURGE_UPTO,
+                                            std::placeholders::_1,
+                                            std::placeholders::_2 );
             ff->initServer(nullptr, opt);
         }
         ff->fNet->listen(ff->raftServer);
@@ -334,7 +338,7 @@ int force_log_compaction_test() {
     s1.fNet->makeReqFailAll(s3_addr);
 
     // Wait for commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Force log compaction.
     s1.sMgr->load_log_store()->compact(PURGE_UPTO);
@@ -407,7 +411,7 @@ int uncommitted_conf_new_leader_test() {
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
     }
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Append 3 more messages.
     for (size_t ii=NUM_APPENDS_1; ii<NUM_APPENDS_2; ++ii) {
@@ -443,7 +447,7 @@ int uncommitted_conf_new_leader_test() {
     s3.fTimer->invoke( timer_task_type::election_timer );
     s3.fNet->execReqResp();
     s3.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     s3.fTimer->invoke( timer_task_type::heartbeat_timer );
     s3.fNet->execReqResp();
@@ -492,7 +496,7 @@ int removed_server_late_step_down_test() {
     // Notify new commit.
     s1.fNet->execReqResp(s2_addr);
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // S1 and S2: should see S1 and S2 only.
     // S3: should see everyone.
@@ -518,7 +522,7 @@ int removed_server_late_step_down_test() {
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now all servers should see S1 and S2 only.
     for (auto& entry: pkgs) {
@@ -575,7 +579,7 @@ int remove_server_on_pending_configs_test() {
     s1.fNet->makeReqFailAll(s2_addr);
 
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Adding server should succeed without error about duplicate ID.
     ptr< cmd_result< ptr<buffer> > > ret =
