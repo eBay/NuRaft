@@ -54,6 +54,8 @@ struct ExecArgs : TestSuite::ThreadArgs {
     EventAwaiter eaExecuter;
 };
 
+static size_t EXECUTOR_WAIT_MS = 100;
+
 // Mimic the user of Raft server, which has a separate executer thread.
 int fake_executer(TestSuite::ThreadArgs* _args) {
     ExecArgs* args = static_cast<ExecArgs*>(_args);
@@ -128,9 +130,7 @@ int make_group_test() {
         exec_args.msgToWrite = msg;
     }
     exec_args.eaExecuter.invoke();
-
-    // Wait for executer thread.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    TestSuite::sleep_ms(EXECUTOR_WAIT_MS, "wait for synchronous executor");
 
     {   std::lock_guard<std::mutex> l(exec_args.msgToWriteLock);
         CHK_NULL( exec_args.msgToWrite.get() );
@@ -140,7 +140,7 @@ int make_group_test() {
     // Packet for commit.
     s1.fNet->execReqResp();
     // Wait for bg commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Test message should be the same.
     uint64_t last_idx = s1.getTestSm()->getLastCommittedIdx();
@@ -193,6 +193,7 @@ int init_options_test() {
         // For s2 and s3, initialize Raft servers with
         // election timer skip option.
         opt.skip_initial_election_timeout_ = (ii > 0);
+        opt.raft_callback_ = cb_default;
         ff->initServer(nullptr, opt);
         ff->fNet->listen(ff->raftServer);
         ff->fTimer->invoke( timer_task_type::election_timer );
@@ -359,13 +360,13 @@ int add_node_error_cases_test() {
         // Finish adding S2 task.
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         // Heartbeat.
         s1.fTimer->invoke( timer_task_type::heartbeat_timer );
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         std::vector< ptr< srv_config > > configs_out;
         s1.raftServer->get_srv_config_all(configs_out);
@@ -410,13 +411,13 @@ int add_node_error_cases_test() {
         s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         // Heartbeat.
         s1.fTimer->invoke( timer_task_type::heartbeat_timer );
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         std::vector< ptr< srv_config > > configs_out;
         s1.raftServer->get_srv_config_all(configs_out);
@@ -469,7 +470,7 @@ int remove_node_test() {
     // Notify new commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // All servers should see S1 and S2 only.
     for (auto& entry: pkgs) {
@@ -605,13 +606,13 @@ int remove_node_error_cases_test() {
         // Finish the task.
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         // Heartbeat.
         s1.fTimer->invoke( timer_task_type::heartbeat_timer );
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         std::vector< ptr< srv_config > > configs_out;
         s1.raftServer->get_srv_config_all(configs_out);
@@ -622,12 +623,12 @@ int remove_node_error_cases_test() {
             s1.raftServer->remove_srv(s3.myId);
             s1.fNet->execReqResp();
             s1.fNet->execReqResp();
-            TestSuite::sleep_ms(COMMIT_TIME_MS);
+            CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
             s1.fTimer->invoke( timer_task_type::heartbeat_timer );
             s1.fNet->execReqResp();
             s1.fNet->execReqResp();
-            TestSuite::sleep_ms(COMMIT_TIME_MS);
+            CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
             configs_out.clear();
             s1.raftServer->get_srv_config_all(configs_out);
@@ -687,7 +688,7 @@ int remove_and_then_add_test() {
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     // Wait for bg commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Remove S2 from leader.
     s1.dbgLog(" --- remove ---");
@@ -700,7 +701,7 @@ int remove_and_then_add_test() {
     // Notify new commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now add S3 to leader.
     s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
@@ -711,17 +712,17 @@ int remove_and_then_add_test() {
     } while (s3.raftServer->is_receiving_snapshot());
     // Commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // First HB.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Second HB.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // S3 should see S1 and itself.
     CHK_EQ(2, s3.raftServer->get_config()->get_servers().size());
@@ -775,7 +776,7 @@ int multiple_config_change_test() {
     // Notify new commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // S3 should be removed.
     for (RaftPkg* pp: pkgs) {
@@ -842,14 +843,14 @@ int leader_election_basic_test() {
     // Send vote requests, S3 will be elected as a leader.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s3.fNet->execReqResp();
     // Follow-up: commit.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -888,7 +889,7 @@ int leader_election_priority_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 85.
     s1.raftServer->set_priority(3, 85);
@@ -896,7 +897,7 @@ int leader_election_priority_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
@@ -929,14 +930,14 @@ int leader_election_priority_test() {
     // Send vote requests, S3 will vote for it.
     s2.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s2.fNet->execReqResp();
     // Follow-up: commit.
     s2.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_TRUE( s2.raftServer->is_leader() );
@@ -973,19 +974,19 @@ int leader_election_with_aggressive_node_test() {
     s1.raftServer->set_priority(1, 100);
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S2 to 50.
     s1.raftServer->set_priority(2, 50);
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 1.
     s1.raftServer->set_priority(3, 1);
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // --- Now assume S1 is not reachable. ---
 
@@ -1015,13 +1016,13 @@ int leader_election_with_aggressive_node_test() {
     CHK_SM(num_attempts, MAX_ATTEMPTS);
 
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     s3.fNet->makeReqFailAll(s1_addr);
     s3.fNet->execReqResp();
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s2.raftServer->is_leader() );
     CHK_TRUE( s3.raftServer->is_leader() );
@@ -1059,7 +1060,7 @@ int leadership_takeover_basic_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
     s1.raftServer->set_priority(3, 5);
@@ -1067,7 +1068,7 @@ int leadership_takeover_basic_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Yield leadership.
     s1.dbgLog(" --- yield leadership ---");
@@ -1081,14 +1082,14 @@ int leadership_takeover_basic_test() {
     // Now S2 should have received takeover request.
     // Send vote requests.
     s2.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s2.fNet->execReqResp();
     // Follow-up: commit.
     s2.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_TRUE( s2.raftServer->is_leader() );
@@ -1106,14 +1107,14 @@ int leadership_takeover_basic_test() {
     // Now S1 should have received takeover request.
     // Send vote requests.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s1.fNet->execReqResp();
     // Follow-up: commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_TRUE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -1152,7 +1153,7 @@ int leadership_takeover_designated_successor_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
     s1.raftServer->set_priority(3, 5);
@@ -1160,7 +1161,7 @@ int leadership_takeover_designated_successor_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Yield leadership to S3.
     s1.dbgLog(" --- yield leadership ---");
@@ -1174,14 +1175,14 @@ int leadership_takeover_designated_successor_test() {
     // Now S3 should have received takeover request.
     // Send vote requests.
     s3.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s3.fNet->execReqResp();
     // Follow-up: commit.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -1199,14 +1200,14 @@ int leadership_takeover_designated_successor_test() {
     // Now S2 should have received takeover request.
     // Send vote requests.
     s2.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s2.fNet->execReqResp();
     // Follow-up: commit.
     s2.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_TRUE( s2.raftServer->is_leader() );
@@ -1225,14 +1226,14 @@ int leadership_takeover_designated_successor_test() {
     // Now S1 should have received takeover request.
     // Send vote requests.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s1.fNet->execReqResp();
     // Follow-up: commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_TRUE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -1271,7 +1272,7 @@ int leadership_takeover_by_request_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
     s1.raftServer->set_priority(3, 5);
@@ -1279,7 +1280,7 @@ int leadership_takeover_by_request_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Request leadership by the current leader, should fail.
     CHK_FALSE( s1.raftServer->request_leadership() );
@@ -1299,14 +1300,14 @@ int leadership_takeover_by_request_test() {
     // Now S3 should have received takeover request.
     // Send vote requests.
     s3.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s3.fNet->execReqResp();
     // Follow-up: commit.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -1349,7 +1350,7 @@ int leadership_takeover_offline_candidate_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
     s1.raftServer->set_priority(3, 5);
@@ -1357,7 +1358,7 @@ int leadership_takeover_offline_candidate_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Wait longer than heartbeat.
     TestSuite::sleep_ms(600);
@@ -1383,14 +1384,14 @@ int leadership_takeover_offline_candidate_test() {
     // Now S3 should have received takeover request.
     // Send vote requests.
     s3.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s3.fNet->execReqResp();
     // Follow-up: commit.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -1408,14 +1409,14 @@ int leadership_takeover_offline_candidate_test() {
     // Now S1 should have received takeover request.
     // Send vote requests.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s1.fNet->execReqResp();
     // Follow-up: commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_TRUE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
@@ -1465,7 +1466,7 @@ int temporary_leader_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now S2 goes offline.
     s2.fNet->goesOffline();
@@ -1490,7 +1491,7 @@ int temporary_leader_test() {
     // Replicate.
     for (size_t ii=0; ii<3; ++ii) s1.fNet->execReqResp();
     // Wait for bg commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now S1 goes offline, and S2 goes online.
     s1.fNet->goesOffline();
@@ -1519,14 +1520,14 @@ int temporary_leader_test() {
     CHK_SM(attempts, MAX_ATTEMPTS);
 
     // Commit for reconfigure.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now S3 will yield leadership for S2.
     s3.fTimer->invoke( timer_task_type::heartbeat_timer );
     // Catch-up and commit.
     s3.fNet->execReqResp();
     s3.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Resign.
     s3.fNet->execReqResp();
@@ -1539,7 +1540,7 @@ int temporary_leader_test() {
     CHK_TRUE( s2.raftServer->is_leader() );
     s2.fNet->execReqResp();
     s2.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     print_stats(pkgs);
 
@@ -1574,7 +1575,7 @@ int priority_broadcast_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 50.
     s1.raftServer->set_priority(3, 50);
@@ -1582,7 +1583,7 @@ int priority_broadcast_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
@@ -1665,7 +1666,7 @@ int custom_user_context_test() {
     // Replicate and commit.
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Get from followers.
     CHK_EQ( CUSTOM_CTX, s2.raftServer->get_user_ctx() );
@@ -1719,7 +1720,7 @@ int follower_reconnect_test() {
     exec_args.eaExecuter.invoke();
 
     // Wait for executer thread.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    TestSuite::sleep_ms(EXECUTOR_WAIT_MS);
 
     CHK_NULL( exec_args.getMsg().get() );
     // Packet for pre-commit.
@@ -1727,7 +1728,7 @@ int follower_reconnect_test() {
     // Packet for commit.
     s1.fNet->execReqResp();
     // Wait for bg commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Test message should be the same.
     uint64_t last_idx = s1.getTestSm()->getLastCommittedIdx();
@@ -1784,14 +1785,14 @@ int snapshot_basic_test() {
         exec_args.eaExecuter.invoke();
 
         // Wait for executer thread.
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        TestSuite::sleep_ms(EXECUTOR_WAIT_MS);
 
         CHK_NULL( exec_args.getMsg().get() );
 
         // NOTE: Send it to S2 only, S3 will be lagging behind.
         s1.fNet->execReqResp("S2"); // replication.
         s1.fNet->execReqResp("S2"); // commit.
-        TestSuite::sleep_ms(COMMIT_TIME_MS); // commit execution.
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
     }
     // Make req to S3 failed.
     s1.fNet->makeReqFail("S3");
@@ -1804,7 +1805,7 @@ int snapshot_basic_test() {
     } while (s3.raftServer->is_receiving_snapshot());
 
     s1.fNet->execReqResp(); // commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS); // commit execution.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
 
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -1854,23 +1855,23 @@ int join_empty_node_test() {
         exec_args.eaExecuter.invoke();
 
         // Wait for executer thread.
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        TestSuite::sleep_ms(EXECUTOR_WAIT_MS);
 
         CHK_NULL( exec_args.getMsg().get() );
 
         // NOTE: Send it to S2 only, S3 will be lagging behind.
         s1.fNet->execReqResp("S2"); // replication.
         s1.fNet->execReqResp("S2"); // commit.
-        TestSuite::sleep_ms(COMMIT_TIME_MS); // commit execution.
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
     }
 
     // Now add S3 to leader.
     s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
     s1.fNet->execReqResp(); // join req/resp.
-    TestSuite::sleep_ms(COMMIT_TIME_MS); // S1 & S3: commit config.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // S1 & S3: commit config.
 
     s1.fNet->execReqResp(); // req to S2 for new config.
-    TestSuite::sleep_ms(COMMIT_TIME_MS); // S2: commit config.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // S2: commit config.
 
     // First heartbeat to S3, it will initiate snapshot transmission.
     s1.fTimer->invoke(timer_task_type::heartbeat_timer);
@@ -1885,12 +1886,12 @@ int join_empty_node_test() {
     s1.fTimer->invoke(timer_task_type::heartbeat_timer);
     s1.fNet->execReqResp(); // replication.
     s1.fNet->execReqResp(); // commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS); // commit execution.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
 
     s1.fTimer->invoke(timer_task_type::heartbeat_timer);
     s1.fNet->execReqResp(); // replication.
     s1.fNet->execReqResp(); // commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS); // commit execution.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
     print_stats(pkgs);
 
     // State machine should be identical.
@@ -1978,12 +1979,12 @@ int async_append_handler_test() {
     // Packet for commit.
     s1.fNet->execReqResp();
     // Wait for bg commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // One more time to make sure.
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now all async handlers should have result.
     std::list<ulong> idx_list;
@@ -2082,14 +2083,14 @@ int async_append_handler_cancel_test() {
     // Send vote requests, S3 will be elected as a leader.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s3.fNet->execReqResp();
     // Follow-up: commit.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now all async handlers should have been cancelled.
     std::list<ulong> idx_list;
@@ -2168,12 +2169,12 @@ int apply_config_test() {
     // Packet for commit.
     s1.fNet->execReqResp();
     // Wait for bg commit.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // One more time to make sure.
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Add S4.
     std::string s4_addr = "S4";
@@ -2191,7 +2192,7 @@ int apply_config_test() {
     // Notify new commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Now heartbeat to new node is enabled.
 
@@ -2202,7 +2203,7 @@ int apply_config_test() {
     // Need one-more req/resp.
     s1.fNet->execReqResp();
     // Wait for bg commit for new node.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 85.
     s1.raftServer->set_priority(3, 85);
@@ -2210,7 +2211,7 @@ int apply_config_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S4 to 100.
     s1.raftServer->set_priority(4, 100);
@@ -2218,7 +2219,7 @@ int apply_config_test() {
     s1.fNet->execReqResp();
     // Send reqs again for commit.
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Remove S2.
     s1.raftServer->remove_srv( s2.getTestMgr()->get_srv_config()->get_id() );
@@ -2230,13 +2231,13 @@ int apply_config_test() {
     // Notify new commit.
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Heartbeat.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     print_stats(pkgs);
 
@@ -2321,14 +2322,14 @@ int custom_term_counter_test() {
     // Send vote requests, S3 will be elected as a leader.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Send new config as a new leader.
     s3.fNet->execReqResp();
     // Follow-up: commit.
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    TestSuite::sleep_ms(COMMIT_TIME_MS);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
