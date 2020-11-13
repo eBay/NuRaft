@@ -819,8 +819,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     bool need_to_catchup = true;
 
     ptr<peer> p = it->second;
-    p_tr("handle append entries resp (from %d), resp.get_next_idx(): %d\n",
-         (int)p->get_id(), (int)resp.get_next_idx());
+    p_tr("handle append entries resp (from %d), resp.get_next_idx(): %zu\n",
+         (int)p->get_id(), resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
     p_tr("peer %d batch size hint: %ld bytes", p->get_id(), bs_hint);
