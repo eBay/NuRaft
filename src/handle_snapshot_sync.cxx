@@ -126,7 +126,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         // LCOV_EXCL_START
         // Raw binary snapshot (original)
         ulong offset = p.get_snapshot_sync_ctx()->get_offset();
-        ulong sz_left = snp->size() - offset;
+        ulong sz_left = ( snp->size() > offset ) ? ( snp->size() - offset ) : 0;
         int32 blk_sz = get_snapshot_sync_block_size();
         data = buffer::alloc((size_t)(std::min((ulong)blk_sz, sz_left)));
         int32 sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
