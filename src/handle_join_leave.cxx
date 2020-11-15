@@ -202,12 +202,15 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     p_db("[SYNC LOG] peer %d start idx %llu, my log start idx %llu\n",
          srv_to_join_->get_id(), start_idx, log_store_->start_index());
     // only sync committed logs
-    int32 gap = (int64_t)quick_commit_index_ - (int64_t)start_idx;
+    ulong gap = ( quick_commit_index_ > start_idx )
+                ? ( quick_commit_index_ - start_idx )
+                : 0;
     ptr<raft_params> params = ctx_->get_params();
-    if ( gap < params->log_sync_stop_gap_ ||
+    if ( ( params->log_sync_stop_gap_ > 0 &&
+           gap < (ulong)params->log_sync_stop_gap_ ) ||
          params->log_sync_stop_gap_ == 0 ) {
         p_in( "[SYNC LOG] LogSync is done for server %d "
-              "with log gap %d (%zu - %zu, limit %d), "
+              "with log gap %zu (%zu - %zu, limit %d), "
               "now put the server into cluster",
               srv_to_join_->get_id(),
               gap, quick_commit_index_.load(), start_idx,
@@ -258,7 +261,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
                                         state_->get_term(),
                                         quick_commit_index_);
     } else {
-        int32 size_to_sync = std::min(gap, params->log_sync_batch_size_);
+        int32 size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
         ptr<buffer> log_pack = log_store_->pack(start_idx, size_to_sync);
         p_db( "size to sync: %d, log_pack size %zu\n",
               size_to_sync, log_pack->size() );

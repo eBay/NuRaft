@@ -94,7 +94,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         entries.at(i)->set_term(cur_term);
 
         ulong next_slot = store_log_entry(entries.at(i));
-        p_db("append at log_idx %d\n", (int)next_slot);
+        p_db("append at log_idx %zu\n", next_slot);
         last_idx = next_slot;
 
         ptr<buffer> buf = entries.at(i)->get_buf_ptr();
