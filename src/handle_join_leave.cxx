@@ -206,7 +206,8 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
                 ? ( quick_commit_index_ - start_idx )
                 : 0;
     ptr<raft_params> params = ctx_->get_params();
-    if ( gap < params->log_sync_stop_gap_ ||
+    if ( ( params->log_sync_stop_gap_ > 0 &&
+           gap < (ulong)params->log_sync_stop_gap_ ) ||
          params->log_sync_stop_gap_ == 0 ) {
         p_in( "[SYNC LOG] LogSync is done for server %d "
               "with log gap %zu (%zu - %zu, limit %d), "
