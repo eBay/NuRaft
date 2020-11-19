@@ -377,7 +377,15 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
             req.get_src(),
             next_idx_for_resp ) );
 
-    if (!hb_alive_) {
+    // NOTE:
+    //   While `catching_up_` flag is on, this server does not get
+    //   normal append_entries request so that `hb_alive_` may not
+    //   be cleared properly. Hence, it should accept any pre-vote
+    //   requests.
+    if (catching_up_) {
+        p_in("this server is catching up, always accept pre-vote");
+    }
+    if (!hb_alive_ || catching_up_) {
         p_in("pre-vote decision: O (grant)");
         resp->accept(log_store_->next_slot());
     } else {
