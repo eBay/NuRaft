@@ -468,7 +468,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             // LCOV_EXCL_STOP
         }
 
-        p_in( "sucessfully receive a snapshot (idx %zu term %zu) from leader",
+        p_in( "successfully receive a snapshot (idx %zu term %zu) from leader",
               req.get_snapshot().get_last_log_idx(),
               req.get_snapshot().get_last_log_term() );
         if (log_store_->compact(req.get_snapshot().get_last_log_idx())) {
