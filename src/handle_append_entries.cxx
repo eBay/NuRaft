@@ -945,10 +945,15 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     // such as the response was sent out long time ago
     // and the role was updated by UpdateTerm call
     // Try to match up the logs for this peer
-    if (role_ == srv_role::leader && need_to_catchup) {
-        p_db("reqeust append entries need to catchup, p %d\n",
-             (int)p->get_id());
-        request_append_entries(p);
+    if (role_ == srv_role::leader) {
+        if (need_to_catchup) {
+            p_db("reqeust append entries need to catchup, p %d\n",
+                 (int)p->get_id());
+            request_append_entries(p);
+        }
+        if (status_check_timer_.timeout_and_reset()) {
+            check_overall_status();
+        }
     }
 }
 

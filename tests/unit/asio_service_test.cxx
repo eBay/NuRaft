@@ -1102,6 +1102,104 @@ int global_mgr_heavy_test() {
     return 0;
 }
 
+int leadership_transfer_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://localhost:20010";
+    std::string s2_addr = "tcp://localhost:20020";
+    std::string s3_addr = "tcp://localhost:20030";
+
+    RaftAsioPkg* s1 = new RaftAsioPkg(1, s1_addr);
+    RaftAsioPkg* s2 = new RaftAsioPkg(2, s2_addr);
+    RaftAsioPkg* s3 = new RaftAsioPkg(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {s1, s2, s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1->raftServer->is_leader() );
+    CHK_EQ(1, s1->raftServer->get_leader());
+    CHK_EQ(1, s2->raftServer->get_leader());
+    CHK_EQ(1, s3->raftServer->get_leader());
+
+    // Set the priority of S2 to 10.
+    s1->raftServer->set_priority(2, 10);
+    TestSuite::sleep_ms(500, "set priority of S2");
+
+    // Set the priority of S3 to 5.
+    s1->raftServer->set_priority(3, 5);
+    TestSuite::sleep_ms(500, "set priority of S3");
+
+    // Yield the leadership to S2.
+    s1->raftServer->yield_leadership(false, 2);
+    TestSuite::sleep_sec(1, "yield leadership to S2");
+
+    // Now S2 should be the leader.
+    CHK_TRUE( s2->raftServer->is_leader() );
+    CHK_EQ(2, s1->raftServer->get_leader());
+    CHK_EQ(2, s2->raftServer->get_leader());
+    CHK_EQ(2, s3->raftServer->get_leader());
+
+    // Leadership transfer shouldn't happen.
+    TestSuite::sleep_sec(1, "wait more");
+    CHK_TRUE( s2->raftServer->is_leader() );
+
+    // Now set the parameter to enable transfer.
+    raft_params params = s2->raftServer->get_current_params();
+    params.leadership_transfer_min_wait_time_ = 1000;
+    s2->raftServer->update_params(params);
+
+    // S1 should be the leader now.
+    TestSuite::sleep_sec(1, "enable transfer and wait");
+    CHK_TRUE( s1->raftServer->is_leader() );
+    CHK_EQ(1, s1->raftServer->get_leader());
+    CHK_EQ(1, s2->raftServer->get_leader());
+    CHK_EQ(1, s3->raftServer->get_leader());
+
+    // Shutdown S3
+    s3->raftServer->shutdown();
+    s3->stopAsio();
+    delete s3;
+
+    // Set the parameter to enable transfer (S1).
+    s1->raftServer->update_params(params);
+
+    // Set S2's priority higher than S1
+    s1->raftServer->set_priority(2, 100);
+
+    // Due to S3, transfer shouldn't happen.
+    TestSuite::sleep_sec(2, "shutdown S3, set priority of S2, and wait");
+    CHK_TRUE( s1->raftServer->is_leader() );
+
+    s3 = new RaftAsioPkg(3, s3_addr);
+    s3->initServer();
+    TestSuite::sleep_sec(2, "restart S3");
+
+    // Now leader trasnfer should happen.
+    CHK_TRUE( s2->raftServer->is_leader() );
+    CHK_EQ(2, s1->raftServer->get_leader());
+    CHK_EQ(2, s2->raftServer->get_leader());
+    CHK_EQ(2, s3->raftServer->get_leader());
+
+    s1->raftServer->shutdown();
+    s2->raftServer->shutdown();
+    s3->raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    s1->stopAsio();
+    s2->stopAsio();
+    s3->stopAsio();
+    delete s1;
+    delete s2;
+    delete s3;
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -1149,6 +1247,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "global manager heavy test",
                global_mgr_heavy_test );
+
+    ts.doTest( "leadership transfer test",
+               leadership_transfer_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

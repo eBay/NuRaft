@@ -82,6 +82,7 @@ struct raft_params {
         , custom_commit_quorum_size_(0)
         , custom_election_quorum_size_(0)
         , leadership_expiry_(0)
+        , leadership_transfer_min_wait_time_(0)
         , allow_temporary_zero_priority_leader_(true)
         , auto_forwarding_(false)
         , use_bg_thread_for_urgent_commit_(true)
@@ -422,6 +423,21 @@ public:
      * (the same as the original Raft logic).
      */
     int32 leadership_expiry_;
+
+    /**
+     * Minimum wait time required for transferring the leadership
+     * in millisecond. If this value is non-zero, and the below
+     * conditions are met together,
+     *   - the elapsed time since this server became a leader
+     *     is longer than this number, and
+     *   - the current leader's priority is not the highest one, and
+     *   - all peers are responding, and
+     *   - the log gaps of all peers are smaller than `stale_log_gap_`, and
+     *   - `allow_leadership_transfer` of the state machine returns true,
+     * then the current leader will transfer its leadership to the peer
+     * with the highest priority.
+     */
+    int32 leadership_transfer_min_wait_time_;
 
     /**
      * If true, zero-priority member can initiate vote

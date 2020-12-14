@@ -613,11 +613,12 @@ protected:
     };
 
 protected:
-    void log_current_params();
+    void apply_and_log_current_params();
     void cancel_schedulers();
     void schedule_task(ptr<delayed_task>& task, int32 milliseconds);
     void cancel_task(ptr<delayed_task>& task);
     bool check_leadership_validity();
+    void check_leadership_transfer();
     void update_rand_timeout();
     void cancel_global_requests();
 
@@ -743,6 +744,8 @@ protected:
                                              ptr<resp_msg> resp);
 
     void remove_peer_from_peers(const ptr<peer>& pp);
+
+    void check_overall_status();
 
 protected:
     static const int default_snapshot_sync_block_size;
@@ -1148,6 +1151,17 @@ protected:
      * Lock for `last_snapshot_`.
      */
     mutable std::mutex last_snapshot_lock_;
+
+    /**
+     * Timer that will be reset on becoming a leader.
+     */
+    timer_helper leadership_transfer_timer_;
+
+    /**
+     * Timer that will be used for status checking
+     * for each heartbeat period.
+     */
+    timer_helper status_check_timer_;
 };
 
 } // namespace nuraft;
