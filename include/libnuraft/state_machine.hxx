@@ -287,6 +287,17 @@ public:
      *         `false` if does not want to create snapshot.
      */
     virtual bool chk_create_snapshot() { return true; }
+
+    /**
+     * Decide to transfer leadership.
+     * Once the other conditions are met, Raft core will invoke
+     * this function to ask if it is allowed to transfer the
+     * leadership to other member.
+     *
+     * @return `true` if wants to transfer leadership.
+     *         `false` if not.
+     */
+    virtual bool allow_leadership_transfer() { return true; }
 };
 
 }

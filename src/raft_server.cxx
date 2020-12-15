@@ -119,7 +119,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
         params->stale_log_gap_ = params->fresh_log_gap_;
     }
 
-    log_current_params();
+    apply_and_log_current_params();
     update_rand_timeout();
     precommit_index_ = log_store_->next_slot() - 1;
 
@@ -322,7 +322,7 @@ void raft_server::update_params(const raft_params& new_params) {
 
     ptr<raft_params> clone = cs_new<raft_params>(new_params);
     ctx_->set_params(clone);
-    log_current_params();
+    apply_and_log_current_params();
 
     update_rand_timeout();
     if (role_ != srv_role::leader) {
@@ -335,7 +335,7 @@ void raft_server::update_params(const raft_params& new_params) {
     }
 }
 
-void raft_server::log_current_params() {
+void raft_server::apply_and_log_current_params() {
     ptr<raft_params> params = ctx_->get_params();
     p_in( "parameters: "
           "timeout %d - %d, heartbeat %d, "
@@ -363,6 +363,12 @@ void raft_server::log_current_params() {
           params->custom_commit_quorum_size_,
           params->custom_election_quorum_size_,
           params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED");
+
+    status_check_timer_.set_duration_ms(params->heart_beat_interval_);
+    status_check_timer_.reset();
+
+    leadership_transfer_timer_.set_duration_ms
+        (params->leadership_transfer_min_wait_time_);
 }
 
 raft_params raft_server::get_current_params() const {
@@ -899,10 +905,14 @@ void raft_server::become_leader() {
              commit_ret_elems_.size());
     }
 
+    ptr<raft_params> params = ctx_->get_params();
     {   auto_lock(cli_lock_);
         role_ = srv_role::leader;
         leader_ = id_;
         srv_to_join_.reset();
+        leadership_transfer_timer_.set_duration_ms
+            (params->leadership_transfer_min_wait_time_);
+        leadership_transfer_timer_.reset();
         precommit_index_ = log_store_->next_slot() - 1;
         p_in("state machine commit index %zu, "
              "precommit index %zu, last log index %zu",
@@ -1009,6 +1019,65 @@ bool raft_server::check_leadership_validity() {
         return false;
     }
     return true;
+}
+
+void raft_server::check_leadership_transfer() {
+    ptr<raft_params> params = ctx_->get_params();
+    if (!params->leadership_transfer_min_wait_time_) {
+        // Transferring leadership is disabled.
+        return;
+    }
+    if (!leadership_transfer_timer_.timeout()) {
+        // Leadership period is too short.
+        return;
+    }
+
+    size_t hb_interval_ms = ctx_->get_params()->heart_beat_interval_;
+
+    recur_lock(lock_);
+
+    int32 successor_id = -1;
+    int32 max_priority = my_priority_;
+    ulong cur_commit_idx = quick_commit_index_;
+    for (auto& entry: peers_) {
+        ptr<peer> peer_elem = entry.second;
+        const srv_config& s_conf = peer_elem->get_config();
+        int32 cur_priority = s_conf.get_priority();
+        if (cur_priority > max_priority) {
+            max_priority = cur_priority;
+            successor_id = s_conf.get_id();
+        }
+
+        if (peer_elem->get_matched_idx() + params->stale_log_gap_ <
+                cur_commit_idx) {
+            // This peer is lagging behind.
+            return;
+        }
+
+        uint64_t last_resp_ms = peer_elem->get_resp_timer_us() / 1000;
+        if (last_resp_ms > hb_interval_ms) {
+            // This replica is not responding.
+            return;
+        }
+    }
+
+    if (my_priority_ >= max_priority || successor_id == -1) {
+        // This leader already has the highest priority.
+        return;
+    }
+
+    if (!state_machine_->allow_leadership_transfer()) {
+        // Although all conditions are met,
+        // user does not want to transfer the leadership.
+        return;
+    }
+
+    p_in( "going to transfer leadership to %d, "
+          "my priority %d, max priority %d, "
+          "has been leader for %zu sec",
+          successor_id, my_priority_, max_priority,
+          leadership_transfer_timer_.get_sec() );
+    yield_leadership(false, successor_id);
 }
 
 void raft_server::yield_leadership(bool immediate_yield,
@@ -1474,6 +1543,10 @@ raft_server::limits raft_server::get_raft_limits() {
 
 void raft_server::set_raft_limits(const raft_server::limits& new_limits) {
     raft_limits_ = new_limits;
+}
+
+void raft_server::check_overall_status() {
+    check_leadership_transfer();
 }
 
 } // namespace nuraft;
