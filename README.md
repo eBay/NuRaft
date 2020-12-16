@@ -2,7 +2,7 @@
 NuRaft
 ======
 
-![build](https://github.com/eBay/NuRaft/workflows/build/badge.svg)
+[![build](https://github.com/eBay/NuRaft/workflows/build/badge.svg)](https://github.com/eBay/NuRaft/actions)
 [![codecov](https://codecov.io/gh/eBay/NuRaft/branch/master/graph/badge.svg)](https://codecov.io/gh/eBay/NuRaft)
 
 Raft implementation derived from the [cornerstone](https://github.com/datatechnology/cornerstone) project, which is a very lightweight C++ implementation with minimum dependencies, originally written by [Andy Chen](https://github.com/andy-yx-chen).
