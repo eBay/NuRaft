@@ -154,10 +154,10 @@ if (CODE_COVERAGE GREATER 0)
     APPEND_COVERAGE_COMPILER_FLAGS()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-inline")
     set(COVERAGE_EXCLUDES
-        'asio/*'
-        'examples/*'
-        'tests/*'
-        'usr/*'
+        '*asio/*'
+        '*examples/*'
+        '*tests/*'
+        '*usr/*'
     )
 endif()
 
