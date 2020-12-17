@@ -346,7 +346,8 @@ void raft_server::apply_and_log_current_params() {
           "auto forwarding %s, API call type %s, "
           "custom commit quorum size %d, "
           "custom election quorum size %d, "
-          "snapshot receiver %s",
+          "snapshot receiver %s, "
+          "leadership transfer wait time %d",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -362,7 +363,8 @@ void raft_server::apply_and_log_current_params() {
             ? "BLOCKING" : "ASYNC" ),
           params->custom_commit_quorum_size_,
           params->custom_election_quorum_size_,
-          params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED");
+          params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
+          params->leadership_transfer_min_wait_time_ );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();
