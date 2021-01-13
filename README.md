@@ -38,8 +38,7 @@ How to Build
 
 * Ubuntu
 ```sh
-$ sudo apt-get install cmake
-$ sudo apt-get install openssl libssl-dev
+$ sudo apt-get install cmake openssl libssl-dev libz-dev
 ```
 
 * OSX

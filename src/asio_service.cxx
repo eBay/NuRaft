@@ -221,6 +221,7 @@ public:
         , callback_(callback)
         , src_id_(-1)
         , is_leader_(false)
+        , cached_port(0)
     {
         p_tr("asio rpc session created: %p", this);
     }
@@ -238,10 +239,12 @@ public:
         // this is safe since we only expose ctor to cs_new
         ptr<rpc_session> self = this->shared_from_this();
 
+        cached_address = socket_.remote_endpoint().address().to_string();
+        cached_port = socket_.remote_endpoint().port();
         p_in( "session %zu got connection from %s:%u (as a server)",
               session_id_,
-              socket_.remote_endpoint().address().to_string().c_str(),
-              socket_.remote_endpoint().port() );
+              cached_address.c_str(),
+              cached_port );
 
         if (ssl_enabled_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
@@ -264,15 +267,15 @@ public:
         if (!err) {
             p_in( "session %zu handshake with %s:%u succeeded (as a server)",
                   session_id_,
-                  socket_.remote_endpoint().address().to_string().c_str(),
-                  socket_.remote_endpoint().port() );
+                  cached_address.c_str(),
+                  cached_port );
             this->start(self);
 
         } else {
             p_er( "session %zu handshake with %s:%u failed: error %d",
                   session_id_,
-                  socket_.remote_endpoint().address().to_string().c_str(),
-                  socket_.remote_endpoint().port(),
+                  cached_address.c_str(),
+                  cached_port,
                   err.value() );
 
             // Lazy stop.
@@ -306,8 +309,8 @@ public:
                 p_er( "session %zu failed to read rpc header from socket %s:%u "
                       "due to error %d",
                       session_id_,
-                      socket_.remote_endpoint().address().to_string().c_str(),
-                      socket_.remote_endpoint().port(),
+                      cached_address.c_str(),
+                      cached_port,
                       err.value() );
                 this->stop();
                 return;
@@ -396,8 +399,8 @@ private:
 
         cb_func::ConnectionArgs
             args( session_id_,
-                  socket_.remote_endpoint().address().to_string(),
-                  socket_.remote_endpoint().port(),
+                  cached_address,
+                  cached_port,
                   src_id_,
                   is_leader_ );
         cb_func::Param cb_param( handler_->get_id(),
@@ -475,8 +478,8 @@ private:
                 is_leader_ = true;
                 cb_func::ConnectionArgs
                     args( session_id_,
-                          socket_.remote_endpoint().address().to_string(),
-                          socket_.remote_endpoint().port(),
+                          cached_address,
+                          cached_port,
                           src_id_,
                           is_leader_ );
                 cb_func::Param cb_param( handler_->get_id(),
@@ -672,6 +675,9 @@ private:
      * `true` if the endpoint server was leader when it was last seen.
      */
     bool is_leader_;
+
+    std::string cached_address;
+    uint32_t cached_port;
 };
 
 // rpc listener implementation
