@@ -1106,7 +1106,7 @@ public:
     }
 private:
     void set_busy_flag(bool to) {
-        std::unique_lock lock(socket_busy_mutex_);
+        std::unique_lock<std::mutex> lock(socket_busy_mutex_);
         if (to == true) {
             socket_busy_cv_.wait(lock, [this]{ return !socket_busy_; });
             socket_busy_ = true;
