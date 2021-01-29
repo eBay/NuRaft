@@ -1106,20 +1106,14 @@ public:
     }
 private:
     void set_busy_flag(bool to) {
+        std::unique_lock lock(socket_busy_mutex_);
         if (to == true) {
-            bool exp = false;
-            if (!socket_busy_.compare_exchange_strong(exp, true)) {
-                p_ft("socket is already in use, race happened on connection to %s:%s",
-                     host_.c_str(), port_.c_str());
-                assert(0);
-            }
+            socket_busy_cv_.wait(lock, [this]{ return !socket_busy_; });
+            socket_busy_ = true;
         } else {
-            bool exp = true;
-            if (!socket_busy_.compare_exchange_strong(exp, false)) {
-                p_ft("socket is already idle, race happened on connection to %s:%s",
-                     host_.c_str(), port_.c_str());
-                assert(0);
-            }
+            socket_busy_ = false;
+            lock.unlock();
+            socket_busy_cv_.notify_one();
         }
     }
 
@@ -1441,7 +1435,9 @@ private:
     std::atomic<bool> ssl_ready_;
     std::atomic<size_t> num_send_fails_;
     std::atomic<bool> abandoned_;
-    std::atomic<bool> socket_busy_;
+    std::mutex socket_busy_mutex_;
+    std::condition_variable socket_busy_cv_;
+    bool socket_busy_;
     uint64_t client_id_;
     ptr<logger> l_;
 };
