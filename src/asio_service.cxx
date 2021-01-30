@@ -212,6 +212,7 @@ public:
         , impl_(_impl)
         , handler_(handler)
         , socket_(io)
+        , strand_(asio::make_strand(io))
         , ssl_socket_(socket_, ssl_ctx)
         , ssl_enabled_(_enable_ssl)
         , flags_(0x0)
@@ -302,7 +303,7 @@ public:
         header_->pos(0);
         aa::read( ssl_enabled_, ssl_socket_, socket_,
                   asio::buffer( header_->data(), RPC_REQ_HEADER_SIZE ),
-                  [this, self]
+                  asio::bind_executor(strand_, [this, self]
                   (const ERROR_CODE& err, size_t) -> void
         {
             if (err) {
@@ -368,13 +369,13 @@ public:
                 aa::read( ssl_enabled_, ssl_socket_, socket_,
                           asio::buffer( log_ctx->data(),
                                         (size_t)data_size ),
-                          std::bind( &rpc_session::read_log_data,
+                          asio::bind_executor(strand_, std::bind( &rpc_session::read_log_data,
                                      self,
                                      log_ctx,
                                      std::placeholders::_1,
-                                     std::placeholders::_2 ) );
+                                     std::placeholders::_2 ) ) );
             }
-        } );
+        } ) );
     }
 
     void stop() {
@@ -624,7 +625,7 @@ private:
 
         aa::write( ssl_enabled_, ssl_socket_, socket_,
                    asio::buffer(resp_buf->data_begin(), resp_buf->size()),
-                   [this, self, resp_buf]
+                   asio::bind_executor(strand_, [this, self, resp_buf]
                    (ERROR_CODE err_code, size_t) -> void
         {
             // To avoid releasing `resp_buf` before the write is done.
@@ -638,7 +639,7 @@ private:
                       err_code.value() );
                 this->stop();
             }
-        } );
+        } ) );
 
        } catch (std::exception& ex) {
         p_er( "session %zu failed to process request message "
@@ -654,6 +655,7 @@ private:
     asio_service_impl* impl_;
     ptr<msg_handler> handler_;
     asio::ip::tcp::socket socket_;
+    asio::strand<boost::asio::io_context::executor_type> strand_;
     ssl_socket ssl_socket_;
     bool ssl_enabled_;
     uint32_t flags_;
@@ -819,6 +821,7 @@ public:
         : impl_(_impl)
         , resolver_(io_svc)
         , socket_(io_svc)
+        , strand_(asio::make_strand(io_svc))
         , ssl_socket_(socket_, ssl_ctx)
         , attempting_conn_(false)
         , host_(host)
@@ -827,7 +830,6 @@ public:
         , ssl_ready_(false)
         , num_send_fails_(0)
         , abandoned_(false)
-        , socket_busy_(false)
         , l_(l)
     {
         client_id_ = impl_->assign_client_id();
@@ -1018,9 +1020,6 @@ public:
             return;
         }
 
-        // Socket should be idle now. If not, it should be a bug.
-        set_busy_flag(true);
-
         // If we reach here, that means connection is valid.
         // Reset the counter.
         num_send_fails_ = 0;
@@ -1096,26 +1095,15 @@ public:
         //       and the memory corruption will occur.
         aa::write( ssl_enabled_, ssl_socket_, socket_,
                    asio::buffer(req_buf->data(), req_buf->size()),
-                   std::bind( &asio_rpc_client::sent,
+                   asio::bind_executor(strand_, std::bind( &asio_rpc_client::sent,
                               self,
                               req,
                               req_buf,
                               when_done,
                               std::placeholders::_1,
-                              std::placeholders::_2 ) );
+                              std::placeholders::_2 ) ) );
     }
 private:
-    void set_busy_flag(bool to) {
-        std::unique_lock<std::mutex> lock(socket_busy_mutex_);
-        if (to == true) {
-            socket_busy_cv_.wait(lock, [this]{ return !socket_busy_; });
-            socket_busy_ = true;
-        } else {
-            socket_busy_ = false;
-            lock.unlock();
-            socket_busy_cv_.notify_one();
-        }
-    }
 
     void close_socket() {
         // Do nothing,
@@ -1216,13 +1204,13 @@ private:
             ptr<buffer> resp_buf(buffer::alloc(RPC_RESP_HEADER_SIZE));
             aa::read( ssl_enabled_, ssl_socket_, socket_,
                       asio::buffer(resp_buf->data(), resp_buf->size()),
-                      std::bind(&asio_rpc_client::response_read,
+                      asio::bind_executor(strand_, std::bind(&asio_rpc_client::response_read,
                                 self,
                                 req,
                                 when_done,
                                 resp_buf,
                                 std::placeholders::_1,
-                                std::placeholders::_2));
+                                std::placeholders::_2)));
 
         } else {
             abandoned_ = true;
@@ -1311,7 +1299,7 @@ private:
             ptr<buffer> ctx_buf = buffer::alloc(carried_data_size);
             aa::read( ssl_enabled_, ssl_socket_, socket_,
                       asio::buffer(ctx_buf->data(), carried_data_size),
-                      std::bind( &asio_rpc_client::ctx_read,
+                      asio::bind_executor(strand_, std::bind( &asio_rpc_client::ctx_read,
                                  self,
                                  req,
                                  rsp,
@@ -1319,9 +1307,8 @@ private:
                                  ctx_buf,
                                  flags,
                                  std::placeholders::_1,
-                                 std::placeholders::_2 ) );
+                                 std::placeholders::_2 ) ) );
         } else {
-            set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
         }
@@ -1342,7 +1329,6 @@ private:
             ctx_buf->pos(0);
             rsp->set_ctx(ctx_buf);
 
-            set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
             return;
@@ -1391,7 +1377,6 @@ private:
             rsp->set_ctx(actual_ctx);
         }
 
-        set_busy_flag(false);
         ptr<rpc_exception> except;
         when_done(rsp, except);
     }
@@ -1425,6 +1410,7 @@ private:
     asio_service_impl* impl_;
     asio::ip::tcp::resolver resolver_;
     asio::ip::tcp::socket socket_;
+    asio::strand<boost::asio::io_context::executor_type> strand_;
     ssl_socket ssl_socket_;
     // `true` if attempting connection is in progress.
     // Other threads should not do anything.
@@ -1435,9 +1421,6 @@ private:
     std::atomic<bool> ssl_ready_;
     std::atomic<size_t> num_send_fails_;
     std::atomic<bool> abandoned_;
-    std::mutex socket_busy_mutex_;
-    std::condition_variable socket_busy_cv_;
-    bool socket_busy_;
     uint64_t client_id_;
     ptr<logger> l_;
 };
