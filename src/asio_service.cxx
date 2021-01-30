@@ -655,7 +655,7 @@ private:
     asio_service_impl* impl_;
     ptr<msg_handler> handler_;
     asio::ip::tcp::socket socket_;
-    asio::strand<boost::asio::io_context::executor_type> strand_;
+    asio::strand<asio::io_context::executor_type> strand_;
     ssl_socket ssl_socket_;
     bool ssl_enabled_;
     uint32_t flags_;
@@ -1410,7 +1410,7 @@ private:
     asio_service_impl* impl_;
     asio::ip::tcp::resolver resolver_;
     asio::ip::tcp::socket socket_;
-    asio::strand<boost::asio::io_context::executor_type> strand_;
+    asio::strand<asio::io_context::executor_type> strand_;
     ssl_socket ssl_socket_;
     // `true` if attempting connection is in progress.
     // Other threads should not do anything.
