@@ -200,7 +200,7 @@ void peer::recreate_rpc(ptr<srv_config>& config,
         reconn_backoff_.set_duration_ms(new_duration_ms);
 
         rpc_ = factory->create_client(config->get_endpoint());
-        p_tr("reconnect peer %zu", config_->get_id());
+        p_in("%p reconnect peer %zu", rpc_.get(), config_->get_id());
 
     } else {
         p_tr("skip reconnect this time");
