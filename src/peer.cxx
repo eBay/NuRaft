@@ -46,6 +46,13 @@ void peer::send_req( ptr<peer> myself,
     ptr<rpc_result> pending = cs_new<rpc_result>(handler);
     ptr<rpc_client> rpc_local = nullptr;
     {   std::lock_guard<std::mutex> l(rpc_protector_);
+        if (!rpc_) {
+            // Nothing will be sent, immediately free it
+            // to serve next operation.
+            p_tr("rpc local is null");
+            set_free();
+            return;
+        }
         rpc_local = rpc_;
     }
     rpc_handler h = (rpc_handler)std::bind
@@ -59,12 +66,6 @@ void peer::send_req( ptr<peer> myself,
                       std::placeholders::_2 );
     if (rpc_local) {
         rpc_local->send(req, h);
-
-    } else {
-        // Nothing has been sent, immediately free it
-        // to serve next operation.
-        p_tr("rpc local is null");
-        set_free();
     }
 }
 
@@ -123,10 +124,12 @@ void peer::handle_rpc_result( ptr<peer> myself,
                       given_rpc_id );
                 return;
             }
-        }
-
-        if ( msg_types_to_free.find(req->get_type()) != msg_types_to_free.end() ) {
-            set_free();
+            // WARNING:
+            //   `set_free()` should be protected by `rpc_protector_`, otherwise
+            //   it may free the peer even though new RPC client is already created.
+            if ( msg_types_to_free.find(req->get_type()) != msg_types_to_free.end() ) {
+                set_free();
+            }
         }
 
         reset_active_timer();
@@ -200,7 +203,12 @@ void peer::recreate_rpc(ptr<srv_config>& config,
         reconn_backoff_.set_duration_ms(new_duration_ms);
 
         rpc_ = factory->create_client(config->get_endpoint());
-        p_tr("reconnect peer %zu", config_->get_id());
+        p_tr("%p reconnect peer %zu", rpc_.get(), config_->get_id());
+
+        // WARNING:
+        //   A reconnection attempt should be treated as an activity,
+        //   hence reset timer.
+        reset_active_timer();
 
     } else {
         p_tr("skip reconnect this time");

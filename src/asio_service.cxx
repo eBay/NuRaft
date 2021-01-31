@@ -925,8 +925,8 @@ public:
 
         ptr<asio_rpc_client> self = this->shared_from_this();
         while (!socket().is_open()) { // Dummy one-time loop
-            p_db( "socket to %s:%s is not opened yet",
-                  host_.c_str(), port_.c_str() );
+            p_db( "socket %p to %s:%s is not opened yet",
+                  this, host_.c_str(), port_.c_str() );
 
             // WARNING:
             //   Only one thread can establish connection at a time.
@@ -1109,15 +1109,15 @@ private:
         if (to == true) {
             bool exp = false;
             if (!socket_busy_.compare_exchange_strong(exp, true)) {
-                p_ft("socket is already in use, race happened on connection to %s:%s",
-                     host_.c_str(), port_.c_str());
+                p_ft("socket %p is already in use, race happened on connection to %s:%s",
+                     this, host_.c_str(), port_.c_str());
                 assert(0);
             }
         } else {
             bool exp = true;
             if (!socket_busy_.compare_exchange_strong(exp, false)) {
-                p_ft("socket is already idle, race happened on connection to %s:%s",
-                     host_.c_str(), port_.c_str());
+                p_ft("socket %p is already idle, race happened on connection to %s:%s",
+                     this, host_.c_str(), port_.c_str());
                 assert(0);
             }
         }
@@ -1147,8 +1147,8 @@ private:
                    asio::ip::tcp::resolver::iterator itor)
     {
         if (!err) {
-            p_in( "connected to %s:%s (as a client)",
-                  host_.c_str(), port_.c_str() );
+            p_in( "%p connected to %s:%s (as a client)",
+                  this, host_.c_str(), port_.c_str() );
             if (ssl_enabled_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
                 assert(0); // Should not reach here.
