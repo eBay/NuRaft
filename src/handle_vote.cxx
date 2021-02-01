@@ -89,9 +89,9 @@ void raft_server::request_prevote() {
         if (pre_vote_.live_ + pre_vote_.dead_ < quorum_size + 1) {
             // Pre-vote failed due to non-responding voters.
             pre_vote_.failure_count_++;
-            p_wn("total %zu nodes (including this node) responded for pre-vote "
-                 "(term %zu, live %zu, dead %zu), at least %zu nodes should "
-                 "respond. failure count %zu",
+            p_wn("total %d nodes (including this node) responded for pre-vote "
+                 "(term %zu, live %d, dead %d), at least %d nodes should "
+                 "respond. failure count %d",
                  pre_vote_.live_.load() + pre_vote_.dead_.load(),
                  pre_vote_.term_,
                  pre_vote_.live_.load(),
