@@ -90,6 +90,7 @@ struct raft_params {
         , auto_adjust_quorum_for_small_cluster_(false)
         , locking_method_type_(dual_mutex)
         , return_method_(blocking)
+        , auto_forwarding_req_timeout_(client_req_timeout_ * 3)
         {}
 
     /**
@@ -311,6 +312,18 @@ struct raft_params {
     }
 
     /**
+     * Set the auto-forwarding request timeout
+     *
+     * @param timeout_ms New timeout in millisecond.
+     * @return self
+     */
+    raft_params& with_auto_forwarding_req_timeout(int32 timeout_ms) {
+        auto_forwarding_req_timeout_ = timeout_ms;
+        return *this;
+    }
+
+
+    /**
      * Return heartbeat interval.
      * If given heartbeat interval is smaller than a specific value
      * based on election timeout, return it instead.
@@ -488,6 +501,12 @@ public:
      * To choose blocking call or asynchronous call.
      */
     return_method_type return_method_;
+
+    /**
+     * Wait ms for response after forwarding request to leader.
+     * must be larger than client_req_timeout_.
+     */
+    int32 auto_forwarding_req_timeout_;
 };
 
 }
