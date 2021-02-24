@@ -162,6 +162,33 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     }
     if (need_to_reconnect) {
         reconnect_client(*p);
+        uint64_t p_next_log_idx = p->get_next_log_idx();
+        if (p_next_log_idx) {
+            // NOTE:
+            //   Discussions in https://github.com/eBay/NuRaft/issues/181
+            //
+            //   The leader keeps the last sent log info for each peer
+            //   and sends the next `append_entries` request based on
+            //   that data. This process disrupts offline data change,
+            //   such as snapshot install, as the leader's peer info
+            //   remains unchanged and results in wrong decisions. The
+            //   right way to do this is to remove the node, install
+            //   the snapshot, and then add the node back.
+            //
+            //   To avoid those hassles, we can reset the peer info that
+            //   the leader has. Once any disconnection happens to a
+            //   peer, we reset the last sent log info. The log info will
+            //   be re-adjusted by the first `append_entries`
+            //   communication between the leader and the peer. It will
+            //   eventually have the same impact of removing and then
+            //   re-adding the peer.
+            //
+            p_tr("new rpc for peer %d is created, "
+                 "reset next log idx (%lu) and matched log idx (%lu)",
+                 p->get_id(), p_next_log_idx, p->get_matched_idx());
+            p->set_next_log_idx(0);
+            p->set_matched_idx(0);
+        }
         p->clear_reconnection();
     }
 
@@ -625,7 +652,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                     buf->pos(0);
                     state_machine_->rollback_ext
                         ( state_machine::ext_op_params( idx, buf ) );
-                    p_in( "rollback log %zu", idx );
+                    p_in( "rollback log %zu, term %zu", idx, old_entry->get_term() );
 
                 } else if (old_entry->get_val_type() == log_val_type::conf) {
                     p_in( "revert from a prev config change to config at %llu",
@@ -640,7 +667,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 cnt < req.log_entries().size() )
         {
             ptr<log_entry> entry = req.log_entries().at(cnt);
-            p_in("overwrite at %zu\n", log_idx);
+            p_in("overwrite at %zu, term %zu\n", log_idx, entry->get_term());
             store_log_entry(entry, log_idx);
 
             if (entry->get_val_type() == log_val_type::app_log) {
