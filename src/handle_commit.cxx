@@ -106,8 +106,12 @@ void raft_server::commit_in_bg() {
                 sm_commit_index_ >= log_store_->next_slot() - 1 ) {
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
 
+            auto wait_check = [this] () {
+                return log_store_->next_slot() - 1 > sm_commit_index_ && quick_commit_index_ > sm_commit_index_;
+            };
+
             p_tr("commit_cv_ sleep\n");
-            commit_cv_.wait(lock);
+            commit_cv_.wait(lock, wait_check);
 
             p_tr("commit_cv_ wake up\n");
             if (stopping_) {
