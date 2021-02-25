@@ -161,9 +161,9 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         }
     }
     if (need_to_reconnect) {
-        reconnect_client(*p);
+        bool reconnected = reconnect_client(*p);
         uint64_t p_next_log_idx = p->get_next_log_idx();
-        if (p_next_log_idx) {
+        if (reconnected && p_next_log_idx) {
             // NOTE:
             //   Discussions in https://github.com/eBay/NuRaft/issues/181
             //
