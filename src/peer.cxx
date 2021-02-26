@@ -209,6 +209,9 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         //   A reconnection attempt should be treated as an activity,
         //   hence reset timer.
         reset_active_timer();
+
+        set_free();
+        set_manual_free();
         return true;
 
     } else {

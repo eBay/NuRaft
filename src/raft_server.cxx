@@ -893,12 +893,7 @@ bool raft_server::reconnect_client(peer& p) {
     if (s_config) {
         p_db( "reset RPC client for peer %d",
               p.get_id() );
-        bool ok = p.recreate_rpc(s_config, *ctx_);
-        if (ok) {
-            p.set_free();
-            p.set_manual_free();
-        }
-        return ok;
+        return p.recreate_rpc(s_config, *ctx_);
     }
     return false;
 }

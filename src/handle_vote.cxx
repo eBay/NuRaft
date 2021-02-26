@@ -77,11 +77,7 @@ void raft_server::request_prevote() {
 
             if (recreate) {
                 p_in("reset RPC client for peer %d", s_config->get_id());
-                bool ok = pp->recreate_rpc(s_config, *ctx_);
-                if (ok) {
-                    pp->set_free();
-                    pp->set_manual_free();
-                }
+                pp->recreate_rpc(s_config, *ctx_);
             }
         }
     }
