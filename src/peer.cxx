@@ -180,16 +180,16 @@ void peer::handle_rpc_result( ptr<peer> myself,
     }
 }
 
-void peer::recreate_rpc(ptr<srv_config>& config,
+bool peer::recreate_rpc(ptr<srv_config>& config,
                         context& ctx)
 {
-    if (abandoned_) return;
+    if (abandoned_) return false;
 
     ptr<rpc_client_factory> factory = nullptr;
     {   std::lock_guard<std::mutex> l(ctx.ctx_lock_);
         factory = ctx.rpc_cli_factory_;
     }
-    if (!factory) return;
+    if (!factory) return false;
 
     std::lock_guard<std::mutex> l(rpc_protector_);
 
@@ -210,9 +210,14 @@ void peer::recreate_rpc(ptr<srv_config>& config,
         //   hence reset timer.
         reset_active_timer();
 
+        set_free();
+        set_manual_free();
+        return true;
+
     } else {
         p_tr("skip reconnect this time");
     }
+    return false;
 }
 
 void peer::shutdown() {

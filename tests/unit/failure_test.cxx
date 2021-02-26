@@ -142,10 +142,9 @@ int simple_conflict_test() {
     // Now S2 replicate messages.
     // S1 has conflict, so that it should discard its local logs.
     s2.dbgLog(" --- S2 starts to replicate ---");
-    s2.fNet->execReqResp();
-    s2.fNet->execReqResp();
-    s2.fNet->execReqResp();
-    s2.fNet->execReqResp();
+    for (size_t ii = 0; ii < 10; ++ii) {
+        s2.fNet->execReqResp();
+    }
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Check if all messages are committed.

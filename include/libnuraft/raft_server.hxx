@@ -693,7 +693,7 @@ protected:
     void reconfigure(const ptr<cluster_config>& new_config);
     void update_target_priority();
     void decay_target_priority();
-    void reconnect_client(peer& p);
+    bool reconnect_client(peer& p);
     void become_leader();
     void become_follower();
     void check_srv_to_leave_timeout();

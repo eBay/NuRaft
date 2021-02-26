@@ -1799,6 +1799,8 @@ int snapshot_basic_test() {
 
     // Trigger heartbeat to S3, it will initiate snapshot transmission.
     s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    s1.fNet->execReqResp();
+
     // Send the entire snapshot.
     do {
         s1.fNet->execReqResp();

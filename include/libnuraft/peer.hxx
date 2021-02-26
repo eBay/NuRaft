@@ -232,7 +232,7 @@ public:
     void set_manual_free()      { manual_free_ = true; }
     bool is_manual_free()       { return manual_free_; }
 
-    void recreate_rpc(ptr<srv_config>& config,
+    bool recreate_rpc(ptr<srv_config>& config,
                       context& ctx);
 
     void reset_rpc_errs()   { rpc_errs_ = 0; }
