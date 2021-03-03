@@ -163,7 +163,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     p_db( "commit upto %ld, current idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
 
-
+    bool initial_commit = initial_commit_index_ == sm_commit_index_;
     ulong log_start_idx = log_store_->start_index();
 
     if ( log_start_idx &&
@@ -174,11 +174,6 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
              log_start_idx,
              log_start_idx - 1);
         sm_commit_index_ = log_start_idx - 1;
-    }
-
-    bool initial_commit_index = false;
-    if ((log_start_idx != 0 && sm_commit_index_ == log_start_idx - 1) || sm_commit_index_ == 0) {
-        initial_commit_index = true;
     }
 
     ptr<cluster_config> cur_config = get_config();
@@ -242,7 +237,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     p_db( "DONE: commit upto %ld, current idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
 
-    if (initial_commit_index) {
+    if (initial_commit) {
         cb_func::Param param(id_, leader_);
         ctx_->cb_func_.call(cb_func::InitialBatchCommited, &param);
     }
