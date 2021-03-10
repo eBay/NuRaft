@@ -696,7 +696,7 @@ public:
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
-        , acceptor_(io, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port))
+        , acceptor_(io, asio::ip::tcp::endpoint(asio::ip::tcp::v6(), port))
         , session_id_cnt_(1)
         , stopped_(false)
         , ssl_enabled_(_enable_ssl)
