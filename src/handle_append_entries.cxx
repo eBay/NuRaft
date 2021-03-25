@@ -611,7 +611,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 quick_commit_index_ = log_idx - 1;
             }
             if ( sm_commit_index_ >= log_idx ) {
-                p_wn( "rollback sm commit index from %zu to %zu",
+                p_er( "rollback sm commit index from %zu to %zu, "
+                      "it shouldn't happen and may indicate data loss",
                       sm_commit_index_.load(),
                       log_idx - 1 );
                 sm_commit_index_ = log_idx - 1;
