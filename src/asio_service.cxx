@@ -1036,13 +1036,13 @@ public:
 
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
+            auto& le_buf = le->get_buf();
             ptr<buffer> entry_buf = buffer::alloc
-                                    ( 8 + 1 + 4 + le->get_buf().size() );
+                                    ( 8 + 1 + 4 + le_buf.size() );
             entry_buf->put( le->get_term() );
             entry_buf->put( (byte)le->get_val_type() );
-            entry_buf->put( (int32)le->get_buf().size() );
-            le->get_buf().pos(0);
-            entry_buf->put( le->get_buf() );
+            entry_buf->put( (int32)le_buf.size() );
+            entry_buf->put_raw( le_buf.data_begin(), le_buf.size() );
             entry_buf->pos( 0 );
 
             log_entry_bufs.push_back(entry_buf);
