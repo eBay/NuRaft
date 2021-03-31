@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "async.hxx"
 #include "callback.hxx"
+#include "event_awaiter.h"
 #include "internal_timer.hxx"
 #include "log_store.hxx"
 #include "snapshot_sync_req.hxx"
@@ -32,9 +33,11 @@ limitations under the License.
 #include "srv_state.hxx"
 #include "timer_task.hxx"
 
+#include <list>
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 class EventAwaiter;
 
@@ -612,6 +615,31 @@ protected:
         std::atomic<int32> failure_count_;
     };
 
+    /**
+     * A set of components required for auto-forwarding.
+     */
+    struct auto_fwd_pkg {
+        /**
+         * Available RPC clients.
+         */
+        std::list<ptr<rpc_client>> rpc_client_idle_;
+
+        /**
+         * RPC clients in use.
+         */
+        std::unordered_set<ptr<rpc_client>> rpc_client_in_use_;
+
+        /**
+         * Mutex.
+         */
+        std::mutex lock_;
+
+        /**
+         * Event awaiter.
+         */
+        EventAwaiter ea_;
+    };
+
 protected:
     void apply_and_log_current_params();
     void cancel_schedulers();
@@ -724,6 +752,16 @@ protected:
     void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
 
     ptr< cmd_result< ptr<buffer> > > send_msg_to_leader(ptr<req_msg>& req);
+
+    void auto_fwd_release_rpc_cli(ptr<auto_fwd_pkg> cur_pkg,
+                                  ptr<rpc_client> rpc_cli);
+
+
+    void auto_fwd_resp_handler(ptr<cmd_result<ptr<buffer>>> presult,
+                               ptr<auto_fwd_pkg> cur_pkg,
+                               ptr<rpc_client> rpc_cli,
+                               ptr<resp_msg>& resp,
+                               ptr<rpc_exception>& err);
 
     void set_config(const ptr<cluster_config>& new_config);
     ptr<snapshot> get_last_snapshot() const;
@@ -984,6 +1022,31 @@ protected:
      * protected by `lock_`.
      */
     std::unordered_map<int32, ptr<rpc_client>> rpc_clients_;
+
+    /**
+     * Map of {server ID, auto-forwarding components}.
+     */
+    std::unordered_map<int32, ptr<auto_fwd_pkg>> auto_fwd_pkgs_;
+
+    /**
+     * Definition of request-response pairs.
+     */
+    struct auto_fwd_req_resp {
+        /**
+         * Request.
+         */
+        ptr<req_msg> req;
+
+        /**
+         * Corresponding (future) response.
+         */
+        ptr<cmd_result<ptr<buffer>>> resp;
+    };
+
+    /**
+     * Queue of request-response pairs for auto-forwarding (async mode only).
+     */
+    std::list<auto_fwd_req_resp> auto_fwd_reqs_;
 
     /**
      * Current role of this server.
