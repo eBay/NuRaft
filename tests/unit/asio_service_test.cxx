@@ -31,14 +31,15 @@ namespace asio_service_test {
 
 int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
                    bool enable_ssl,
-                   bool use_global_asio = false)
+                   bool use_global_asio = false,
+                   const raft_server::init_options & opt = raft_server::init_options())
 {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
     for (auto& entry: pkgs) {
         RaftAsioPkg* pp = entry;
-        pp->initServer(enable_ssl, use_global_asio);
+        pp->initServer(enable_ssl, use_global_asio, opt);
     }
     // Wait longer than upper timeout.
     TestSuite::sleep_sec(1);
@@ -1200,6 +1201,74 @@ int leadership_transfer_test() {
     return 0;
 }
 
+int auto_forwarding_timeout_test() {
+    std::string s1_addr = "127.0.0.1:20010";
+    std::string s2_addr = "127.0.0.1:20020";
+    std::string s3_addr = "127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    raft_server::init_options opt;
+
+    /// Make leader quite slow
+    opt.raft_callback_ = [](cb_func::Type type, cb_func::Param* param) -> cb_func::ReturnCode {
+        if (type == cb_func::Type::AppendLogs) {
+            TestSuite::sleep_ms(150);
+        }
+        return cb_func::ReturnCode::Ok;
+    };
+
+    CHK_Z( launch_servers(pkgs, false, false, opt) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.auto_forwarding_ = true;
+        pp->raftServer->update_params(param);
+    }
+
+    std::string test_msg = "test";
+    ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+    msg->put(test_msg);
+
+    auto ret = s3.raftServer->append_entries({msg});
+
+    CHK_TRUE(ret->get_accepted());
+    CHK_EQ(ret->get_result_code(), nuraft::cmd_result_code::OK)
+
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.auto_forwarding_req_timeout_ = 100;
+        pp->raftServer->update_params(param);
+    }
+
+    auto ret2 = s3.raftServer->append_entries({msg});
+
+    /// Timeout happened
+    CHK_FALSE(ret2->get_accepted());
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+
+    return 0;
+}
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -1207,6 +1276,9 @@ int main(int argc, char** argv) {
     TestSuite ts(argc, argv);
 
     ts.options.printTestMessage = true;
+
+    ts.doTest( "auto forwarding timeout test",
+               auto_forwarding_timeout_test );
 
     ts.doTest( "make group test",
                make_group_test );
