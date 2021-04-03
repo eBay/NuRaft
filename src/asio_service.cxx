@@ -891,6 +891,7 @@ public:
                      ptr<asio::steady_timer> timer,
                      ptr<req_msg>& req,
                      rpc_handler& when_done,
+                     uint64_t send_timeout_ms,
                      const ERROR_CODE& err )
     {
         if ( err || num_send_fails_ >= SEND_RETRY_MAX ) {
@@ -911,7 +912,7 @@ public:
             when_done(rsp, except);
             return;
         }
-        send(req, when_done);
+        send(req, when_done, send_timeout_ms);
     }
 
     virtual void send(ptr<req_msg>& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0) __override__ {
@@ -957,6 +958,7 @@ public:
                                               timer,
                                               req,
                                               when_done,
+                                              send_timeout_ms,
                                               std::placeholders::_1 ) );
                 return;
             }
@@ -973,7 +975,7 @@ public:
 
             resolver_.async_resolve
             ( q,
-              [self, this, req, when_done]
+              [self, this, req, when_done, send_timeout_ms]
               ( std::error_code err,
                 asio::ip::tcp::resolver::iterator itor ) -> void
             {
@@ -985,6 +987,7 @@ public:
                                      self,
                                      req,
                                      when_done,
+                                     send_timeout_ms,
                                      std::placeholders::_1,
                                      std::placeholders::_2 ) );
                 } else {
@@ -1019,6 +1022,7 @@ public:
                                           timer,
                                           req,
                                           when_done,
+                                          send_timeout_ms,
                                           std::placeholders::_1 ) );
             return;
         }
@@ -1171,6 +1175,7 @@ private:
 
     void connected(ptr<req_msg>& req,
                    rpc_handler& when_done,
+                   uint64_t send_timeout_ms,
                    std::error_code err,
                    asio::ip::tcp::resolver::iterator itor)
     {
@@ -1187,10 +1192,11 @@ private:
                                  this,
                                  req,
                                  when_done,
+                                 send_timeout_ms,
                                  std::placeholders::_1 ) );
 #endif
             } else {
-                this->send(req, when_done);
+                this->send(req, when_done, send_timeout_ms);
             }
 
         } else {
@@ -1208,6 +1214,7 @@ private:
 
     void handle_handshake(ptr<req_msg>& req,
                           rpc_handler& when_done,
+                          uint64_t send_timeout_ms,
                           const ERROR_CODE& err)
     {
         ptr<asio_rpc_client> self = this->shared_from_this();
@@ -1216,7 +1223,7 @@ private:
             p_in( "handshake with %s:%s succeeded (as a client)",
                   host_.c_str(), port_.c_str() );
             ssl_ready_ = true;
-            this->send(req, when_done);
+            this->send(req, when_done, send_timeout_ms);
 
         } else {
             abandoned_ = true;

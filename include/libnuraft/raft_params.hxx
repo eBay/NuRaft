@@ -90,7 +90,7 @@ struct raft_params {
         , auto_adjust_quorum_for_small_cluster_(false)
         , locking_method_type_(dual_mutex)
         , return_method_(blocking)
-        , auto_forwarding_req_timeout_(client_req_timeout_ * 3)
+        , auto_forwarding_req_timeout_(0)
         {}
 
     /**
