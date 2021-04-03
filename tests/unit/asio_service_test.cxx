@@ -1242,10 +1242,10 @@ int auto_forwarding_timeout_test() {
     ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
     msg->put(test_msg);
 
-    auto ret = s3.raftServer->append_entries({msg});
-
-    CHK_TRUE(ret->get_accepted());
-    CHK_EQ(ret->get_result_code(), nuraft::cmd_result_code::OK)
+    // Forwarded as expected
+    auto ret1 = s3.raftServer->append_entries({msg});
+    CHK_TRUE(ret1->get_accepted());
+    CHK_EQ(ret1->get_result_code(), nuraft::cmd_result_code::OK)
 
     for (auto& entry: pkgs) {
         RaftAsioPkg* pp = entry;
@@ -1256,8 +1256,20 @@ int auto_forwarding_timeout_test() {
 
     auto ret2 = s3.raftServer->append_entries({msg});
 
-    /// Timeout happened
+    // Timeout happened
     CHK_FALSE(ret2->get_accepted());
+
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.auto_forwarding_req_timeout_ = 0;
+        pp->raftServer->update_params(param);
+    }
+
+    // Work again
+    auto ret3 = s3.raftServer->append_entries({msg});
+    CHK_TRUE(ret3->get_accepted());
+    CHK_EQ(ret3->get_result_code(), nuraft::cmd_result_code::OK)
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
@@ -1276,9 +1288,6 @@ int main(int argc, char** argv) {
     TestSuite ts(argc, argv);
 
     ts.options.printTestMessage = true;
-
-    ts.doTest( "auto forwarding timeout test",
-               auto_forwarding_timeout_test );
 
     ts.doTest( "make group test",
                make_group_test );
@@ -1322,6 +1331,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "leadership transfer test",
                leadership_transfer_test );
+
+    ts.doTest( "auto forwarding timeout test",
+               auto_forwarding_timeout_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
