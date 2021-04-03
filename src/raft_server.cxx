@@ -877,8 +877,8 @@ void raft_server::handle_reconnect_resp(resp_msg& resp) {
          resp.get_accepted() ? "accepted" : "rejected");
 }
 
-void raft_server::reconnect_client(peer& p) {
-    if (stopping_) return;
+bool raft_server::reconnect_client(peer& p) {
+    if (stopping_) return false;
 
     ptr<cluster_config> c_config = get_config();
     ptr<srv_config> s_config = c_config->get_server(p.get_id());
@@ -893,10 +893,9 @@ void raft_server::reconnect_client(peer& p) {
     if (s_config) {
         p_db( "reset RPC client for peer %d",
               p.get_id() );
-        p.recreate_rpc(s_config, *ctx_);
-        p.set_free();
-        p.set_manual_free();
+        return p.recreate_rpc(s_config, *ctx_);
     }
+    return false;
 }
 
 void raft_server::become_leader() {

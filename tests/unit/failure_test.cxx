@@ -142,10 +142,9 @@ int simple_conflict_test() {
     // Now S2 replicate messages.
     // S1 has conflict, so that it should discard its local logs.
     s2.dbgLog(" --- S2 starts to replicate ---");
-    s2.fNet->execReqResp();
-    s2.fNet->execReqResp();
-    s2.fNet->execReqResp();
-    s2.fNet->execReqResp();
+    for (size_t ii = 0; ii < 10; ++ii) {
+        s2.fNet->execReqResp();
+    }
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Check if all messages are committed.
@@ -343,14 +342,14 @@ int force_log_compaction_test() {
     // Force log compaction.
     s1.sMgr->load_log_store()->compact(PURGE_UPTO);
 
-    // Trigger heartbeat, it should be ok, without any crash.
-    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s1.fNet->execReqResp();
-
-    // One more time, after 100ms.
-    TestSuite::sleep_ms(100);
-    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s1.fNet->execReqResp();
+    // Trigger multiple heartbeats, it should be ok, without any crash.
+    for (size_t ii = 0; ii < 5; ++ii) {
+        if (ii) {
+            TestSuite::sleep_ms(100);
+        }
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s1.fNet->execReqResp();
+    }
 
     // Callback function should have been invoked.
     CHK_TRUE(invoked);
