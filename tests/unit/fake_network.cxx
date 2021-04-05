@@ -298,7 +298,7 @@ FakeClient::FakeClient(FakeNetwork* mother,
 
 FakeClient::~FakeClient() {}
 
-void FakeClient::send(ptr<req_msg>& req, rpc_handler& when_done) {
+void FakeClient::send(ptr<req_msg>& req, rpc_handler& when_done, uint64_t /*send_timeout_ms*/) {
     SimpleLogger* ll = motherNet->getBase()->getLogger();
     _log_info(ll, "got request %s -> %s, %s",
               motherNet->getEndpoint().c_str(),
@@ -319,6 +319,10 @@ bool FakeClient::isDstOnline() {
 
 uint64_t FakeClient::get_id() const {
     return myId;
+}
+
+bool FakeClient::is_abandoned() const {
+    return false;
 }
 
 

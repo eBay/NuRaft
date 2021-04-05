@@ -828,6 +828,7 @@ public:
         , num_send_fails_(0)
         , abandoned_(false)
         , socket_busy_(false)
+        , operation_timer_(io_svc)
         , l_(l)
     {
         client_id_ = impl_->assign_client_id();
@@ -861,6 +862,10 @@ public:
         return client_id_;
     }
 
+    bool is_abandoned() const override {
+        return abandoned_;
+    }
+
 #ifndef SSL_LIBRARY_NOT_FOUND
     bool verify_certificate(bool preverified,
                             asio::ssl::verify_context& ctx)
@@ -886,6 +891,7 @@ public:
                      ptr<asio::steady_timer> timer,
                      ptr<req_msg>& req,
                      rpc_handler& when_done,
+                     uint64_t send_timeout_ms,
                      const ERROR_CODE& err )
     {
         if ( err || num_send_fails_ >= SEND_RETRY_MAX ) {
@@ -906,10 +912,10 @@ public:
             when_done(rsp, except);
             return;
         }
-        send(req, when_done);
+        send(req, when_done, send_timeout_ms);
     }
 
-    virtual void send(ptr<req_msg>& req, rpc_handler& when_done) __override__ {
+    virtual void send(ptr<req_msg>& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0) __override__ {
         if (abandoned_) {
             p_er( "client %p to %s:%s is already stale (SSL %s)",
                   this, host_.c_str(), port_.c_str(),
@@ -952,6 +958,7 @@ public:
                                               timer,
                                               req,
                                               when_done,
+                                              send_timeout_ms,
                                               std::placeholders::_1 ) );
                 return;
             }
@@ -968,7 +975,7 @@ public:
 
             resolver_.async_resolve
             ( q,
-              [self, this, req, when_done]
+              [self, this, req, when_done, send_timeout_ms]
               ( std::error_code err,
                 asio::ip::tcp::resolver::iterator itor ) -> void
             {
@@ -980,6 +987,7 @@ public:
                                      self,
                                      req,
                                      when_done,
+                                     send_timeout_ms,
                                      std::placeholders::_1,
                                      std::placeholders::_2 ) );
                 } else {
@@ -1014,6 +1022,7 @@ public:
                                           timer,
                                           req,
                                           when_done,
+                                          send_timeout_ms,
                                           std::placeholders::_1 ) );
             return;
         }
@@ -1091,6 +1100,17 @@ public:
         }
         req_buf->pos(0);
 
+        if (send_timeout_ms != 0)
+        {
+            operation_timer_.expires_after
+                   ( std::chrono::duration_cast<std::chrono::nanoseconds>
+                     ( std::chrono::milliseconds( send_timeout_ms ) ) );
+            operation_timer_.async_wait( std::bind( &asio_rpc_client::cancel_socket,
+                                          this,
+                                          std::placeholders::_1 ) );
+        }
+
+
         // Note: without passing `req_buf` to callback function, it will be
         //       unreachable before the write is done so that it is freed
         //       and the memory corruption will occur.
@@ -1141,8 +1161,21 @@ private:
 #endif
     }
 
+    void cancel_socket(const ERROR_CODE& err) {
+        if (err) // Timer was cancelled itself, it's OK.
+            return;
+
+        if (socket().is_open()) {
+            p_wn("cancelling operations due to socket (%s:%s) timeout",
+                host_.c_str(), port_.c_str());
+            abandoned_ = true;
+            socket_.cancel();
+        }
+    }
+
     void connected(ptr<req_msg>& req,
                    rpc_handler& when_done,
+                   uint64_t send_timeout_ms,
                    std::error_code err,
                    asio::ip::tcp::resolver::iterator itor)
     {
@@ -1159,10 +1192,11 @@ private:
                                  this,
                                  req,
                                  when_done,
+                                 send_timeout_ms,
                                  std::placeholders::_1 ) );
 #endif
             } else {
-                this->send(req, when_done);
+                this->send(req, when_done, send_timeout_ms);
             }
 
         } else {
@@ -1180,6 +1214,7 @@ private:
 
     void handle_handshake(ptr<req_msg>& req,
                           rpc_handler& when_done,
+                          uint64_t send_timeout_ms,
                           const ERROR_CODE& err)
     {
         ptr<asio_rpc_client> self = this->shared_from_this();
@@ -1188,7 +1223,7 @@ private:
             p_in( "handshake with %s:%s succeeded (as a client)",
                   host_.c_str(), port_.c_str() );
             ssl_ready_ = true;
-            this->send(req, when_done);
+            this->send(req, when_done, send_timeout_ms);
 
         } else {
             abandoned_ = true;
@@ -1231,6 +1266,7 @@ private:
                                 std::placeholders::_2));
 
         } else {
+            operation_timer_.cancel();
             abandoned_ = true;
             ptr<resp_msg> rsp;
             ptr<rpc_exception> except
@@ -1327,6 +1363,7 @@ private:
                                  std::placeholders::_1,
                                  std::placeholders::_2 ) );
         } else {
+            operation_timer_.cancel();
             set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
@@ -1348,6 +1385,7 @@ private:
             ctx_buf->pos(0);
             rsp->set_ctx(ctx_buf);
 
+            operation_timer_.cancel();
             set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
@@ -1397,6 +1435,7 @@ private:
             rsp->set_ctx(actual_ctx);
         }
 
+        operation_timer_.cancel();
         set_busy_flag(false);
         ptr<rpc_exception> except;
         when_done(rsp, except);
@@ -1443,6 +1482,7 @@ private:
     std::atomic<bool> abandoned_;
     std::atomic<bool> socket_busy_;
     uint64_t client_id_;
+    asio::steady_timer operation_timer_;
     ptr<logger> l_;
 };
 

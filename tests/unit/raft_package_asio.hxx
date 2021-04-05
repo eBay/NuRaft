@@ -80,7 +80,8 @@ public:
     }
 
     void initServer(bool enable_ssl = false,
-                    bool use_global_asio = false) {
+                    bool use_global_asio = false,
+                    const raft_server::init_options & opt = raft_server::init_options()) {
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
         myLogWrapper = cs_new<logger_wrapper>(log_file_name);
         myLog = myLogWrapper;
@@ -126,7 +127,7 @@ public:
         params.with_client_req_timeout(10000);
         context* ctx( new context( sMgr, sm, listener, myLog,
                                    rpc_cli_factory, scheduler, params ) );
-        raftServer = cs_new<raft_server>(ctx);
+        raftServer = cs_new<raft_server>(ctx, opt);
 
         // Listen.
         asioListener = listener;
