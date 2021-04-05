@@ -915,7 +915,10 @@ public:
         send(req, when_done, send_timeout_ms);
     }
 
-    virtual void send(ptr<req_msg>& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0) __override__ {
+    virtual void send(ptr<req_msg>& req,
+                      rpc_handler& when_done,
+                      uint64_t send_timeout_ms = 0) __override__
+    {
         if (abandoned_) {
             p_er( "client %p to %s:%s is already stale (SSL %s)",
                   this, host_.c_str(), port_.c_str(),
@@ -1106,8 +1109,8 @@ public:
                    ( std::chrono::duration_cast<std::chrono::nanoseconds>
                      ( std::chrono::milliseconds( send_timeout_ms ) ) );
             operation_timer_.async_wait( std::bind( &asio_rpc_client::cancel_socket,
-                                          this,
-                                          std::placeholders::_1 ) );
+                                                    this,
+                                                    std::placeholders::_1 ) );
         }
 
 
@@ -1162,8 +1165,9 @@ private:
     }
 
     void cancel_socket(const ERROR_CODE& err) {
-        if (err) // Timer was cancelled itself, it's OK.
+        if (err) { // Timer was cancelled itself, it's OK.
             return;
+        }
 
         if (socket().is_open()) {
             p_wn("cancelling operations due to socket (%s:%s) timeout",

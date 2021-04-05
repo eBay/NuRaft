@@ -1214,7 +1214,8 @@ int auto_forwarding_timeout_test() {
     raft_server::init_options opt;
 
     /// Make leader quite slow
-    opt.raft_callback_ = [](cb_func::Type type, cb_func::Param* param) -> cb_func::ReturnCode {
+    opt.raft_callback_ = [](cb_func::Type type, cb_func::Param* param)
+                         -> cb_func::ReturnCode {
         if (type == cb_func::Type::AppendLogs) {
             TestSuite::sleep_ms(150);
         }
@@ -1245,7 +1246,7 @@ int auto_forwarding_timeout_test() {
     // Forwarded as expected
     auto ret1 = s3.raftServer->append_entries({msg});
     CHK_TRUE(ret1->get_accepted());
-    CHK_EQ(ret1->get_result_code(), nuraft::cmd_result_code::OK)
+    CHK_EQ(nuraft::cmd_result_code::OK, ret1->get_result_code());
 
     for (auto& entry: pkgs) {
         RaftAsioPkg* pp = entry;
@@ -1269,7 +1270,7 @@ int auto_forwarding_timeout_test() {
     // Work again
     auto ret3 = s3.raftServer->append_entries({msg});
     CHK_TRUE(ret3->get_accepted());
-    CHK_EQ(ret3->get_result_code(), nuraft::cmd_result_code::OK)
+    CHK_EQ(nuraft::cmd_result_code::OK, ret3->get_result_code());
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
