@@ -24,10 +24,41 @@ limitations under the License.
 #include "raft_server.hxx"
 #include "tracer.hxx"
 
+#include <memory>
+
 namespace nuraft {
 
-std::atomic<nuraft_global_mgr*> nuraft_global_mgr::instance_(nullptr);
-std::mutex nuraft_global_mgr::instance_lock_;
+class ngm_singleton {
+public:
+    static ngm_singleton& get_instance() {
+        static ngm_singleton instance;
+        return instance;
+    }
+
+    nuraft_global_mgr* get() {
+        return internal_.get();
+    }
+
+    bool create() {
+        if (internal_.get()) {
+            // Already created.
+            return false;
+        }
+        // C++11 doesn't have `make_unique`.
+        internal_ =
+            std::move( std::unique_ptr<nuraft_global_mgr>( new nuraft_global_mgr() ) );
+        return true;
+    }
+
+    void clear() {
+        internal_.reset();
+    }
+
+private:
+    ngm_singleton() : internal_(nullptr) {}
+
+    std::unique_ptr<nuraft_global_mgr> internal_;
+};
 
 struct nuraft_global_mgr::worker_handle {
     worker_handle(size_t id = 0)
@@ -84,13 +115,11 @@ nuraft_global_mgr::~nuraft_global_mgr() {
 }
 
 nuraft_global_mgr* nuraft_global_mgr::init(const nuraft_global_config& config) {
-    nuraft_global_mgr* mgr = instance_.load();
+    nuraft_global_mgr* mgr = ngm_singleton::get_instance().get();
     if (!mgr) {
-        std::lock_guard<std::mutex> l(instance_lock_);
-        mgr = instance_.load();
-        if (!mgr) {
-            mgr = new nuraft_global_mgr();
-            instance_.store(mgr);
+        bool created = ngm_singleton::get_instance().create();
+        mgr = ngm_singleton::get_instance().get();
+        if (created) {
             mgr->config_ = config;
             mgr->init_thread_pool();
         }
@@ -99,16 +128,11 @@ nuraft_global_mgr* nuraft_global_mgr::init(const nuraft_global_config& config) {
 }
 
 void nuraft_global_mgr::shutdown() {
-    std::lock_guard<std::mutex> l(instance_lock_);
-    nuraft_global_mgr* mgr = instance_.load();
-    if (mgr) {
-        delete mgr;
-        instance_.store(nullptr);
-    }
+    ngm_singleton::get_instance().clear();
 }
 
 nuraft_global_mgr* nuraft_global_mgr::get_instance() {
-    return instance_.load();
+    return ngm_singleton::get_instance().get();
 }
 
 void nuraft_global_mgr::init_thread_pool() {
