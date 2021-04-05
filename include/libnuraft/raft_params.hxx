@@ -505,6 +505,7 @@ public:
     /**
      * Wait ms for response after forwarding request to leader.
      * must be larger than client_req_timeout_.
+     * If 0, there will be no timeout for auto forwarding.
      */
     int32 auto_forwarding_req_timeout_;
 };
