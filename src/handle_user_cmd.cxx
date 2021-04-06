@@ -285,6 +285,10 @@ void raft_server::auto_fwd_release_rpc_cli( ptr<auto_fwd_pkg> cur_pkg,
                                              rpc_cli,
                                              std::placeholders::_1,
                                              std::placeholders::_2 );
+
+            // Should be unlocked before calling `send`, as resp handler can be
+            // invoked in the same thread in case of error.
+            l.unlock();
             rpc_cli->send(entry.req, handler, params->auto_forwarding_req_timeout_);
 
         } else {
