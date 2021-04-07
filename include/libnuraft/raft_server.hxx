@@ -61,6 +61,7 @@ public:
     struct init_options {
         init_options()
             : skip_initial_election_timeout_(false)
+            , start_server_in_constructor_(true)
             {}
 
         /**
@@ -78,6 +79,12 @@ public:
          * Callback function for hooking the operation.
          */
         cb_func::func_type raft_callback_;
+
+        /**
+         * Option for compatiblity. Starts background commit and append threads
+         * in constructor. Initialize election timer.
+         */
+        bool start_server_in_constructor_;
     };
 
     struct limits {
@@ -463,6 +470,11 @@ public:
      * Shut down server instance.
      */
     void shutdown();
+
+    /**
+     *  Start internal background threads, initialize election
+     */
+    void start_server(bool skip_initial_election_timeout);
 
     /**
      * Stop background commit thread.
