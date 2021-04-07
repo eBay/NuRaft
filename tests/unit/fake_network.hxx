@@ -137,13 +137,15 @@ public:
 
     ~FakeClient();
 
-    void send(ptr<req_msg>& req, rpc_handler& when_done);
+    void send(ptr<req_msg>& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0);
 
     void dropPackets();
 
     bool isDstOnline();
 
     uint64_t get_id() const;
+
+    bool is_abandoned() const;
 
 private:
     uint64_t myId;

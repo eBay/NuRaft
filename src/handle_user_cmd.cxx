@@ -147,7 +147,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
     {
         auto_lock(rpc_clients_lock_);
         auto itor = rpc_clients_.find(leader_id);
-        if (itor == rpc_clients_.end()) {
+        if (itor == rpc_clients_.end() || itor->second->is_abandoned()) {
             ptr<srv_config> srv_conf = c_conf->get_server(leader_id);
             if (!srv_conf) {
                 return cs_new< cmd_result< ptr<buffer> > >(result);
@@ -185,9 +185,11 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
 
         presult->set_result(resp_ctx, perr);
     };
-    rpc_cli->send(req, handler);
 
     ptr<raft_params> params = ctx_->get_params();
+
+    rpc_cli->send(req, handler, params->auto_forwarding_req_timeout_);
+
     if (params->return_method_ == raft_params::blocking) {
         presult->get();
     }
