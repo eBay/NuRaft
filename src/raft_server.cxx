@@ -233,6 +233,14 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     print_msg += temp_buf;
     p_in(print_msg.c_str());
 
+    if (opt.start_server_in_constructor_) {
+        start_server(opt.skip_initial_election_timeout_);
+    }
+}
+
+void raft_server::start_server(bool skip_initial_election_timeout)
+{
+    ptr<raft_params> params = ctx_->get_params();
     nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
     if (mgr) {
         p_in("global manager is detected. will use shared thread pool");
@@ -249,7 +257,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
         bg_append_thread_ = std::thread(std::bind(&raft_server::append_entries_in_bg, this));
     }
 
-    if (opt.skip_initial_election_timeout_) {
+    if (skip_initial_election_timeout) {
         // Issue #23:
         //   During remediation, the node (to be added) shouldn't be
         //   even a temp leader (to avoid local commit). We provide
