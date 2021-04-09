@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "cluster_config.hxx"
 #include "context.hxx"
+#include "event_awaiter.h"
 #include "rpc_cli_factory.hxx"
 #include "tracer.hxx"
 
@@ -29,6 +30,28 @@ limitations under the License.
 #include <sstream>
 
 namespace nuraft {
+
+struct raft_server::auto_fwd_pkg {
+    /**
+     * Available RPC clients.
+     */
+    std::list<ptr<rpc_client>> rpc_client_idle_;
+
+    /**
+     * RPC clients in use.
+     */
+    std::unordered_set<ptr<rpc_client>> rpc_client_in_use_;
+
+    /**
+     * Mutex.
+     */
+    std::mutex lock_;
+
+    /**
+     * Event awaiter.
+     */
+    EventAwaiter ea_;
+};
 
 ptr< cmd_result< ptr<buffer> > > raft_server::add_srv(const srv_config& srv)
 {

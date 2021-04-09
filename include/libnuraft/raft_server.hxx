@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "async.hxx"
 #include "callback.hxx"
-#include "event_awaiter.h"
 #include "internal_timer.hxx"
 #include "log_store.hxx"
 #include "snapshot_sync_req.hxx"
@@ -630,27 +629,7 @@ protected:
     /**
      * A set of components required for auto-forwarding.
      */
-    struct auto_fwd_pkg {
-        /**
-         * Available RPC clients.
-         */
-        std::list<ptr<rpc_client>> rpc_client_idle_;
-
-        /**
-         * RPC clients in use.
-         */
-        std::unordered_set<ptr<rpc_client>> rpc_client_in_use_;
-
-        /**
-         * Mutex.
-         */
-        std::mutex lock_;
-
-        /**
-         * Event awaiter.
-         */
-        EventAwaiter ea_;
-    };
+    struct auto_fwd_pkg;
 
 protected:
     void apply_and_log_current_params();
