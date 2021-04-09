@@ -66,16 +66,10 @@ int simple_conflict_test() {
         s1.raftServer->append_entries( {msg} );
     }
 
-    // Packet for pre-commit.
-    s1.fNet->execReqResp();
-    // Packet for commit.
-    s1.fNet->execReqResp();
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        s1.fNet->execReqResp();
+    }
     // Wait for bg commit.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
-
-    // One more time to make sure.
-    s1.fNet->execReqResp();
-    s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Check if all messages are committed.
