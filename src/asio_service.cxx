@@ -1545,8 +1545,14 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
         ssl_server_ctx_.use_private_key_file( _opt.server_key_file_,
                                               ssl_context::pem );
 
-        // For client
-        ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+        if (!_opt.root_cert_file_.empty()) {
+            // For client
+            ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+        }
+
+        if (_opt.load_default_ca_file_) {
+            ssl_client_ctx_.set_default_verify_paths();
+        }
 #endif
     }
 
