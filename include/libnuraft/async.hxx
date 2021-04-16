@@ -268,6 +268,11 @@ public:
         return empty_result_;
     }
 
+    bool has_result() const {
+        std::lock_guard lock(lock_);
+        return has_result_;
+    }
+
 private:
     T empty_result_;
     T result_;
