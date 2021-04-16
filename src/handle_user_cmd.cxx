@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "cluster_config.hxx"
 #include "context.hxx"
+#include "event_awaiter.h"
 #include "rpc_cli_factory.hxx"
 #include "tracer.hxx"
 
@@ -29,6 +30,28 @@ limitations under the License.
 #include <sstream>
 
 namespace nuraft {
+
+struct raft_server::auto_fwd_pkg {
+    /**
+     * Available RPC clients.
+     */
+    std::list<ptr<rpc_client>> rpc_client_idle_;
+
+    /**
+     * RPC clients in use.
+     */
+    std::unordered_set<ptr<rpc_client>> rpc_client_in_use_;
+
+    /**
+     * Mutex.
+     */
+    std::mutex lock_;
+
+    /**
+     * Event awaiter.
+     */
+    EventAwaiter ea_;
+};
 
 ptr< cmd_result< ptr<buffer> > > raft_server::add_srv(const srv_config& srv)
 {
@@ -139,27 +162,89 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
         return ret;
     }
 
-// LCOV_EXCL_START
     // Otherwise: re-direct request to the current leader
     //            (not recommended).
+    ptr<raft_params> params = ctx_->get_params();
+    size_t max_conns =
+        std::max(1, params->auto_forwarding_max_connections_);
+    bool is_blocking_mode = (params->return_method_ == raft_params::blocking);
+
     ptr<cluster_config> c_conf = get_config();
     ptr<rpc_client> rpc_cli;
+    ptr<auto_fwd_pkg> cur_pkg = nullptr;
     {
         auto_lock(rpc_clients_lock_);
-        auto itor = rpc_clients_.find(leader_id);
-        if (itor == rpc_clients_.end() || itor->second->is_abandoned()) {
-            ptr<srv_config> srv_conf = c_conf->get_server(leader_id);
-            if (!srv_conf) {
-                return cs_new< cmd_result< ptr<buffer> > >(result);
-            }
-
-            rpc_cli = ctx_->rpc_cli_factory_->create_client
-                      ( srv_conf->get_endpoint() );
-            rpc_clients_.insert( std::make_pair(leader_id, rpc_cli) );
+        auto entry = auto_fwd_pkgs_.find(leader_id);
+        if (entry == auto_fwd_pkgs_.end()) {
+            cur_pkg = cs_new<auto_fwd_pkg>();
+            auto_fwd_pkgs_[leader_id] = cur_pkg;
+            p_tr("auto forwarding pkg for leader %d not found, created %p",
+                 leader_id, cur_pkg.get());
         } else {
-            rpc_cli = itor->second;
+            cur_pkg = entry->second;
+            p_tr("auto forwarding pkg for leader %d exists %p",
+                 leader_id, cur_pkg.get());
         }
     }
+
+    // Find available `rpc_cli`.
+    do {
+        std::unique_lock<std::mutex> l(cur_pkg->lock_);
+        // Get an idle connection.
+        auto e_rpc = cur_pkg->rpc_client_idle_.begin();
+        if (e_rpc == cur_pkg->rpc_client_idle_.end()) {
+            // Idle connection doesn't exist,
+            // check the total number of connections.
+            p_tr( "no connection available, idle %zu, in-use %zu, max %zu",
+                   cur_pkg->rpc_client_idle_.size(),
+                   cur_pkg->rpc_client_in_use_.size(),
+                   max_conns );
+            if ( cur_pkg->rpc_client_idle_.size() +
+                 cur_pkg->rpc_client_in_use_.size() < max_conns ) {
+                // We can create more connections.
+                ptr<srv_config> srv_conf = c_conf->get_server(leader_id);
+                rpc_cli = ctx_->rpc_cli_factory_->create_client
+                          ( srv_conf->get_endpoint() );
+                cur_pkg->rpc_client_in_use_.insert(rpc_cli);
+                p_tr("created a new connection %p", rpc_cli.get());
+
+            } else {
+                // Already reached the max, wait for idle connection.
+                if (is_blocking_mode) {
+                    // Blocking mode, sleep here.
+                    l.unlock();
+                    p_tr("reached max connection, wait");
+                    cur_pkg->ea_.wait_ms(params->client_req_timeout_);
+                    cur_pkg->ea_.reset();
+                    p_tr("wake up, find an available connection");
+                    continue;
+
+                } else {
+                    // Async mode, put it into the queue, and return immediately.
+                    auto_fwd_req_resp req_resp_pair;
+                    req_resp_pair.req = req;
+                    req_resp_pair.resp = cs_new< cmd_result< ptr<buffer> > >();
+                    auto_fwd_reqs_.push_back(req_resp_pair);
+                    p_tr("reached max connection, put into the queue, %zu elems",
+                         auto_fwd_reqs_.size());
+                    return req_resp_pair.resp;
+                }
+            }
+        } else {
+            // Put the idle connection to in-use list.
+            rpc_cli = *e_rpc;
+            if (rpc_cli->is_abandoned()) {
+                // Abandoned connection, need to reconnect.
+                ptr<srv_config> srv_conf = c_conf->get_server(leader_id);
+                rpc_cli = ctx_->rpc_cli_factory_->create_client
+                          ( srv_conf->get_endpoint() );
+            }
+            cur_pkg->rpc_client_idle_.pop_front();
+            cur_pkg->rpc_client_in_use_.insert(rpc_cli);
+            p_tr("idle connection %p", rpc_cli.get());
+        }
+        break;
+    } while(true);
 
     if (!rpc_cli) {
         return cs_new< cmd_result< ptr<buffer> > >(result);
@@ -168,26 +253,13 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
     ptr< cmd_result< ptr<buffer> > >
         presult( cs_new< cmd_result< ptr<buffer> > >() );
 
-    rpc_handler handler = [presult]
-                          ( ptr<resp_msg>& resp,
-                            ptr<rpc_exception>& err ) -> void
-    {
-        ptr<buffer> resp_ctx(nullptr);
-        ptr<std::exception> perr;
-        if (err) {
-            perr = err;
-        } else {
-            if (resp->get_accepted()) {
-                resp_ctx = resp->get_ctx();
-                presult->accept();
-            }
-        }
-
-        presult->set_result(resp_ctx, perr);
-    };
-
-    ptr<raft_params> params = ctx_->get_params();
-
+    rpc_handler handler = std::bind( &raft_server::auto_fwd_resp_handler,
+                                     this,
+                                     presult,
+                                     cur_pkg,
+                                     rpc_cli,
+                                     std::placeholders::_1,
+                                     std::placeholders::_2 );
     rpc_cli->send(req, handler, params->auto_forwarding_req_timeout_);
 
     if (params->return_method_ == raft_params::blocking) {
@@ -195,7 +267,79 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
     }
 
     return presult;
-// LCOV_EXCL_STOP
+}
+
+void raft_server::auto_fwd_release_rpc_cli( ptr<auto_fwd_pkg> cur_pkg,
+                                            ptr<rpc_client> rpc_cli )
+{
+    ptr<raft_params> params = ctx_->get_params();
+    size_t max_conns =
+        std::max(1, params->auto_forwarding_max_connections_);
+    bool is_blocking_mode = (params->return_method_ == raft_params::blocking);
+
+    auto put_back_to_idle_list = [&cur_pkg, &rpc_cli, max_conns, this]() {
+        cur_pkg->rpc_client_in_use_.erase(rpc_cli);
+        cur_pkg->rpc_client_idle_.push_front(rpc_cli);
+        p_tr( "release connection %p, idle %zu, in-use %zu, max %zu",
+              rpc_cli.get(),
+              cur_pkg->rpc_client_idle_.size(),
+              cur_pkg->rpc_client_in_use_.size(),
+              max_conns );
+    };
+
+    std::unique_lock<std::mutex> l(cur_pkg->lock_);
+    if (is_blocking_mode) {
+        // Blocking mode, put the connection back to idle list,
+        // and wake up the sleeping thread.
+        put_back_to_idle_list();
+        cur_pkg->ea_.invoke();
+
+    } else {
+        // Async mode, send the request in the queue.
+        if (!auto_fwd_reqs_.empty()) {
+            auto_fwd_req_resp entry = *auto_fwd_reqs_.begin();
+            auto_fwd_reqs_.pop_front();
+            p_tr( "found waiting request in the queue, remaining elems %zu",
+                  auto_fwd_reqs_.size() );
+            rpc_handler handler = std::bind( &raft_server::auto_fwd_resp_handler,
+                                             this,
+                                             entry.resp,
+                                             cur_pkg,
+                                             rpc_cli,
+                                             std::placeholders::_1,
+                                             std::placeholders::_2 );
+
+            // Should be unlocked before calling `send`, as resp handler can be
+            // invoked in the same thread in case of error.
+            l.unlock();
+            rpc_cli->send(entry.req, handler, params->auto_forwarding_req_timeout_);
+
+        } else {
+            // If no request is waiting, put the connection back to idle list.
+            put_back_to_idle_list();
+        }
+    }
+}
+
+void raft_server::auto_fwd_resp_handler( ptr<cmd_result<ptr<buffer>>> presult,
+                                         ptr<auto_fwd_pkg> cur_pkg,
+                                         ptr<rpc_client> rpc_cli,
+                                         ptr<resp_msg>& resp,
+                                         ptr<rpc_exception>& err )
+{
+    ptr<buffer> resp_ctx(nullptr);
+    ptr<std::exception> perr;
+    if (err) {
+        perr = err;
+    } else {
+        if (resp->get_accepted()) {
+            resp_ctx = resp->get_ctx();
+            presult->accept();
+        }
+    }
+
+    presult->set_result(resp_ctx, perr);
+    auto_fwd_release_rpc_cli(cur_pkg, rpc_cli);
 }
 
 } // namespace nuraft;

@@ -1282,6 +1282,85 @@ int auto_forwarding_timeout_test() {
     return 0;
 }
 
+int auto_forwarding_test(bool async) {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.auto_forwarding_ = true;
+        param.auto_forwarding_max_connections_ = 2;
+        if (async) {
+            param.return_method_ = raft_params::async_handler;
+        }
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages in parallel into S2 (follower).
+    struct MsgArgs : TestSuite::ThreadArgs {
+        size_t ii;
+    };
+
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    auto send_msg = [&](TestSuite::ThreadArgs* t_args) -> int {
+        MsgArgs* args = (MsgArgs*)t_args;
+        std::string test_msg = "test" + std::to_string(args->ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s2.raftServer->append_entries( {msg} );
+        handlers.push_back(ret);
+        return 0;
+    };
+
+    const size_t NUM_PARALLEL_MSGS = 20;
+    std::vector<TestSuite::ThreadHolder> th(NUM_PARALLEL_MSGS);
+    std::vector<MsgArgs> m_args(NUM_PARALLEL_MSGS);
+    for (size_t ii = 0; ii < NUM_PARALLEL_MSGS; ++ii) {
+        m_args[ii].ii = ii;
+        th[ii].spawn(&m_args[ii], send_msg, nullptr);
+    }
+    TestSuite::sleep_sec(1, "replication");
+    for (size_t ii = 0; ii < NUM_PARALLEL_MSGS; ++ii) {
+        th[ii].join();
+        CHK_Z(th[ii].getResult());
+    }
+
+    // All messages should have been committed in the state machine.
+    for (size_t ii = 0; ii < NUM_PARALLEL_MSGS; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        CHK_GT(s1.getTestSm()->isCommitted(test_msg), 0);
+    }
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -1335,6 +1414,10 @@ int main(int argc, char** argv) {
 
     ts.doTest( "auto forwarding timeout test",
                auto_forwarding_timeout_test );
+
+    ts.doTest( "auto forwarding test",
+               auto_forwarding_test,
+               TestRange<bool>( {false, true} ) );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

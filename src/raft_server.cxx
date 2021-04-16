@@ -44,14 +44,6 @@ const int raft_server::default_snapshot_sync_block_size = 4 * 1024;
 
 raft_server::limits raft_server::raft_limits_;
 
-struct auto_destroyer {
-    ~auto_destroyer() {
-        stat_mgr::destroy();
-        nuraft_global_mgr::shutdown();
-    }
-};
-static auto_destroyer auto_destroyer_;
-
 raft_server::raft_server(context* ctx, const init_options& opt)
     : bg_append_ea_(nullptr)
     , initialized_(false)

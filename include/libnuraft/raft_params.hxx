@@ -85,6 +85,7 @@ struct raft_params {
         , leadership_transfer_min_wait_time_(0)
         , allow_temporary_zero_priority_leader_(true)
         , auto_forwarding_(false)
+        , auto_forwarding_max_connections_(10)
         , use_bg_thread_for_urgent_commit_(true)
         , exclude_snp_receiver_from_quorum_(false)
         , auto_adjust_quorum_for_small_cluster_(false)
@@ -468,6 +469,11 @@ public:
      * Otherwise, it will return error to client immediately.
      */
     bool auto_forwarding_;
+
+    /**
+     * The maximum number of connections for auto forwarding (if enabled).
+     */
+    int32 auto_forwarding_max_connections_;
 
     /**
      * If true, creating replication (append_entries) requests will be

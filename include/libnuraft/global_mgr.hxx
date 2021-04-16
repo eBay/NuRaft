@@ -68,9 +68,15 @@ struct nuraft_global_config {
 
 static nuraft_global_config __DEFAULT_NURAFT_GLOBAL_CONFIG;
 
-// Singleton class.
 class nuraft_global_mgr {
 public:
+    nuraft_global_mgr();
+
+    ~nuraft_global_mgr();
+
+    __nocopy__(nuraft_global_mgr);
+public:
+
     /**
      * Initialize the global instance.
      *
@@ -145,12 +151,6 @@ public:
 private:
     struct worker_handle;
 
-    nuraft_global_mgr();
-
-    ~nuraft_global_mgr();
-
-    __nocopy__(nuraft_global_mgr);
-
     /**
      * Initialize thread pool with the given config.
      */
@@ -165,16 +165,6 @@ private:
      * Loop for append worker threads.
      */
     void append_worker_loop(ptr<worker_handle> handle);
-
-    /**
-     * Lock for global manager instance.
-     */
-    static std::mutex instance_lock_;
-
-    /**
-     * Global manager instance.
-     */
-    static std::atomic<nuraft_global_mgr*> instance_;
 
     /**
      * Lock for global Asio service instance.

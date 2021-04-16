@@ -23,9 +23,6 @@ limitations under the License.
 
 namespace nuraft {
 
-std::atomic<stat_mgr*> stat_mgr::instance_(nullptr);
-std::mutex stat_mgr::instance_lock_;
-
 // === stat_elem ==============================================================
 
 stat_elem::stat_elem(Type _type, const std::string& _name)
@@ -53,43 +50,12 @@ stat_mgr::~stat_mgr() {
     for (auto& entry: stat_map_) {
         delete entry.second;
     }
-}
-
-stat_mgr* stat_mgr::init() {
-    stat_mgr* mgr = instance_.load();
-    if (!mgr) {
-        std::lock_guard<std::mutex> l(instance_lock_);
-        mgr = instance_.load();
-        if (!mgr) {
-            mgr = new stat_mgr();
-            instance_.store(mgr);
-        }
-    }
-    return mgr;
+    stat_map_.clear();
 }
 
 stat_mgr* stat_mgr::get_instance() {
-#ifndef ENABLE_RAFT_STATS
-    static stat_mgr dummy_mgr;
-    return &dummy_mgr;
-#endif
-
-    stat_mgr* mgr = instance_.load();
-    if (!mgr) return init();
-    return mgr;
-}
-
-void stat_mgr::destroy() {
-#ifndef ENABLE_RAFT_STATS
-    return;
-#endif
-
-    std::lock_guard<std::mutex> l(instance_lock_);
-    stat_mgr* mgr = instance_.load();
-    if (mgr) {
-        delete mgr;
-        instance_.store(nullptr);
-    }
+    static stat_mgr mgr_instance;
+    return &mgr_instance;
 }
 
 stat_elem* stat_mgr::get_stat(const std::string& stat_name) {
