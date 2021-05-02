@@ -103,7 +103,7 @@ bool FakeNetwork::execReqResp(const std::string& endpoint) {
     if (endpoint.empty()) {
         // Do the same thing to all.
 
-        std::unordered_map< std::string, ptr<FakeClient> > clients_clone;
+        std::map< std::string, ptr<FakeClient> > clients_clone;
 
         // WARNING:
         //   As a result of processing req or resp, client re-connection
