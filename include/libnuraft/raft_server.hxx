@@ -753,6 +753,7 @@ protected:
                                ptr<rpc_client> rpc_cli,
                                ptr<resp_msg>& resp,
                                ptr<rpc_exception>& err);
+    void cleanup_auto_fwd_pkgs();
 
     void set_config(const ptr<cluster_config>& new_config);
     ptr<snapshot> get_last_snapshot() const;
@@ -1038,6 +1039,11 @@ protected:
      * Queue of request-response pairs for auto-forwarding (async mode only).
      */
     std::list<auto_fwd_req_resp> auto_fwd_reqs_;
+
+    /**
+     * Lock for auto-forwarding queue.
+     */
+    std::mutex auto_fwd_reqs_lock_;
 
     /**
      * Current role of this server.

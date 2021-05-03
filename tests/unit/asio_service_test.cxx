@@ -1317,6 +1317,7 @@ int auto_forwarding_test(bool async) {
         size_t ii;
     };
 
+    std::mutex handlers_lock;
     std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
     auto send_msg = [&](TestSuite::ThreadArgs* t_args) -> int {
         MsgArgs* args = (MsgArgs*)t_args;
@@ -1325,6 +1326,8 @@ int auto_forwarding_test(bool async) {
         msg->put(test_msg);
         ptr< cmd_result< ptr<buffer> > > ret =
             s2.raftServer->append_entries( {msg} );
+
+        std::lock_guard<std::mutex> l(handlers_lock);
         handlers.push_back(ret);
         return 0;
     };

@@ -463,6 +463,15 @@ void raft_server::shutdown() {
         bg_append_thread_.join();
     }
 
+    {
+        auto_lock(auto_fwd_reqs_lock_);
+        p_in("clean up auto-forwarding queue: %zu elems", auto_fwd_reqs_.size());
+        auto_fwd_reqs_.clear();
+    }
+
+    p_in("clean up auto-forwarding clients");
+    cleanup_auto_fwd_pkgs();
+
     p_in("raft_server shutdown completed.");
 }
 
