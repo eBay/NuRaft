@@ -469,6 +469,48 @@ public:
     void get_srv_config_all(std::vector< ptr<srv_config> >& configs_out) const;
 
     /**
+     * Peer info structure.
+     */
+    struct peer_info {
+        peer_info()
+            : id_(-1)
+            , last_log_idx_(0)
+            , last_succ_resp_us_(0)
+            {}
+
+        /**
+         * Peer ID.
+         */
+        int32 id_;
+
+        /**
+         * The last log index that the peer has, from this server's point of view.
+         */
+        ulong last_log_idx_;
+
+        /**
+         * The elapsed time since the last successful response from this peer,
+         * in microsecond.
+         */
+        ulong last_succ_resp_us_;
+    };
+
+    /**
+     * Get the peer info of the given ID. Only leader will return peer info.
+     *
+     * @param srv_id Server ID.
+     * @return Peer info.
+     */
+    peer_info get_peer_info(int32 srv_id) const;
+
+    /**
+     * Get the info of all peers. Only leader will return peer info.
+     *
+     * @return Vector of peer info.
+     */
+    std::vector<peer_info> get_peer_info_all() const;
+
+    /**
      * Shut down server instance.
      */
     void shutdown();
@@ -1141,7 +1183,7 @@ protected:
     /**
      * Lock of entire Raft operation.
      */
-    std::recursive_mutex lock_;
+    mutable std::recursive_mutex lock_;
 
     /**
      * Lock of handling client request and role change.

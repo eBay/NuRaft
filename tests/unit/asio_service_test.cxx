@@ -87,6 +87,41 @@ int make_group_test() {
     CHK_EQ(1, s2.raftServer->get_leader());
     CHK_EQ(1, s3.raftServer->get_leader());
 
+    // Sleep a while and check peer info.
+    for (auto& entry: {s2, s3}) {
+        // Non leader should not accept this API.
+        raft_server::peer_info pi = entry.raftServer->get_peer_info(1);
+        CHK_EQ(-1, pi.id_);
+
+        std::vector<raft_server::peer_info> v_pi = entry.raftServer->get_peer_info_all();
+        CHK_Z(v_pi.size());
+    }
+
+    for (auto srv_id: {2, 3}) {
+        raft_server::peer_info pi = s1.raftServer->get_peer_info(srv_id);
+        uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
+        CHK_EQ(srv_id, pi.id_);
+        CHK_EQ(last_log_idx, pi.last_log_idx_);
+        _msg("srv %d: %lu, responeded %.1f ms ago\n",
+             pi.id_,
+             pi.last_log_idx_,
+             pi.last_succ_resp_us_ / 1000.0);
+    }
+
+    // Sleep a while and get all info.
+    TestSuite::sleep_ms(10);
+
+    std::vector<raft_server::peer_info> v_pi = s1.raftServer->get_peer_info_all();
+    CHK_GT(v_pi.size(), 0);
+    for (raft_server::peer_info& pi: v_pi) {
+        uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
+        CHK_EQ(last_log_idx, pi.last_log_idx_);
+        _msg("srv %d: %lu, responeded %.1f ms ago\n",
+             pi.id_,
+             pi.last_log_idx_,
+             pi.last_succ_resp_us_ / 1000.0);
+    }
+
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
     s3.raftServer->shutdown();

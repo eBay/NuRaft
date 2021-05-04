@@ -1483,6 +1483,37 @@ void raft_server::get_srv_config_all
     for (auto& entry: servers) configs_out.push_back(entry);
 }
 
+raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
+    if (!is_leader()) return peer_info();
+
+    recur_lock(lock_);
+    auto entry = peers_.find(srv_id);
+    if (entry == peers_.end()) return peer_info();
+
+    peer_info ret;
+    ptr<peer> pp = entry->second;
+    ret.id_ = pp->get_id();
+    ret.last_log_idx_ = pp->get_next_log_idx() - 1;
+    ret.last_succ_resp_us_ = pp->get_resp_timer_us();
+    return ret;
+}
+
+std::vector<raft_server::peer_info> raft_server::get_peer_info_all() const {
+    std::vector<raft_server::peer_info> ret;
+    if (!is_leader()) return ret;
+
+    recur_lock(lock_);
+    for (auto entry: peers_) {
+        peer_info pi;
+        ptr<peer> pp = entry.second;
+        pi.id_ = pp->get_id();
+        pi.last_log_idx_ = pp->get_next_log_idx() - 1;
+        pi.last_succ_resp_us_ = pp->get_resp_timer_us();
+        ret.push_back(pi);
+    }
+    return ret;
+}
+
 ptr<cluster_config> raft_server::get_config() const {
     std::lock_guard<std::mutex> l(config_lock_);
     ptr<cluster_config> ret = config_;
