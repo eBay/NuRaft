@@ -161,9 +161,39 @@ void raft_server::request_prevote() {
     }
 }
 
-void raft_server::initiate_vote(bool ignore_priority) {
+void raft_server::initiate_vote(bool force_vote) {
+    int grace_period = ctx_->get_params()->grace_period_of_lagging_state_machine_;
+    ulong cur_term = state_->get_term();
+    if ( !force_vote &&
+         grace_period &&
+         sm_commit_index_ < lagging_sm_target_index_ ) {
+        p_in("grace period option is enabled, and state machine needs catch-up: "
+             "%lu vs. %lu",
+             sm_commit_index_.load(),
+             lagging_sm_target_index_.load());
+        if (vote_init_timer_term_ != cur_term) {
+            p_in("grace period: %d, term increment detected %lu vs. %lu, reset timer",
+                grace_period, vote_init_timer_term_.load(), cur_term);
+            vote_init_timer_.set_duration_ms(grace_period);
+            vote_init_timer_.reset();
+            vote_init_timer_term_ = cur_term;
+        }
+
+        if ( vote_init_timer_term_ == cur_term &&
+             !vote_init_timer_.timeout() ) {
+            // Grace period, do not initiate vote.
+            p_in("grace period: %d, term %lu, waited %lu ms, skip initiating vote",
+                 grace_period, cur_term, vote_init_timer_.get_ms());
+            return;
+
+        } else {
+            p_in("grace period: %d, no new leader detected for term %lu for %lu ms",
+                 grace_period, cur_term, vote_init_timer_.get_ms());
+        }
+    }
+
     if ( my_priority_ >= target_priority_ ||
-         ignore_priority ||
+         force_vote ||
          check_cond_for_zp_election() ||
          get_quorum_for_election() == 0 ) {
         // Request vote when
@@ -176,7 +206,7 @@ void raft_server::initiate_vote(bool ignore_priority) {
         votes_responded_ = 0;
         election_completed_ = false;
         ctx_->state_mgr_->save_state(*state_);
-        request_vote(ignore_priority);
+        request_vote(force_vote);
     }
 
     if (role_ != srv_role::leader) {
@@ -185,7 +215,7 @@ void raft_server::initiate_vote(bool ignore_priority) {
     }
 }
 
-void raft_server::request_vote(bool ignore_priority) {
+void raft_server::request_vote(bool force_vote) {
     state_->set_voted_for(id_);
     ctx_->state_mgr_->save_state(*state_);
     votes_granted_ += 1;
@@ -218,7 +248,7 @@ void raft_server::request_vote(bool ignore_priority) {
                              term_for_log(log_store_->next_slot() - 1),
                              log_store_->next_slot() - 1,
                              quick_commit_index_.load() );
-        if (ignore_priority) {
+        if (force_vote) {
             // Add a special log entry to let receivers ignore the priority.
 
             // Force vote message, and wrap it using log_entry.

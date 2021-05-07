@@ -39,6 +39,7 @@ namespace nuraft {
 void raft_server::commit(ulong target_idx) {
     if (target_idx > quick_commit_index_) {
         quick_commit_index_ = target_idx;
+        lagging_sm_target_index_ = target_idx;
         p_db( "trigger commit upto %lu", quick_commit_index_.load() );
 
         // if this is a leader notify peers to commit as well
@@ -360,6 +361,8 @@ void raft_server::commit_conf(ulong idx_to_commit,
     uint64_t log_idx = idx_to_commit;
     param.ctx = &log_idx;
     ctx_->cb_func_.call(cb_func::NewConfig, &param);
+
+    state_machine_->commit_config(idx_to_commit, new_conf);
 
     // Modified by Jung-Sang Ahn, May 18 2018:
     //   This causes an endless catch-up issue when we add a new node,

@@ -497,6 +497,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             precommit_index_ = req.get_snapshot().get_last_log_idx();
             sm_commit_index_ = req.get_snapshot().get_last_log_idx();
             quick_commit_index_ = req.get_snapshot().get_last_log_idx();
+            lagging_sm_target_index_ = req.get_snapshot().get_last_log_idx();
 
             ctx_->state_mgr_->save_state(*state_);
 

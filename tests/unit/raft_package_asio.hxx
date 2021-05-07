@@ -134,6 +134,54 @@ public:
         asioListener->listen(raftServer);
     }
 
+    /**
+     * Re-init Raft server without changing internal data including state machine.
+     */
+    void restartServer(
+            raft_params* custom_params = nullptr,
+            bool enable_ssl = false,
+            bool use_global_asio = false,
+            const raft_server::init_options& opt = raft_server::init_options()) {
+        asio_service::options asio_opt;
+        asio_opt.thread_pool_size_  = 4;
+        if (enable_ssl) {
+            asio_opt.enable_ssl_        = enable_ssl;
+            asio_opt.verify_sn_         = RaftAsioPkg::verifySn;
+            asio_opt.server_cert_file_  = "./cert.pem";
+            asio_opt.root_cert_file_    = "./cert.pem"; // self-signed.
+            asio_opt.server_key_file_   = "./key.pem";
+        }
+
+        asioSvc = use_global_asio
+                  ? nuraft_global_mgr::init_asio_service(asio_opt, myLog)
+                  : cs_new<asio_service>(asio_opt, myLog);
+
+        int raft_port = 20000 + myId * 10;
+        ptr<rpc_listener> listener
+                          ( asioSvc->create_rpc_listener(raft_port, myLog) );
+        ptr<delayed_task_scheduler> scheduler = asioSvc;
+        ptr<rpc_client_factory> rpc_cli_factory = asioSvc;
+
+        raft_params params;
+        if (custom_params) {
+            params = *custom_params;
+        } else {
+            params.with_hb_interval(HEARTBEAT_MS);
+            params.with_election_timeout_lower(HEARTBEAT_MS * 2);
+            params.with_election_timeout_upper(HEARTBEAT_MS * 4);
+            params.with_reserved_log_items(10);
+            params.with_snapshot_enabled(5);
+            params.with_client_req_timeout(10000);
+        }
+        context* ctx( new context( sMgr, sm, listener, myLog,
+                                   rpc_cli_factory, scheduler, params ) );
+        raftServer = cs_new<raft_server>(ctx, opt);
+
+        // Listen.
+        asioListener = listener;
+        asioListener->listen(raftServer);
+    }
+
     void stopAsio() {
         if (asioListener) {
             asioListener->stop();

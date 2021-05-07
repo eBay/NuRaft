@@ -722,8 +722,8 @@ protected:
 
     bool check_cond_for_zp_election();
     void request_prevote();
-    void initiate_vote(bool ignore_priority = false);
-    void request_vote(bool ignore_priority);
+    void initiate_vote(bool force_vote = false);
+    void request_vote(bool force_vote);
     void request_append_entries();
     bool request_append_entries(ptr<peer> p);
     void handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
@@ -911,6 +911,13 @@ protected:
      * Actual commit index of state machine.
      */
     std::atomic<ulong> sm_commit_index_;
+
+    /**
+     * If `grace_period_of_lagging_state_machine_` option is enabled,
+     * the server will not initiate vote if its state machine's commit
+     * index is less than this number.
+     */
+    std::atomic<ulong> lagging_sm_target_index_;
 
     /**
      * (Read-only)
@@ -1264,6 +1271,17 @@ protected:
      * for each heartbeat period.
      */
     timer_helper status_check_timer_;
+
+    /**
+     * Timer that will be used for tracking the time that
+     * this server is blocked from leader election.
+     */
+    timer_helper vote_init_timer_;
+
+    /**
+     * The term when `vote_init_timer_` was reset.
+     */
+    std::atomic<ulong> vote_init_timer_term_;
 };
 
 } // namespace nuraft;

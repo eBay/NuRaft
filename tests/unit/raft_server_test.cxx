@@ -144,7 +144,7 @@ int make_group_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Test message should be the same.
-    uint64_t last_idx = s1.getTestSm()->getLastCommittedIdx();
+    uint64_t last_idx = s1.getTestSm()->last_commit_index();
     CHK_GT(last_idx, 0);
     ptr<buffer> buf = s1.getTestSm()->getData(last_idx);
     CHK_NONNULL( buf.get() );
@@ -1732,7 +1732,7 @@ int follower_reconnect_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Test message should be the same.
-    uint64_t last_idx = s1.getTestSm()->getLastCommittedIdx();
+    uint64_t last_idx = s1.getTestSm()->last_commit_index();
     CHK_GT(last_idx, 0);
     ptr<buffer> buf = s1.getTestSm()->getData(last_idx);
     CHK_NONNULL( buf.get() );
