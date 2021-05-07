@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "debugging_options.hxx"
 #include "fake_network.hxx"
 #include "raft_package_fake.hxx"
 
@@ -2358,6 +2359,9 @@ int main(int argc, char** argv) {
     TestSuite ts(argc, argv);
 
     ts.options.printTestMessage = true;
+
+    // Disable reconnection timer for deterministic test.
+    debugging_options::get_instance().disable_reconn_backoff_ = true;
 
     ts.doTest( "make group test",
                make_group_test );
