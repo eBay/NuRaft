@@ -419,16 +419,19 @@ int uncommitted_conf_new_leader_test() {
         s1.fNet->execReqResp(s2_addr);
         s1.fNet->execReqResp(s3_addr);
     }
-    // One more time, to make sure there is no message in-flight.
-    s1.fNet->execReqResp(s2_addr);
-    s1.fNet->execReqResp(s3_addr);
+    // Make sure there is no message in-flight.
+    for (size_t ii = 0; ii < 10; ++ii) {
+        s1.fNet->execReqResp(s2_addr);
+        s1.fNet->execReqResp(s3_addr);
+    }
 
     // Now remove S2 (who was a member of the latest quorum).
     s1.raftServer->remove_srv(2);
-    for (size_t ii=0; ii<3; ++ii) {
+    for (size_t ii = 0; ii < 10; ++ii) {
         s1.fNet->execReqResp(s2_addr);
     }
     // Send new update to S3 only.
+    s1.dbgLog(" --- send config change (removing S2) to S3 ---");
     s1.fNet->execReqResp(s3_addr);
 
     // Invoke election timer of S4 and S5 (to make pre-vote of S3 succeed).
@@ -439,13 +442,16 @@ int uncommitted_conf_new_leader_test() {
 
     // Now S3's vote should succeed.
     s3.fTimer->invoke( timer_task_type::election_timer );
-    s3.fNet->execReqResp();
-    s3.fNet->execReqResp();
+    for (size_t ii = 0; ii < 10; ++ii) {
+        s3.fNet->execReqResp();
+    }
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     s3.fTimer->invoke( timer_task_type::heartbeat_timer );
-    s3.fNet->execReqResp();
-    s3.fNet->execReqResp();
+    for (size_t ii = 0; ii < 10; ++ii) {
+        s3.fNet->execReqResp();
+    }
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Removing S2 should be in the latest config.
     ptr<cluster_config> c_config = s3.raftServer->get_config();
