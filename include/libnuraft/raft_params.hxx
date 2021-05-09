@@ -92,6 +92,7 @@ struct raft_params {
         , locking_method_type_(dual_mutex)
         , return_method_(blocking)
         , auto_forwarding_req_timeout_(0)
+        , grace_period_of_lagging_state_machine_(0)
         {}
 
     /**
@@ -514,6 +515,18 @@ public:
      * If 0, there will be no timeout for auto forwarding.
      */
     int32 auto_forwarding_req_timeout_;
+
+    /**
+     * If non-zero, any server whose state machine's commit index is
+     * lagging behind the last committed log index will not
+     * initiate vote requests for the given amount of time
+     * in milliseconds.
+     *
+     * The purpose of this option is to avoid a server (whose state
+     * machine is still catching up with the committed logs and does
+     * not contain the latest data yet) being a leader.
+     */
+    int32 grace_period_of_lagging_state_machine_;
 };
 
 }

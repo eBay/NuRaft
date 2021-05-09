@@ -29,6 +29,7 @@ limitations under the License.
 
 namespace nuraft {
 
+class cluster_config;
 class snapshot;
 class state_machine {
     __interface_body__(state_machine);
@@ -70,6 +71,15 @@ public:
      */
     virtual ptr<buffer> commit_ext(const ext_op_params& params)
     {   return commit(params.log_idx, *params.data);    }
+
+    /**
+     * (Optional)
+     * Handler on the commit of a configuration change.
+     *
+     * @param log_idx Raft log number of the configuration change.
+     * @param new_conf New cluster configuration.
+     */
+    virtual void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) { }
 
     /**
      * Pre-commit the given Raft log.
