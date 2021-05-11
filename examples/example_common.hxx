@@ -137,7 +137,9 @@ void loop() {
 #else
         std::cout << prompt;
 #endif
-        std::cin.getline(cmd, 1000);
+        if (!std::cin.getline(cmd, 1000)) {
+            break;
+        }
 
         std::vector<std::string> tokens = tokenize(cmd);
         bool cont = do_cmd(tokens);
