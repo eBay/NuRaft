@@ -224,6 +224,8 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
                     auto_fwd_req_resp req_resp_pair;
                     req_resp_pair.req = req;
                     req_resp_pair.resp = cs_new< cmd_result< ptr<buffer> > >();
+
+                    auto_lock(auto_fwd_reqs_lock_);
                     auto_fwd_reqs_.push_back(req_resp_pair);
                     p_tr("reached max connection, put into the queue, %zu elems",
                          auto_fwd_reqs_.size());
@@ -296,11 +298,14 @@ void raft_server::auto_fwd_release_rpc_cli( ptr<auto_fwd_pkg> cur_pkg,
 
     } else {
         // Async mode, send the request in the queue.
+        std::unique_lock<std::mutex> ll(auto_fwd_reqs_lock_);
         if (!auto_fwd_reqs_.empty()) {
             auto_fwd_req_resp entry = *auto_fwd_reqs_.begin();
             auto_fwd_reqs_.pop_front();
             p_tr( "found waiting request in the queue, remaining elems %zu",
                   auto_fwd_reqs_.size() );
+            ll.unlock();
+
             rpc_handler handler = std::bind( &raft_server::auto_fwd_resp_handler,
                                              this,
                                              entry.resp,
@@ -316,6 +321,7 @@ void raft_server::auto_fwd_release_rpc_cli( ptr<auto_fwd_pkg> cur_pkg,
 
         } else {
             // If no request is waiting, put the connection back to idle list.
+            ll.unlock();
             put_back_to_idle_list();
         }
     }
@@ -340,6 +346,28 @@ void raft_server::auto_fwd_resp_handler( ptr<cmd_result<ptr<buffer>>> presult,
 
     presult->set_result(resp_ctx, perr);
     auto_fwd_release_rpc_cli(cur_pkg, rpc_cli);
+}
+
+void raft_server::cleanup_auto_fwd_pkgs() {
+    auto_lock(rpc_clients_lock_);
+    for (auto& entry: auto_fwd_pkgs_) {
+        ptr<auto_fwd_pkg> pkg = entry.second;
+        pkg->ea_.invoke();
+        auto_lock(pkg->lock_);
+        p_in("srv %d, in-use %zu, idle %zu",
+             entry.first,
+             pkg->rpc_client_in_use_.size(),
+             pkg->rpc_client_idle_.size());
+        for (auto& ee: pkg->rpc_client_in_use_) {
+            p_tr("use count %zu", ee.use_count());
+        }
+        for (auto& ee: pkg->rpc_client_idle_) {
+            p_tr("use count %zu", ee.use_count());
+        }
+        pkg->rpc_client_idle_.clear();
+        pkg->rpc_client_in_use_.clear();
+    }
+    auto_fwd_pkgs_.clear();
 }
 
 } // namespace nuraft;

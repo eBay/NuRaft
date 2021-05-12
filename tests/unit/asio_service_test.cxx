@@ -87,6 +87,41 @@ int make_group_test() {
     CHK_EQ(1, s2.raftServer->get_leader());
     CHK_EQ(1, s3.raftServer->get_leader());
 
+    // Sleep a while and check peer info.
+    for (auto& entry: {s2, s3}) {
+        // Non leader should not accept this API.
+        raft_server::peer_info pi = entry.raftServer->get_peer_info(1);
+        CHK_EQ(-1, pi.id_);
+
+        std::vector<raft_server::peer_info> v_pi = entry.raftServer->get_peer_info_all();
+        CHK_Z(v_pi.size());
+    }
+
+    for (auto srv_id: {2, 3}) {
+        raft_server::peer_info pi = s1.raftServer->get_peer_info(srv_id);
+        uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
+        CHK_EQ(srv_id, pi.id_);
+        CHK_EQ(last_log_idx, pi.last_log_idx_);
+        _msg("srv %d: %lu, responeded %.1f ms ago\n",
+             pi.id_,
+             pi.last_log_idx_,
+             pi.last_succ_resp_us_ / 1000.0);
+    }
+
+    // Sleep a while and get all info.
+    TestSuite::sleep_ms(10);
+
+    std::vector<raft_server::peer_info> v_pi = s1.raftServer->get_peer_info_all();
+    CHK_GT(v_pi.size(), 0);
+    for (raft_server::peer_info& pi: v_pi) {
+        uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
+        CHK_EQ(last_log_idx, pi.last_log_idx_);
+        _msg("srv %d: %lu, responeded %.1f ms ago\n",
+             pi.id_,
+             pi.last_log_idx_,
+             pi.last_succ_resp_us_ / 1000.0);
+    }
+
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
     s3.raftServer->shutdown();
@@ -1317,6 +1352,7 @@ int auto_forwarding_test(bool async) {
         size_t ii;
     };
 
+    std::mutex handlers_lock;
     std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
     auto send_msg = [&](TestSuite::ThreadArgs* t_args) -> int {
         MsgArgs* args = (MsgArgs*)t_args;
@@ -1325,6 +1361,8 @@ int auto_forwarding_test(bool async) {
         msg->put(test_msg);
         ptr< cmd_result< ptr<buffer> > > ret =
             s2.raftServer->append_entries( {msg} );
+
+        std::lock_guard<std::mutex> l(handlers_lock);
         handlers.push_back(ret);
         return 0;
     };
@@ -1347,6 +1385,286 @@ int auto_forwarding_test(bool async) {
         std::string test_msg = "test" + std::to_string(ii);
         CHK_GT(s1.getTestSm()->isCommitted(test_msg), 0);
     }
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int enforced_state_machine_catchup_test() {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // Adjust the priority of S2 to zero, to block it becoming a leader.
+    s1.raftServer->set_priority(2, 0);
+    TestSuite::sleep_sec(1, "set S2's priority to zero");
+
+    // Stop S3, delete data.
+    uint64_t last_committed_idx = s3.raftServer->get_committed_log_idx();
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    s3.getTestSm()->truncateData(last_committed_idx - 5);
+
+    // Stop S1.
+    s1.raftServer->shutdown();
+    s1.stopAsio();
+    TestSuite::sleep_sec(1, "stop S1 and S3");
+
+    // Restart S3 with grace period option.
+    raft_params new_params = s1.raftServer->get_current_params();
+    new_params.grace_period_of_lagging_state_machine_ = 1000; // 1 second.
+    s3.restartServer(&new_params);
+    TestSuite::sleep_ms(500, "restarting S3");
+
+    // Before the grace period, there should be no leader.
+    CHK_FALSE( s2.raftServer->is_leader() );
+    CHK_FALSE( s3.raftServer->is_leader() );
+
+    // After the grace period, S3 should be the leader.
+    TestSuite::sleep_sec(1, "grace period");
+    CHK_TRUE( s3.raftServer->is_leader() );
+    CHK_EQ(3, s2.raftServer->get_leader());
+
+    // Stop both S2 and S3 and then restart them.
+    s2.raftServer->shutdown();
+    s2.stopAsio();
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_sec(1, "stop S2 and S3");
+
+    s2.restartServer();
+    s3.restartServer(&new_params);
+    TestSuite::sleep_ms(500, "restarting S2 and S3");
+
+    // Even before the grace period, S3 should be the leader.
+    CHK_TRUE( s3.raftServer->is_leader() );
+    CHK_EQ(3, s2.raftServer->get_leader());
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int enforced_state_machine_catchup_with_term_inc_test() {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // Adjust the priority of S2 to zero, to block it becoming a leader.
+    s1.raftServer->set_priority(2, 0);
+    TestSuite::sleep_sec(1, "set S2's priority to zero");
+
+    // Stop S3, delete data.
+    uint64_t last_committed_idx = s3.raftServer->get_committed_log_idx();
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    s3.getTestSm()->truncateData(last_committed_idx - 5);
+    TestSuite::sleep_ms(500, "stop S3");
+
+    // A few leader changes to increase the term.
+    s1.raftServer->yield_leadership(false, 2);
+    TestSuite::sleep_sec(1, "leader change: S1 -> S2");
+    s2.raftServer->yield_leadership(false, 1);
+    TestSuite::sleep_sec(1, "leader change: S2 -> S1");
+
+    // Stop S1.
+    s1.raftServer->shutdown();
+    s1.stopAsio();
+    TestSuite::sleep_sec(1, "stop S1");
+
+    // Restart S3 with grace period option.
+    raft_params new_params = s1.raftServer->get_current_params();
+    new_params.grace_period_of_lagging_state_machine_ = 1000; // 1 second.
+    s3.restartServer(&new_params);
+    TestSuite::sleep_ms(500, "restarting S3");
+
+    // Before the grace period, there should be no leader.
+    CHK_FALSE( s2.raftServer->is_leader() );
+    CHK_FALSE( s3.raftServer->is_leader() );
+
+    // Even after the grace period, S3 can't be the leader due to term.
+    TestSuite::sleep_ms(1500, "grace period");
+    CHK_FALSE( s3.raftServer->is_leader() );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int snapshot_read_failure_during_join_test(size_t log_sync_gap) {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group({&s1, &s2}) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    raft_params params = s1.raftServer->get_current_params();
+    params.log_sync_stop_gap_ = log_sync_gap;
+    s1.raftServer->update_params(params);
+
+    // Make the first two snapshot reads fail.
+    s1.getTestSm()->setSnpReadFailure(2);
+
+    // Add S3.
+    s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
+    TestSuite::sleep_sec(1, "add S3");
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int snapshot_read_failure_for_lagging_server_test(size_t num_failures) {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    // Stop S3.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_sec(1, "stop S3");
+
+    // Replication.
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // Make the snapshot read fail.
+    s1.getTestSm()->setSnpReadFailure(num_failures);
+
+    // Restart S3.
+    s3.restartServer();
+    TestSuite::sleep_sec(1, "restarting S3");
 
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -1418,6 +1736,20 @@ int main(int argc, char** argv) {
     ts.doTest( "auto forwarding test",
                auto_forwarding_test,
                TestRange<bool>( {false, true} ) );
+
+    ts.doTest( "enforced state machine catch-up test",
+               enforced_state_machine_catchup_test );
+
+    ts.doTest( "enforced state machine catch-up with term increment test",
+               enforced_state_machine_catchup_with_term_inc_test );
+
+    ts.doTest( "snapshot read failure during join test",
+               snapshot_read_failure_during_join_test,
+               TestRange<size_t>( {10, 999999} ) );
+
+    ts.doTest( "snapshot read failure for lagging server test",
+               snapshot_read_failure_for_lagging_server_test,
+               TestRange<size_t>( {1, 5} ) );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

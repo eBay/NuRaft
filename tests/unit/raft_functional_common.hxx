@@ -41,6 +41,8 @@ class TestSm : public state_machine {
 public:
     TestSm(SimpleLogger* logger = nullptr)
         : customBatchSize(0)
+        , lastCommittedConfigIdx(0)
+        , targetSnpReadFailures(0)
         , myLog(logger)
     {
         (void)myLog;
@@ -56,6 +58,10 @@ public:
         buffer_serializer bs(ret);
         bs.put_u64(log_idx);
         return ret;
+    }
+
+    void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) {
+        lastCommittedConfigIdx = log_idx;
     }
 
     ptr<buffer> pre_commit(const ulong log_idx, buffer& data) {
@@ -124,6 +130,11 @@ public:
                              ptr<buffer>& data_out,
                              bool& is_last_obj)
     {
+        if (targetSnpReadFailures > 0) {
+            targetSnpReadFailures--;
+            return -1;
+        }
+
         if (!user_snp_ctx) {
             // Create a dummy context with a magic number.
             int ctx = 0xabcdef;
@@ -198,7 +209,7 @@ public:
         std::lock_guard<std::mutex> ll(dataLock);
         auto entry = commits.rbegin();
         if (entry == commits.rend()) return 0;
-        return entry->first;
+        return std::max(entry->first, lastCommittedConfigIdx.load());
     }
 
     void create_snapshot(snapshot& s,
@@ -289,18 +300,26 @@ public:
         return 0;
     }
 
-    ulong getLastCommittedIdx() const {
-        std::lock_guard<std::mutex> ll(dataLock);
-        auto entry = commits.rbegin();
-        if (entry == commits.rend()) return 0;
-        return entry->first;
-    }
-
     ptr<buffer> getData(ulong log_idx) const {
         std::lock_guard<std::mutex> ll(dataLock);
         auto entry = commits.find(log_idx);
         if (entry == commits.end()) return nullptr;
         return entry->second;
+    }
+
+    void truncateData(ulong log_idx_upto) {
+        auto entry = preCommits.lower_bound(log_idx_upto);
+        preCommits.erase(entry, preCommits.end());
+        auto entry2 = commits.lower_bound(log_idx_upto);
+        commits.erase(entry2, commits.end());
+
+        if (lastCommittedConfigIdx > log_idx_upto) {
+            lastCommittedConfigIdx = log_idx_upto;
+        }
+    }
+
+    void setSnpReadFailure(int num_failures) {
+        targetSnpReadFailures = num_failures;
     }
 
 private:
@@ -313,6 +332,10 @@ private:
     mutable std::mutex lastSnapshotLock;
 
     std::atomic<uint64_t> customBatchSize;
+
+    std::atomic<uint64_t> lastCommittedConfigIdx;
+
+    std::atomic<int> targetSnpReadFailures;
 
     SimpleLogger* myLog;
 };

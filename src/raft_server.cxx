@@ -86,6 +86,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , config_(ctx->state_mgr_->load_config())
     , uncommitted_config_(nullptr)
     , srv_to_join_(nullptr)
+    , srv_to_join_snp_retry_required_(false)
     , srv_to_leave_(nullptr)
     , srv_to_leave_target_idx_(0)
     , conf_to_add_(nullptr)
@@ -114,12 +115,14 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     apply_and_log_current_params();
     update_rand_timeout();
     precommit_index_ = log_store_->next_slot() - 1;
+    lagging_sm_target_index_ = log_store_->next_slot() - 1;
 
     if (!state_) {
         state_ = cs_new<srv_state>();
         state_->set_term(0);
         state_->set_voted_for(-1);
     }
+    vote_init_timer_term_ = state_->get_term();
 
     print_msg.clear();
 
@@ -283,6 +286,8 @@ void raft_server::start_server(bool skip_initial_election_timeout)
         restart_election_timer();
     }
     priority_change_timer_.reset();
+    vote_init_timer_.set_duration_ms(params->grace_period_of_lagging_state_machine_);
+    vote_init_timer_.reset();
     p_db("server %d started", id_);
 }
 
@@ -347,7 +352,8 @@ void raft_server::apply_and_log_current_params() {
           "custom commit quorum size %d, "
           "custom election quorum size %d, "
           "snapshot receiver %s, "
-          "leadership transfer wait time %d",
+          "leadership transfer wait time %d, "
+          "grace period of lagging state machine %d",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -364,7 +370,8 @@ void raft_server::apply_and_log_current_params() {
           params->custom_commit_quorum_size_,
           params->custom_election_quorum_size_,
           params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
-          params->leadership_transfer_min_wait_time_ );
+          params->leadership_transfer_min_wait_time_,
+          params->grace_period_of_lagging_state_machine_ );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();
@@ -462,6 +469,15 @@ void raft_server::shutdown() {
     if (bg_append_thread_.joinable()) {
         bg_append_thread_.join();
     }
+
+    {
+        auto_lock(auto_fwd_reqs_lock_);
+        p_in("clean up auto-forwarding queue: %zu elems", auto_fwd_reqs_.size());
+        auto_fwd_reqs_.clear();
+    }
+
+    p_in("clean up auto-forwarding clients");
+    cleanup_auto_fwd_pkgs();
 
     p_in("raft_server shutdown completed.");
 }
@@ -1472,6 +1488,37 @@ void raft_server::get_srv_config_all
     ptr<cluster_config> c_conf = get_config();
     std::list< ptr<srv_config> >& servers = c_conf->get_servers();
     for (auto& entry: servers) configs_out.push_back(entry);
+}
+
+raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
+    if (!is_leader()) return peer_info();
+
+    recur_lock(lock_);
+    auto entry = peers_.find(srv_id);
+    if (entry == peers_.end()) return peer_info();
+
+    peer_info ret;
+    ptr<peer> pp = entry->second;
+    ret.id_ = pp->get_id();
+    ret.last_log_idx_ = pp->get_next_log_idx() - 1;
+    ret.last_succ_resp_us_ = pp->get_resp_timer_us();
+    return ret;
+}
+
+std::vector<raft_server::peer_info> raft_server::get_peer_info_all() const {
+    std::vector<raft_server::peer_info> ret;
+    if (!is_leader()) return ret;
+
+    recur_lock(lock_);
+    for (auto entry: peers_) {
+        peer_info pi;
+        ptr<peer> pp = entry.second;
+        pi.id_ = pp->get_id();
+        pi.last_log_idx_ = pp->get_next_log_idx() - 1;
+        pi.last_succ_resp_us_ = pp->get_resp_timer_us();
+        ret.push_back(pi);
+    }
+    return ret;
 }
 
 ptr<cluster_config> raft_server::get_config() const {

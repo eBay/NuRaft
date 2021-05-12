@@ -469,6 +469,48 @@ public:
     void get_srv_config_all(std::vector< ptr<srv_config> >& configs_out) const;
 
     /**
+     * Peer info structure.
+     */
+    struct peer_info {
+        peer_info()
+            : id_(-1)
+            , last_log_idx_(0)
+            , last_succ_resp_us_(0)
+            {}
+
+        /**
+         * Peer ID.
+         */
+        int32 id_;
+
+        /**
+         * The last log index that the peer has, from this server's point of view.
+         */
+        ulong last_log_idx_;
+
+        /**
+         * The elapsed time since the last successful response from this peer,
+         * in microsecond.
+         */
+        ulong last_succ_resp_us_;
+    };
+
+    /**
+     * Get the peer info of the given ID. Only leader will return peer info.
+     *
+     * @param srv_id Server ID.
+     * @return Peer info.
+     */
+    peer_info get_peer_info(int32 srv_id) const;
+
+    /**
+     * Get the info of all peers. Only leader will return peer info.
+     *
+     * @return Vector of peer info.
+     */
+    std::vector<peer_info> get_peer_info_all() const;
+
+    /**
      * Shut down server instance.
      */
     void shutdown();
@@ -680,8 +722,8 @@ protected:
 
     bool check_cond_for_zp_election();
     void request_prevote();
-    void initiate_vote(bool ignore_priority = false);
-    void request_vote(bool ignore_priority);
+    void initiate_vote(bool force_vote = false);
+    void request_vote(bool force_vote);
     void request_append_entries();
     bool request_append_entries(ptr<peer> p);
     void handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
@@ -753,6 +795,7 @@ protected:
                                ptr<rpc_client> rpc_cli,
                                ptr<resp_msg>& resp,
                                ptr<rpc_exception>& err);
+    void cleanup_auto_fwd_pkgs();
 
     void set_config(const ptr<cluster_config>& new_config);
     ptr<snapshot> get_last_snapshot() const;
@@ -868,6 +911,13 @@ protected:
      * Actual commit index of state machine.
      */
     std::atomic<ulong> sm_commit_index_;
+
+    /**
+     * If `grace_period_of_lagging_state_machine_` option is enabled,
+     * the server will not initiate vote if its state machine's commit
+     * index is less than this number.
+     */
+    std::atomic<ulong> lagging_sm_target_index_;
 
     /**
      * (Read-only)
@@ -1040,6 +1090,11 @@ protected:
     std::list<auto_fwd_req_resp> auto_fwd_reqs_;
 
     /**
+     * Lock for auto-forwarding queue.
+     */
+    std::mutex auto_fwd_reqs_lock_;
+
+    /**
      * Current role of this server.
      */
     std::atomic<srv_role> role_;
@@ -1114,6 +1169,12 @@ protected:
     ptr<peer> srv_to_join_;
 
     /**
+     * `true` if `sync_log_to_new_srv` needs to be called again upon
+     * a temporary heartbeat.
+     */
+    std::atomic<bool> srv_to_join_snp_retry_required_;
+
+    /**
      * Server that is agreed to leave,
      * protected by `lock_`.
      */
@@ -1135,7 +1196,7 @@ protected:
     /**
      * Lock of entire Raft operation.
      */
-    std::recursive_mutex lock_;
+    mutable std::recursive_mutex lock_;
 
     /**
      * Lock of handling client request and role change.
@@ -1216,6 +1277,17 @@ protected:
      * for each heartbeat period.
      */
     timer_helper status_check_timer_;
+
+    /**
+     * Timer that will be used for tracking the time that
+     * this server is blocked from leader election.
+     */
+    timer_helper vote_init_timer_;
+
+    /**
+     * The term when `vote_init_timer_` was reset.
+     */
+    std::atomic<ulong> vote_init_timer_term_;
 };
 
 } // namespace nuraft;

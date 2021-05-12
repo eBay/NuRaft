@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "debugging_options.hxx"
 #include "fake_network.hxx"
 #include "raft_package_fake.hxx"
 
@@ -143,7 +144,7 @@ int make_group_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Test message should be the same.
-    uint64_t last_idx = s1.getTestSm()->getLastCommittedIdx();
+    uint64_t last_idx = s1.getTestSm()->last_commit_index();
     CHK_GT(last_idx, 0);
     ptr<buffer> buf = s1.getTestSm()->getData(last_idx);
     CHK_NONNULL( buf.get() );
@@ -1731,7 +1732,7 @@ int follower_reconnect_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Test message should be the same.
-    uint64_t last_idx = s1.getTestSm()->getLastCommittedIdx();
+    uint64_t last_idx = s1.getTestSm()->last_commit_index();
     CHK_GT(last_idx, 0);
     ptr<buffer> buf = s1.getTestSm()->getData(last_idx);
     CHK_NONNULL( buf.get() );
@@ -2358,6 +2359,9 @@ int main(int argc, char** argv) {
     TestSuite ts(argc, argv);
 
     ts.options.printTestMessage = true;
+
+    // Disable reconnection timer for deterministic test.
+    debugging_options::get_instance().disable_reconn_backoff_ = true;
 
     ts.doTest( "make group test",
                make_group_test );

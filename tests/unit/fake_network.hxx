@@ -100,7 +100,10 @@ private:
     std::string myEndpoint;
     ptr<FakeNetworkBase> base;
     ptr<msg_handler> handler;
-    std::unordered_map< std::string, ptr<FakeClient> > clients;
+    // NOTE: We don't use `unordered_map` as the order of traversal
+    //       will be different according to platforms. We should make
+    //       the test deterministic.
+    std::map< std::string, ptr<FakeClient> > clients;
     std::mutex clientsLock;
     std::list< ptr<FakeClient> > staleClients;
     bool online;
