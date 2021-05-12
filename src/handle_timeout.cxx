@@ -75,6 +75,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
          srv_to_join_->get_id() == srv_id ) {
         p_in("retrying snapshot read for server %d", srv_id);
         sync_log_to_new_srv(0);
+        return;
     }
 
     auto pit = peers_.find(srv_id);

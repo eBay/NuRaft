@@ -153,7 +153,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         int rc = state_machine_->read_logical_snp_obj( *snp, user_snp_ctx, obj_idx,
                                                        data, last_request );
         if (rc < 0) {
-            p_er( "reading snapshot (idx %lu, term %lu, object %lu) failed: %d",
+            p_wn( "reading snapshot (idx %lu, term %lu, object %lu) failed: %d",
                   snp->get_last_log_idx(),
                   snp->get_last_log_term(),
                   obj_idx,
