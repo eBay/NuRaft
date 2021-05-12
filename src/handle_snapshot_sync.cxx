@@ -150,8 +150,18 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         void*& user_snp_ctx = p.get_snapshot_sync_ctx()->get_user_snp_ctx();
         p_dv("peer: %d, obj_idx: %ld, user_snp_ctx %p\n",
              (int)p.get_id(), obj_idx, user_snp_ctx);
-        state_machine_->read_logical_snp_obj( *snp, user_snp_ctx, obj_idx,
-                                              data, last_request );
+        int rc = state_machine_->read_logical_snp_obj( *snp, user_snp_ctx, obj_idx,
+                                                       data, last_request );
+        if (rc < 0) {
+            p_wn( "reading snapshot (idx %lu, term %lu, object %lu) failed: %d",
+                  snp->get_last_log_idx(),
+                  snp->get_last_log_term(),
+                  obj_idx,
+                  rc );
+            // Reset the `sync_ctx` so as to retry with the newer version.
+            p.set_snapshot_in_sync(nullptr);
+            return nullptr;
+        }
         if (data) data->pos(0);
         data_idx = obj_idx;
     }

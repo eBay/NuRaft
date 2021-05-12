@@ -1169,6 +1169,12 @@ protected:
     ptr<peer> srv_to_join_;
 
     /**
+     * `true` if `sync_log_to_new_srv` needs to be called again upon
+     * a temporary heartbeat.
+     */
+    std::atomic<bool> srv_to_join_snp_retry_required_;
+
+    /**
      * Server that is agreed to leave,
      * protected by `lock_`.
      */

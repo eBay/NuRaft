@@ -42,6 +42,7 @@ public:
     TestSm(SimpleLogger* logger = nullptr)
         : customBatchSize(0)
         , lastCommittedConfigIdx(0)
+        , targetSnpReadFailures(0)
         , myLog(logger)
     {
         (void)myLog;
@@ -129,6 +130,11 @@ public:
                              ptr<buffer>& data_out,
                              bool& is_last_obj)
     {
+        if (targetSnpReadFailures > 0) {
+            targetSnpReadFailures--;
+            return -1;
+        }
+
         if (!user_snp_ctx) {
             // Create a dummy context with a magic number.
             int ctx = 0xabcdef;
@@ -312,6 +318,10 @@ public:
         }
     }
 
+    void setSnpReadFailure(int num_failures) {
+        targetSnpReadFailures = num_failures;
+    }
+
 private:
     std::map<uint64_t, ptr<buffer>> preCommits;
     std::map<uint64_t, ptr<buffer>> commits;
@@ -324,6 +334,8 @@ private:
     std::atomic<uint64_t> customBatchSize;
 
     std::atomic<uint64_t> lastCommittedConfigIdx;
+
+    std::atomic<int> targetSnpReadFailures;
 
     SimpleLogger* myLog;
 };

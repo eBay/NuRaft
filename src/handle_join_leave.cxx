@@ -256,10 +256,18 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     // When snapshot transmission is still in progress, start_idx can be 0.
     // We should tolerate this.
     if (/* start_idx > 0 && */ start_idx < log_store_->start_index()) {
+        srv_to_join_snp_retry_required_ = false;
         req = create_sync_snapshot_req( *srv_to_join_,
                                         start_idx,
                                         state_->get_term(),
                                         quick_commit_index_);
+        if (req == nullptr) {
+            // If reading snapshot fails, enable HB temporarily to retry it.
+            srv_to_join_snp_retry_required_ = true;
+            enable_hb_for_peer(*srv_to_join_);
+            return;
+        }
+
     } else {
         int32 size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
         ptr<buffer> log_pack = log_store_->pack(start_idx, size_to_sync);

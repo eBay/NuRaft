@@ -236,13 +236,17 @@ public:
      * @param obj_id Object ID to read.
      * @param[out] data Buffer where the read object will be stored.
      * @param[out] is_last_obj Set `true` if this is the last object.
-     * @return 0 if failed.
+     * @return Negative number if failed.
      */
     virtual int read_logical_snp_obj(snapshot& s,
                                      void*& user_snp_ctx,
                                      ulong obj_id,
                                      ptr<buffer>& data_out,
-                                     bool& is_last_obj) { return 0; }
+                                     bool& is_last_obj) {
+        data_out = buffer::alloc(4); // A dummy buffer.
+        is_last_obj = true;
+        return 0;
+    }
 
     /**
      * Free user-defined instance that is allocated by
