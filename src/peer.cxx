@@ -195,7 +195,8 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
     std::lock_guard<std::mutex> l(rpc_protector_);
 
     bool backoff_timer_disabled =
-        debugging_options::get_instance().disable_reconn_backoff_;
+        debugging_options::get_instance()
+        .disable_reconn_backoff_.load(std::memory_order_relaxed);
     if (backoff_timer_disabled) {
         p_tr("reconnection back-off timer is disabled");
     }
