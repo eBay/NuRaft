@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "cluster_config.hxx"
 #include "context.hxx"
+#include "debugging_options.hxx"
 #include "error_code.hxx"
 #include "global_mgr.hxx"
 #include "state_machine.hxx"
@@ -114,6 +115,13 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::AppendLogs, &param);
     if (rc == CbReturnCode::ReturnNull) return nullptr;
 
+    size_t sleep_us = debugging_options::get_instance()
+                      .handle_cli_req_sleep_us_.load(std::memory_order_relaxed);
+    if (sleep_us) {
+        // Sleep if the debugging option is given.
+        timer_helper::sleep_us(sleep_us);
+    }
+
     if (!get_config()->is_async_replication()) {
         // Sync replication:
         //   Set callback function for `last_idx`.
@@ -126,6 +134,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
             if (entry != commit_ret_elems_.end()) {
                 // Commit thread was faster than this.
                 elem = entry->second;
+                p_tr("commit thread was faster than this thread: %p", elem);
             } else {
                 commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
             }

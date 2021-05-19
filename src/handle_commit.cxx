@@ -312,18 +312,24 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             elem->idx_ = sm_idx;
             elem->result_code_ = cmd_result_code::OK;
             elem->ret_value_ = ret_value;
+            p_tr("commit thread is invoked earlier than user thread, "
+                 "log %lu, elem %p", sm_idx, elem);
+
             switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
             default:
                 elem->awaiter_.invoke(); // Callback will not sleep.
-                commit_ret_elems_.insert( std::make_pair(sm_idx, elem) );
                 break;
             case raft_params::async_handler:
-                // Async handler: put into list.
-                elem->async_result_ = cs_new< cmd_result< ptr<buffer> > >();
-                async_elems.push_back(elem);
+                // Async handler:
+                //   Set the result, but should not put it into the
+                //   `async_elems` list, as the user thread (supposed to be
+                //   executed right after this) will invoke the callback immediately.
+                elem->async_result_ =
+                    cs_new< cmd_result< ptr<buffer> > >( elem->ret_value_ );
                 break;
             }
+            commit_ret_elems_.insert( std::make_pair(sm_idx, elem) );
         }
     }
 
