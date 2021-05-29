@@ -184,13 +184,19 @@ void peer::handle_rpc_result( ptr<peer> myself,
 bool peer::recreate_rpc(ptr<srv_config>& config,
                         context& ctx)
 {
-    if (abandoned_) return false;
+    if (abandoned_) {
+        p_tr("peer %d is abandoned", config->get_id());
+        return false;
+    }
 
     ptr<rpc_client_factory> factory = nullptr;
     {   std::lock_guard<std::mutex> l(ctx.ctx_lock_);
         factory = ctx.rpc_cli_factory_;
     }
-    if (!factory) return false;
+    if (!factory) {
+        p_tr("client factory is empty");
+        return false;
+    }
 
     std::lock_guard<std::mutex> l(rpc_protector_);
 

@@ -684,6 +684,15 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             if (role_ == srv_role::leader && srv_to_leave_) {
                 // If leader, keep the to-be-removed server in peer list
                 // until 1) catch-up is done, or 2) timeout.
+                p_in("srv_to_leave_: %d", srv_to_leave_->get_id());
+                ptr<snapshot_sync_ctx> snp_ctx = srv_to_leave_->get_snapshot_sync_ctx();
+                if (snp_ctx) {
+                    void* user_ctx = snp_ctx->get_user_snp_ctx();
+                    p_in("srv_to_leave_ has snapshot context %p and user context %p, "
+                         "destroy them",
+                         snp_ctx.get(), user_ctx);
+                    clear_snapshot_sync_ctx(*srv_to_leave_);
+                }
 
                 // However, if `srv_to_leave_` is NULL,
                 // it is replaying old config. We can remove it
@@ -758,6 +767,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
 void raft_server::remove_peer_from_peers(const ptr<peer>& pp) {
     p_in("server %d is removed from cluster", pp->get_id());
     pp->enable_hb(false);
+    clear_snapshot_sync_ctx(*pp);
     peers_.erase(pp->get_id());
 }
 

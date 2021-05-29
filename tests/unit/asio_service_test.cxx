@@ -1750,6 +1750,221 @@ int snapshot_read_failure_for_lagging_server_test(size_t num_failures) {
     return 0;
 }
 
+int snapshot_context_timeout_normal_test() {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    // Stop S3.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_sec(1, "stop S3");
+
+    // Replication.
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // Set snapshot delay for S3 and restart.
+    s3.getTestSm()->setSnpDelay(100);
+    s3.restartServer();
+    TestSuite::sleep_sec(1, "restarting S3");
+
+    // User snapshot ctx should exist.
+    CHK_EQ(1, s1.getTestSm()->getNumOpenedUserCtxs());
+
+    // Stop S3 again, and wait.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 25, "stop S3");
+
+    // User snapshot ctx should be empty.
+    CHK_Z(s1.getTestSm()->getNumOpenedUserCtxs());
+
+    // Clear snapshot delay for S3 and restart.
+    s3.getTestSm()->setSnpDelay(0);
+    s3.restartServer();
+    TestSuite::sleep_sec(1, "restarting S3");
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int snapshot_context_timeout_join_test() {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group( {&s1, &s2} ) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    // Replication.
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    raft_params params = s1.raftServer->get_current_params();
+    params.log_sync_stop_gap_ = 10;
+    s1.raftServer->update_params(params);
+
+    // Set snapshot delay for S3 and add it to the group.
+    s3.getTestSm()->setSnpDelay(100);
+    s1.raftServer->add_srv( *s3.getTestMgr()->get_srv_config() );
+    TestSuite::sleep_sec(1, "adding S3");
+
+    // User snapshot ctx should exist.
+    CHK_EQ(1, s1.getTestSm()->getNumOpenedUserCtxs());
+
+    // Stop S3, and wait.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 25, "stop S3");
+
+    // User snapshot ctx should be empty.
+    CHK_Z(s1.getTestSm()->getNumOpenedUserCtxs());
+
+    // Clear snapshot delay for S3 and restart.
+    s3.getTestSm()->setSnpDelay(0);
+    s3.restartServer();
+    TestSuite::sleep_sec(1, "restarting S3");
+    TestSuite::sleep_sec(2, "wait for previous adding server to be expired");
+
+    // Re-attempt adding S3.
+    s1.raftServer->add_srv( *s3.getTestMgr()->get_srv_config() );
+    TestSuite::sleep_sec(1, "adding S3");
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int snapshot_context_timeout_removed_server_test() {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+    TestSuite::sleep_sec(1, "wait for Raft group ready");
+
+    // Stop S3.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_sec(1, "stop S3");
+
+    // Replication.
+    for (size_t ii=0; ii<100; ++ii) {
+        std::string msg_str = std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        buffer_serializer bs(msg);
+        bs.put_str(msg_str);
+        s1.raftServer->append_entries( {msg} );
+    }
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // Set snapshot delay for S3 and restart.
+    s3.getTestSm()->setSnpDelay(100);
+    s3.restartServer();
+    TestSuite::sleep_sec(1, "restarting S3");
+
+    // User snapshot ctx should exist.
+    CHK_EQ(1, s1.getTestSm()->getNumOpenedUserCtxs());
+
+    // Now remove S3 from the group while it is still receiving snapshot.
+    s1.raftServer->remove_srv(3);
+    TestSuite::sleep_sec(1, "removing S3");
+
+    // S3 shouldn't exist in the group.
+    CHK_NULL( s1.raftServer->get_srv_config(3).get() );
+
+    // User snapshot ctx should be empty.
+    CHK_Z(s1.getTestSm()->getNumOpenedUserCtxs());
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -1824,6 +2039,15 @@ int main(int argc, char** argv) {
     ts.doTest( "snapshot read failure for lagging server test",
                snapshot_read_failure_for_lagging_server_test,
                TestRange<size_t>( {1, 5} ) );
+
+    ts.doTest( "snapshot context timeout normal test",
+               snapshot_context_timeout_normal_test );
+
+    ts.doTest( "snapshot context timeout join test",
+               snapshot_context_timeout_join_test );
+
+    ts.doTest( "snapshot context timeout removed server test",
+               snapshot_context_timeout_removed_server_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

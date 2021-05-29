@@ -230,7 +230,9 @@ bool inmem_log_store::compact(ulong last_log_index) {
     // WARNING:
     //   Even though nothing has been erased,
     //   we should set `start_idx_` to new index.
-    start_idx_ = last_log_index + 1;
+    if (start_idx_ <= last_log_index) {
+        start_idx_ = last_log_index + 1;
+    }
     return true;
 }
 
