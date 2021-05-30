@@ -335,6 +335,7 @@ void raft_server::update_params(const raft_params& new_params) {
     }
     for (auto& entry: peers_) {
         peer* p = entry.second.get();
+        auto_lock(p->get_lock());
         p->set_hb_interval(clone->heart_beat_interval_);
         p->resume_hb_speed();
     }
@@ -497,6 +498,7 @@ int32 raft_server::get_num_voting_members() {
     int32 count = 0;
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
+        auto_lock(p->get_lock());
         if (!is_regular_member(p)) continue;
         count++;
     }

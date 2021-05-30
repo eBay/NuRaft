@@ -806,6 +806,7 @@ int multiple_config_change_test() {
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
     s3.raftServer->shutdown();
+    s4.raftServer->shutdown();
 
     f_base->destroy();
 
