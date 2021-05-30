@@ -743,12 +743,14 @@ int response_hint_test(bool with_meta) {
 }
 
 static void async_handler(std::list<ulong>* idx_list,
+                          std::mutex* idx_list_lock,
                           ptr<buffer>& result,
                           ptr<std::exception>& err)
 {
     result->pos(0);
     ulong idx = result->get_ulong();
     if (idx_list) {
+        std::lock_guard<std::mutex> l(*idx_list_lock);
         idx_list->push_back(idx);
     }
 }
@@ -783,6 +785,7 @@ int async_append_handler_test() {
     const size_t NUM = 10;
     std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
     std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
     for (size_t ii=0; ii<NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
         ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
@@ -793,6 +796,7 @@ int async_append_handler_test() {
         cmd_result< ptr<buffer> >::handler_type my_handler =
             std::bind( async_handler,
                        &idx_list,
+                       &idx_list_lock,
                        std::placeholders::_1,
                        std::placeholders::_2 );
         ret->when_ready( my_handler );
@@ -802,7 +806,10 @@ int async_append_handler_test() {
     TestSuite::sleep_sec(1, "replication");
 
     // Now all async handlers should have result.
-    CHK_EQ(NUM, idx_list.size());
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
 
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );

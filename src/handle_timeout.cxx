@@ -345,11 +345,7 @@ void raft_server::cancel_schedulers() {
         p->shutdown();
 
         // Free user context of snapshot if exists.
-        ptr<snapshot_sync_ctx> sync_ctx = p->get_snapshot_sync_ctx();
-        if (sync_ctx) {
-            void*& user_ctx = sync_ctx->get_user_snp_ctx();
-            state_machine_->free_user_snp_ctx(user_ctx);
-        }
+        clear_snapshot_sync_ctx(*p);
     }
     scheduler_.reset();
 }
