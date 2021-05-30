@@ -134,7 +134,10 @@ void peer::handle_rpc_result( ptr<peer> myself,
         }
 
         reset_active_timer();
-        resume_hb_speed();
+        {
+            auto_lock(lock_);
+            resume_hb_speed();
+        }
         ptr<rpc_exception> no_except;
         resp->set_peer(myself);
         pending_result->set_result(resp, no_except);
@@ -148,7 +151,10 @@ void peer::handle_rpc_result( ptr<peer> myself,
         // NOTE: Explicit failure is also treated as an activity
         //       of that connection.
         reset_active_timer();
-        slow_down_hb();
+        {
+            auto_lock(lock_);
+            slow_down_hb();
+        }
         ptr<resp_msg> no_resp;
         pending_result->set_result(no_resp, err);
 

@@ -743,6 +743,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         // SHOULD update peer's srv_config.
         for (auto& entry_peer: peers_) {
             peer* pp = entry_peer.second.get();
+            std::lock_guard<std::mutex> l(pp->get_lock());
             if (pp->get_id() == s_conf->get_id()) {
                 pp->set_config(entry);
             }

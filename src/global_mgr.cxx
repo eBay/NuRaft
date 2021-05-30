@@ -91,7 +91,7 @@ struct nuraft_global_mgr::worker_handle {
     size_t id_;
     EventAwaiter ea_;
     ptr<std::thread> thread_;
-    bool stopping_;
+    std::atomic<bool> stopping_;
     std::atomic<status> status_;
 };
 

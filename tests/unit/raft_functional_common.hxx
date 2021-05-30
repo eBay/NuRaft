@@ -141,6 +141,8 @@ public:
             int ctx = 0xabcdef;
             user_snp_ctx = malloc( sizeof(ctx) );
             memcpy(user_snp_ctx, &ctx, sizeof(ctx));
+
+            std::lock_guard<std::mutex> ll(openedUserCtxsLock);
             openedUserCtxs.insert(user_snp_ctx);
         }
 
@@ -205,10 +207,13 @@ public:
         // Check magic number.
         assert(ctx == 0xabcdef);
         free(user_snp_ctx);
+
+        std::lock_guard<std::mutex> ll(openedUserCtxsLock);
         openedUserCtxs.erase(user_snp_ctx);
     }
 
     size_t getNumOpenedUserCtxs() const {
+        std::lock_guard<std::mutex> ll(openedUserCtxsLock);
         return openedUserCtxs.size();
     }
 
@@ -356,6 +361,7 @@ private:
     std::atomic<size_t> snpDelayMs;
 
     std::set<void*> openedUserCtxs;
+    mutable std::mutex openedUserCtxsLock;
 
     SimpleLogger* myLog;
 };
