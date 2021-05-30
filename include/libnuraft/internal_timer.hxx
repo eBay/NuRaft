@@ -49,10 +49,12 @@ struct timer_helper {
     }
 
     size_t get_duration_us() const {
+        std::lock_guard<std::mutex> l(lock_);
         return duration_us_;
     }
 
     void set_duration_us(size_t us) {
+        std::lock_guard<std::mutex> l(lock_);
         duration_us_ = us;
     }
 
@@ -120,7 +122,7 @@ struct timer_helper {
     std::chrono::time_point<std::chrono::system_clock> t_created_;
     size_t duration_us_;
     mutable bool first_event_fired_;
-    std::mutex lock_;
+    mutable std::mutex lock_;
 };
 
 }

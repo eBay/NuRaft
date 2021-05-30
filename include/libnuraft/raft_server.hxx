@@ -53,6 +53,7 @@ class rpc_client;
 class req_msg;
 class resp_msg;
 class rpc_exception;
+class snapshot_sync_ctx;
 class state_machine;
 class state_mgr;
 struct context;
@@ -748,6 +749,9 @@ protected:
                                           ulong last_log_idx,
                                           ulong term,
                                           ulong commit_idx);
+    bool check_snapshot_timeout(ptr<peer> pp);
+    void destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx);
+    void clear_snapshot_sync_ctx(peer& pp);
     void commit(ulong target_idx);
     void snapshot_and_compact(ulong committed_idx);
     bool update_term(ulong term);

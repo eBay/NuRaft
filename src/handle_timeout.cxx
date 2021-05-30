@@ -74,6 +74,28 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
          srv_to_join_ &&
          srv_to_join_->get_id() == srv_id ) {
         p_in("retrying snapshot read for server %d", srv_id);
+        if (srv_to_join_->need_to_reconnect()) {
+            p_in("rpc client for %d needs reconnection", srv_id);
+
+            ptr<raft_params> params = ctx_->get_params();
+            uint64_t resp_timer_ms = srv_to_join_->get_resp_timer_us() / 1000;
+            if ( resp_timer_ms >= (uint64_t)params->heart_beat_interval_ *
+                                  raft_server::raft_limits_.response_limit_ ) {
+                p_in("response timeout: %lu ms, will not retry", resp_timer_ms);
+                clear_snapshot_sync_ctx(*srv_to_join_);
+                return;
+            }
+
+            ptr<srv_config> s_config =
+                srv_config::deserialize( *srv_to_join_->get_config().serialize() );
+            bool succ = srv_to_join_->recreate_rpc(s_config, *ctx_);
+            if (!succ) {
+                // Reconnection failed.
+                p_wn("reconnection failed, will not retry");
+                clear_snapshot_sync_ctx(*srv_to_join_);
+                return;
+            }
+        }
         sync_log_to_new_srv(0);
         return;
     }
@@ -323,11 +345,7 @@ void raft_server::cancel_schedulers() {
         p->shutdown();
 
         // Free user context of snapshot if exists.
-        ptr<snapshot_sync_ctx> sync_ctx = p->get_snapshot_sync_ctx();
-        if (sync_ctx) {
-            void*& user_ctx = sync_ctx->get_user_snp_ctx();
-            state_machine_->free_user_snp_ctx(user_ctx);
-        }
+        clear_snapshot_sync_ctx(*p);
     }
     scheduler_.reset();
 }

@@ -99,6 +99,11 @@ public:
         return ret;
     }
 
+    void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) {
+        // Nothing to do with configuration change. Just update committed index.
+        last_committed_idx_ = log_idx;
+    }
+
     void rollback(const ulong log_idx, buffer& data) {
         // Nothing to do with rollback,
         // as this example doesn't do anything on pre-commit.

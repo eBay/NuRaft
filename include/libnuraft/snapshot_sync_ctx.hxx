@@ -29,13 +29,14 @@ class snapshot;
 struct snapshot_sync_ctx {
 public:
     snapshot_sync_ctx(const ptr<snapshot>& s,
+                      ulong timeout_ms,
                       ulong offset = 0L)
         : snapshot_(s)
         , offset_(offset)
         , user_snp_ctx_(nullptr)
     {
         // 10 seconds by default.
-        timer_.set_duration_sec(10);
+        timer_.set_duration_ms(timeout_ms);
     }
 
     __nocopy__(snapshot_sync_ctx);
