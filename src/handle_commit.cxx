@@ -321,18 +321,24 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             elem->idx_ = sm_idx;
             elem->result_code_ = cmd_result_code::OK;
             elem->ret_value_ = ret_value;
+            p_tr("commit thread is invoked earlier than user thread, "
+                 "log %lu, elem %p", sm_idx, elem);
+
             switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
             default:
                 elem->awaiter_.invoke(); // Callback will not sleep.
-                commit_ret_elems_.insert( std::make_pair(sm_idx, elem) );
                 break;
             case raft_params::async_handler:
-                // Async handler: put into list.
-                elem->async_result_ = cs_new< cmd_result< ptr<buffer> > >();
-                async_elems.push_back(elem);
+                // Async handler:
+                //   Set the result, but should not put it into the
+                //   `async_elems` list, as the user thread (supposed to be
+                //   executed right after this) will invoke the callback immediately.
+                elem->async_result_ =
+                    cs_new< cmd_result< ptr<buffer> > >( elem->ret_value_ );
                 break;
             }
+            commit_ret_elems_.insert( std::make_pair(sm_idx, elem) );
         }
     }
 
@@ -687,6 +693,15 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             if (role_ == srv_role::leader && srv_to_leave_) {
                 // If leader, keep the to-be-removed server in peer list
                 // until 1) catch-up is done, or 2) timeout.
+                p_in("srv_to_leave_: %d", srv_to_leave_->get_id());
+                ptr<snapshot_sync_ctx> snp_ctx = srv_to_leave_->get_snapshot_sync_ctx();
+                if (snp_ctx) {
+                    void* user_ctx = snp_ctx->get_user_snp_ctx();
+                    p_in("srv_to_leave_ has snapshot context %p and user context %p, "
+                         "destroy them",
+                         snp_ctx.get(), user_ctx);
+                    clear_snapshot_sync_ctx(*srv_to_leave_);
+                }
 
                 // However, if `srv_to_leave_` is NULL,
                 // it is replaying old config. We can remove it
@@ -737,6 +752,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         // SHOULD update peer's srv_config.
         for (auto& entry_peer: peers_) {
             peer* pp = entry_peer.second.get();
+            std::lock_guard<std::mutex> l(pp->get_lock());
             if (pp->get_id() == s_conf->get_id()) {
                 pp->set_config(entry);
             }
@@ -761,6 +777,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
 void raft_server::remove_peer_from_peers(const ptr<peer>& pp) {
     p_in("server %d is removed from cluster", pp->get_id());
     pp->enable_hb(false);
+    clear_snapshot_sync_ctx(*pp);
     peers_.erase(pp->get_id());
 }
 

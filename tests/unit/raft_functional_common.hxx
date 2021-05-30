@@ -26,6 +26,7 @@ limitations under the License.
 #include <cassert>
 #include <list>
 #include <map>
+#include <set>
 #include <sstream>
 
 #define INT_UNUSED      int ATTR_UNUSED
@@ -43,6 +44,7 @@ public:
         : customBatchSize(0)
         , lastCommittedConfigIdx(0)
         , targetSnpReadFailures(0)
+        , snpDelayMs(0)
         , myLog(logger)
     {
         (void)myLog;
@@ -85,6 +87,10 @@ public:
                               bool is_first_obj,
                               bool is_last_obj)
     {
+        if (snpDelayMs) {
+            TestSuite::sleep_ms(snpDelayMs);
+        }
+
         if (obj_id == 0) {
             // Special object containing metadata.
             // Request next object.
@@ -130,16 +136,19 @@ public:
                              ptr<buffer>& data_out,
                              bool& is_last_obj)
     {
-        if (targetSnpReadFailures > 0) {
-            targetSnpReadFailures--;
-            return -1;
-        }
-
         if (!user_snp_ctx) {
             // Create a dummy context with a magic number.
             int ctx = 0xabcdef;
             user_snp_ctx = malloc( sizeof(ctx) );
             memcpy(user_snp_ctx, &ctx, sizeof(ctx));
+
+            std::lock_guard<std::mutex> ll(openedUserCtxsLock);
+            openedUserCtxs.insert(user_snp_ctx);
+        }
+
+        if (targetSnpReadFailures > 0) {
+            targetSnpReadFailures--;
+            return -1;
         }
 
         if (obj_id == 0) {
@@ -198,6 +207,14 @@ public:
         // Check magic number.
         assert(ctx == 0xabcdef);
         free(user_snp_ctx);
+
+        std::lock_guard<std::mutex> ll(openedUserCtxsLock);
+        openedUserCtxs.erase(user_snp_ctx);
+    }
+
+    size_t getNumOpenedUserCtxs() const {
+        std::lock_guard<std::mutex> ll(openedUserCtxsLock);
+        return openedUserCtxs.size();
     }
 
     ptr<snapshot> last_snapshot() {
@@ -322,6 +339,10 @@ public:
         targetSnpReadFailures = num_failures;
     }
 
+    void setSnpDelay(size_t delay_ms) {
+        snpDelayMs = delay_ms;
+    }
+
 private:
     std::map<uint64_t, ptr<buffer>> preCommits;
     std::map<uint64_t, ptr<buffer>> commits;
@@ -336,6 +357,11 @@ private:
     std::atomic<uint64_t> lastCommittedConfigIdx;
 
     std::atomic<int> targetSnpReadFailures;
+
+    std::atomic<size_t> snpDelayMs;
+
+    std::set<void*> openedUserCtxs;
+    mutable std::mutex openedUserCtxsLock;
 
     SimpleLogger* myLog;
 };
@@ -398,9 +424,7 @@ private:
 
 static VOID_UNUSED reset_log_files() {
     std::stringstream ss;
-    for (size_t ii=1; ii<=10; ++ii) {
-        ss << "srv" + std::to_string(ii) + ".log* ";
-    }
+    ss << "srv*.log ";
 
 #if defined(__linux__) || defined(__APPLE__)
     std::string cmd = "rm -f base.log " + ss.str() + "2> /dev/null";

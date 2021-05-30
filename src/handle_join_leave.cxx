@@ -568,12 +568,7 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
 }
 
 void raft_server::reset_srv_to_join() {
-    ptr<snapshot_sync_ctx> sync_ctx = srv_to_join_->get_snapshot_sync_ctx();
-    if (sync_ctx) {
-        // If user context exists for snapshot, should free it.
-        void*& user_ctx = sync_ctx->get_user_snp_ctx();
-        state_machine_->free_user_snp_ctx(user_ctx);
-    }
+    clear_snapshot_sync_ctx(*srv_to_join_);
     srv_to_join_->shutdown();
     srv_to_join_.reset();
 }

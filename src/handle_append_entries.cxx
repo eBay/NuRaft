@@ -268,6 +268,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     }
 
     p_db("Server %d is busy, skip the request", p->get_id());
+    check_snapshot_timeout(p);
 
     int32 last_ts_ms = p->get_ls_timer_us() / 1000;
     if ( last_ts_ms > params->heart_beat_interval_ ) {

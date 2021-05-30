@@ -181,12 +181,13 @@ public:
         return pending_commit_flag_.compare_exchange_strong(t, false);
     }
 
-    void set_snapshot_in_sync(const ptr<snapshot>& s) {
+    void set_snapshot_in_sync(const ptr<snapshot>& s,
+                              ulong timeout_ms = 10 * 1000) {
         if (s == nilptr) {
             snp_sync_ctx_.reset();
         }
         else {
-            snp_sync_ctx_ = cs_new<snapshot_sync_ctx>(s);
+            snp_sync_ctx_ = cs_new<snapshot_sync_ctx>(s, timeout_ms);
         }
     }
 

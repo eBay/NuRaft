@@ -335,6 +335,7 @@ void raft_server::update_params(const raft_params& new_params) {
     }
     for (auto& entry: peers_) {
         peer* p = entry.second.get();
+        auto_lock(p->get_lock());
         p->set_hb_interval(clone->heart_beat_interval_);
         p->resume_hb_speed();
     }
@@ -497,6 +498,7 @@ int32 raft_server::get_num_voting_members() {
     int32 count = 0;
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
+        auto_lock(p->get_lock());
         if (!is_regular_member(p)) continue;
         count++;
     }
@@ -729,6 +731,8 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         if (pp) {
             pp->inc_rpc_errs();
             rpc_errs = pp->get_rpc_errs();
+
+            check_snapshot_timeout(pp);
         }
 
         if (rpc_errs < raft_server::raft_limits_.warning_limit_) {
@@ -939,12 +943,7 @@ void raft_server::become_leader() {
         ptr<snapshot> nil_snp;
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             ptr<peer> pp = it->second;
-            ptr<snapshot_sync_ctx> sync_ctx = pp->get_snapshot_sync_ctx();
-            if (sync_ctx) {
-                void*& user_ctx = sync_ctx->get_user_snp_ctx();
-                state_machine_->free_user_snp_ctx(user_ctx);
-                pp->set_snapshot_in_sync(nil_snp);
-            }
+            clear_snapshot_sync_ctx(*pp);
             // Reset RPC client for all peers.
             // NOTE: Now we don't reset client, as we already did it
             //       during pre-vote phase.
@@ -1365,6 +1364,20 @@ void raft_server::handle_ext_resp_err(rpc_exception& err) {
     ptr<req_msg> req = err.req();
     p_in( "receive an rpc error response from peer server, %s %d",
           err.what(), req->get_type() );
+
+    if ( req->get_type() == msg_type::install_snapshot_request ) {
+        if (srv_to_join_ && srv_to_join_->get_id() == req->get_dst()) {
+            bool timed_out = check_snapshot_timeout(srv_to_join_);
+            if (!timed_out) {
+                // Enable temp HB to retry snapshot.
+                p_wn("sending snapshot to joining server %d failed, "
+                     "retry with temp heartbeat", srv_to_join_->get_id());
+                srv_to_join_snp_retry_required_ = true;
+                enable_hb_for_peer(*srv_to_join_);
+            }
+        }
+    }
+
     if ( req->get_type() != msg_type::sync_log_request     &&
          req->get_type() != msg_type::join_cluster_request &&
          req->get_type() != msg_type::leave_cluster_request ) {
