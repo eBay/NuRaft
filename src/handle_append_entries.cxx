@@ -1008,7 +1008,7 @@ ulong raft_server::get_expected_committed_log_idx() {
                std::greater<ulong>() );
 
     size_t quorum_idx = get_quorum_for_commit();
-    if (l_->get_level() >= 6) {
+    if (l_ && l_->get_level() >= 6) {
         std::string tmp_str;
         for (ulong m_idx: matched_indexes) {
             tmp_str += std::to_string(m_idx) + " ";
