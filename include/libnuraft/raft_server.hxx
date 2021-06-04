@@ -53,11 +53,11 @@ class rpc_client;
 class req_msg;
 class resp_msg;
 class rpc_exception;
-class snapshot_sync_ctx;
 class state_machine;
 class state_mgr;
 struct context;
 struct raft_params;
+struct snapshot_sync_ctx;
 class raft_server : public std::enable_shared_from_this<raft_server> {
     friend class nuraft_global_mgr;
 public:
