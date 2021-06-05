@@ -134,7 +134,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
             if (entry != commit_ret_elems_.end()) {
                 // Commit thread was faster than this.
                 elem = entry->second;
-                p_tr("commit thread was faster than this thread: %p", elem);
+                p_tr("commit thread was faster than this thread: %p", elem.get());
             } else {
                 commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
             }

@@ -313,7 +313,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             elem->result_code_ = cmd_result_code::OK;
             elem->ret_value_ = ret_value;
             p_tr("commit thread is invoked earlier than user thread, "
-                 "log %lu, elem %p", sm_idx, elem);
+                 "log %lu, elem %p", sm_idx, elem.get());
 
             switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
