@@ -24,20 +24,20 @@ limitations under the License.
 #include <cstring>
 #include <iostream>
 
-#define __init_block(ptr, len)  ( (uint*)(ptr) )[0] = (uint)len;    \
-                                ( (uint*)(ptr) )[1] = 0
+#define __init_block(ptr, len)  ( (ulong*)(ptr) )[0] = (ulong)len;    \
+                                ( (ulong*)(ptr) )[1] = 0
 
-#define __size_of_block(p)      ( *( (uint*)(p) ))
+#define __size_of_block(p)      ( *( (ulong*)(p) ))
 
-#define __pos_of_block(p)       ( (uint*)(p) )[1]
+#define __pos_of_block(p)       ( (ulong*)(p) )[1]
 
-#define __mv_fw_block(ptr, delta)  ( (uint*)(ptr) )[1] += (delta)
+#define __mv_fw_block(ptr, delta)  ( (ulong*)(ptr) )[1] += (delta)
 
-#define __set_block_pos(ptr, pos)  ( (uint*)(ptr) )[1] = (pos)
+#define __set_block_pos(ptr, pos)  ( (ulong*)(ptr) )[1] = (pos)
 
-#define __data_of_block(p)   (byte*)( ( (byte*)( ((uint*)(p)) + 2 ) ) + __pos_of_block(p) )
+#define __data_of_block(p)   (byte*)( ( (byte*)( ((ulong*)(p)) + 2 ) ) + __pos_of_block(p) )
 
-#define __entire_data_of_block(p)  (byte*)( (byte*)( ((uint*)(p))   + 2 ) )
+#define __entire_data_of_block(p)  (byte*)( (byte*)( ((ulong*)(p))   + 2 ) )
 
 namespace nuraft {
 
@@ -63,14 +63,10 @@ ptr<buffer> buffer::alloc(const size_t size) {
     static stat_elem& amount_active = *stat_mgr::get_instance()->create_stat
         (stat_elem::COUNTER, "amount_active_buffers");
 
-    if (size >= 0x80000000) {
-        throw std::out_of_range( "size exceed the max size that "
-                                 "cornrestone::buffer could support" );
-    }
     num_allocs++;
     num_active++;
 
-    size_t len = size + sizeof(uint) * 2;
+    size_t len = size + sizeof(ulong) * 2;
     ptr<buffer> buf( reinterpret_cast<buffer*>(new char[len]),
                      &free_buffer );
     amount_allocs += len;
@@ -100,7 +96,7 @@ ptr<buffer> buffer::clone(const buffer& buf) {
 }
 
 size_t buffer::container_size() const {
-    return (size_t)( __size_of_block(this) + sizeof(uint) * 2);
+    return (size_t)( __size_of_block(this) + sizeof(ulong) * 2);
 }
 
 size_t buffer::size() const {
