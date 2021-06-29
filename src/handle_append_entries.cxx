@@ -880,14 +880,17 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                           resp.get_next_idx() < log_store_->next_slot();
 
     } else {
-        ulong prev_next_log = p->get_next_log_idx();
         std::lock_guard<std::mutex> guard(p->get_lock());
-        if (resp.get_next_idx() > 0 && p->get_next_log_idx() > resp.get_next_idx()) {
+        ulong prev_next_log = p->get_next_log_idx();
+        if (resp.get_next_idx() > 0 && prev_next_log > resp.get_next_idx()) {
             // fast move for the peer to catch up
             p->set_next_log_idx(resp.get_next_idx());
         } else {
             // if not, move one log backward.
-            p->set_next_log_idx(p->get_next_log_idx() - 1);
+            // WARNING: Make sure that `next_log_idx_` shouldn't be smaller than 0.
+            if (prev_next_log) {
+                p->set_next_log_idx(prev_next_log - 1);
+            }
         }
         bool suppress = p->need_to_suppress_error();
 
