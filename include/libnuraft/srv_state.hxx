@@ -22,6 +22,7 @@ limitations under the License.
 #define _SRV_STATE_HXX_
 
 #include "basic_types.hxx"
+#include "buffer.hxx"
 #include "buffer_serializer.hxx"
 
 #include <atomic>

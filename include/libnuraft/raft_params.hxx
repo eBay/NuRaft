@@ -93,6 +93,7 @@ struct raft_params {
         , return_method_(blocking)
         , auto_forwarding_req_timeout_(0)
         , grace_period_of_lagging_state_machine_(0)
+        , use_bg_thread_for_snapshot_io_(false)
         {}
 
     /**
@@ -478,7 +479,7 @@ public:
 
     /**
      * If true, creating replication (append_entries) requests will be
-     * done by a backgroudn thread, instead of doing it in user threads.
+     * done by a background thread, instead of doing it in user threads.
      * There can be some delay a little bit, but it improves reducing
      * the lock contention.
      */
@@ -527,6 +528,14 @@ public:
      * not contain the latest data yet) being a leader.
      */
     int32 grace_period_of_lagging_state_machine_;
+
+    /**
+     * (Experimental)
+     * If `true`, reading snapshot objects will be done by a background thread
+     * asynchronously instead of synchronous read by Raft worker threads.
+     * Asynchronous IO will reduce the overall latency of the leader's operations.
+     */
+    bool use_bg_thread_for_snapshot_io_;
 };
 
 }

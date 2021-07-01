@@ -192,6 +192,15 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         p->clear_reconnection();
     }
 
+    if (params->use_bg_thread_for_snapshot_io_) {
+        // Check the current queue if previous request exists.
+        if (snapshot_io_mgr::instance().has_pending_request(this, p->get_id())) {
+            p_tr( "previous snapshot request for peer %d alredy exists",
+                  p->get_id() );
+            return true;
+        }
+    }
+
     if (p->make_busy()) {
         p_tr("send request to %d\n", (int)p->get_id());
 
@@ -206,7 +215,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
         } else {
             // Normal message.
-            msg = create_append_entries_req(*p);
+            msg = create_append_entries_req(p);
             m_handler = resp_handler_;
         }
         if (!msg) {
@@ -288,7 +297,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     return false;
 }
 
-ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
+ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
+    peer& p = *pp;
     ulong cur_nxt_idx(0L);
     ulong commit_idx(0L);
     ulong last_log_idx(0L);
@@ -387,7 +397,9 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
                   p.get_id(),
                   last_log_idx, starting_idx, cur_nxt_idx,
                   snp_local->get_last_log_idx() );
-            return create_sync_snapshot_req(p, last_log_idx, term, commit_idx);
+            bool succeeded_out = false;
+            return create_sync_snapshot_req( pp, last_log_idx, term,
+                                             commit_idx, succeeded_out );
         }
 
         // Cannot recover using snapshot. Return here to protect the leader.

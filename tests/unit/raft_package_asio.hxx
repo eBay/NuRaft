@@ -125,6 +125,7 @@ public:
         params.with_reserved_log_items(10);
         params.with_snapshot_enabled(5);
         params.with_client_req_timeout(10000);
+        params.use_bg_thread_for_snapshot_io_ = true;
         context* ctx( new context( sMgr, sm, listener, myLog,
                                    rpc_cli_factory, scheduler, params ) );
         raftServer = cs_new<raft_server>(ctx, opt);

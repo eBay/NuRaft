@@ -70,11 +70,15 @@ void raft_server::clear_snapshot_sync_ctx(peer& pp) {
     pp.set_snapshot_in_sync(nullptr);
 }
 
-ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
+ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
                                                    ulong last_log_idx,
                                                    ulong term,
-                                                   ulong commit_idx) {
-    std::lock_guard<std::mutex> guard(p.get_lock());
+                                                   ulong commit_idx,
+                                                   bool& succeeded_out) {
+    succeeded_out = false;
+    peer& p = *pp;
+    ptr<raft_params> params = ctx_->get_params();
+    std::unique_lock<std::mutex> guard(p.get_lock());
     ptr<snapshot_sync_ctx> sync_ctx = p.get_snapshot_sync_ctx();
     ptr<snapshot> snp = nullptr;
     ulong prev_sync_snp_log_idx = 0;
@@ -82,7 +86,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         snp = sync_ctx->get_snapshot();
         p_db( "previous sync_ctx exists %p, offset %zu, snp idx %zu, user_ctx %p",
               sync_ctx.get(),
-              sync_ctx->offset_,
+              sync_ctx->get_offset(),
               snp->get_last_log_idx(),
               sync_ctx->get_user_snp_ctx() );
         prev_sync_snp_log_idx = snp->get_last_log_idx();
@@ -152,6 +156,19 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         p.set_snapshot_in_sync(snp, snp_timeout_ms);
     }
 
+    if (params->use_bg_thread_for_snapshot_io_) {
+        // If async snapshot IO, push the snapshot read request to the manager
+        // and immediately return here.
+        snapshot_io_mgr::instance().push( this->shared_from_this(),
+                                          pp,
+                                          ( (pp == srv_to_join_)
+                                            ? ex_resp_handler_
+                                            : resp_handler_ ) );
+        succeeded_out = true;
+        return nullptr;
+    }
+    // Otherwise (sync snapshot IO), read the requested object here and then return.
+
     bool last_request = false;
     ptr<buffer> data = nullptr;
     ulong data_idx = 0;
@@ -179,10 +196,12 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
 
     } else {
         // Logical object type snapshot
-        ulong obj_idx = p.get_snapshot_sync_ctx()->get_offset();
-        void*& user_snp_ctx = p.get_snapshot_sync_ctx()->get_user_snp_ctx();
+        sync_ctx = p.get_snapshot_sync_ctx();
+        ulong obj_idx = sync_ctx->get_offset();
+        void*& user_snp_ctx = sync_ctx->get_user_snp_ctx();
         p_dv("peer: %d, obj_idx: %ld, user_snp_ctx %p\n",
              (int)p.get_id(), obj_idx, user_snp_ctx);
+
         int rc = state_machine_->read_logical_snp_obj( *snp, user_snp_ctx, obj_idx,
                                                        data, last_request );
         if (rc < 0) {
@@ -213,6 +232,8 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
                                   ( term,
                                     sync_req->serialize(),
                                     log_val_type::snp_sync_req ) );
+
+    succeeded_out = true;
     return req;
 }
 
