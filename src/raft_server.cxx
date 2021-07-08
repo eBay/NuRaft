@@ -409,7 +409,10 @@ void raft_server::shutdown() {
     cancel_global_requests();
 
     // Cancel snapshot requests if exist.
-    snapshot_io_mgr::instance().drop_reqs(this);
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->use_bg_thread_for_snapshot_io_) {
+        snapshot_io_mgr::instance().drop_reqs(this);
+    }
 
     // Terminate background commit thread.
     {   recur_lock(lock_);

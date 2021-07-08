@@ -195,7 +195,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     if (params->use_bg_thread_for_snapshot_io_) {
         // Check the current queue if previous request exists.
         if (snapshot_io_mgr::instance().has_pending_request(this, p->get_id())) {
-            p_tr( "previous snapshot request for peer %d alredy exists",
+            p_tr( "previous snapshot request for peer %d already exists",
                   p->get_id() );
             return true;
         }
@@ -218,9 +218,15 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             msg = create_append_entries_req(p);
             m_handler = resp_handler_;
         }
+
         if (!msg) {
             // Even normal message doesn't exist.
             p->set_free();
+            if ( params->use_bg_thread_for_snapshot_io_ &&
+                 p->get_snapshot_sync_ctx() ) {
+                // If this is an async snapshot request, invoke IO thread.
+                snapshot_io_mgr::instance().invoke();
+            }
             return true;
         }
 
@@ -397,6 +403,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
                   p.get_id(),
                   last_log_idx, starting_idx, cur_nxt_idx,
                   snp_local->get_last_log_idx() );
+
             bool succeeded_out = false;
             return create_sync_snapshot_req( pp, last_log_idx, term,
                                              commit_idx, succeeded_out );

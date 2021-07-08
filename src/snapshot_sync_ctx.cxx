@@ -92,7 +92,6 @@ bool snapshot_io_mgr::push(ptr<snapshot_io_mgr::io_queue_elem>& elem) {
     queue_.push_back(elem);
     p_tr("added snapshot request for peer %d", elem->dst_->get_id());
 
-    io_thread_ea_->invoke();
     return true;
 }
 
@@ -107,6 +106,10 @@ bool snapshot_io_mgr::push(ptr<raft_server> r,
                                p,
                                h );
     return push(elem);
+}
+
+void snapshot_io_mgr::invoke() {
+    io_thread_ea_->invoke();
 }
 
 void snapshot_io_mgr::drop_reqs(raft_server* r) {
@@ -156,10 +159,10 @@ void snapshot_io_mgr::async_io_loop() {
         io_thread_ea_->reset();
 
         std::list< ptr<io_queue_elem> > reqs;
+        std::list< ptr<io_queue_elem> > reqs_to_return;
         if (!terminating_) {
             auto_lock(queue_lock_);
             reqs = queue_;
-            queue_.clear();
         }
 
         for (ptr<io_queue_elem>& elem: reqs) {
@@ -177,7 +180,7 @@ void snapshot_io_mgr::async_io_loop() {
             logger* l_ = elem->raft_->l_.get();
             ulong obj_idx = elem->sync_ctx_->get_offset();
             void*& user_snp_ctx = elem->sync_ctx_->get_user_snp_ctx();
-            p_dv("peer: %d, obj_idx: %ld, user_snp_ctx %p\n",
+            p_db("peer: %d, obj_idx: %ld, user_snp_ctx %p\n",
                  dst_id, obj_idx, user_snp_ctx);
 
             ulong snp_log_idx = elem->snapshot_->get_last_log_idx();
@@ -238,10 +241,31 @@ void snapshot_io_mgr::async_io_loop() {
                 elem->dst_->set_rsv_msg(nullptr, nullptr);
                 elem->dst_->send_req(elem->dst_, req, elem->handler_);
                 elem->dst_->reset_ls_timer();
+                p_tr("sent message to peer %d", dst_id);
 
             } else {
-                p_dv("peer %d is busy, keep the request message", dst_id);
-                elem->dst_->set_rsv_msg(req, elem->handler_);
+                p_db("peer %d is busy, push the request back to queue", dst_id);
+                reqs_to_return.push_back(elem);
+            }
+        }
+
+        {
+            auto_lock(queue_lock_);
+            // Remove elements in `reqs` from `queue_`.
+            for (auto& entry: reqs) {
+                auto e2 = queue_.begin();
+                while (e2 != queue_.end()) {
+                    if (*e2 == entry) {
+                        e2 = queue_.erase(e2);
+                        break;
+                    } else {
+                        e2++;
+                    }
+                }
+            }
+            // Return elements in `reqs_to_return` to `queue_` for retrying.
+            for (auto& entry: reqs_to_return) {
+                queue_.push_back(entry);
             }
         }
 

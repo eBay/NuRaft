@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "event_awaiter.h"
 #include "peer.hxx"
+#include "snapshot_sync_ctx.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
 #include "tracer.hxx"
@@ -288,8 +289,11 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     }
 
     if (!params->use_bg_thread_for_snapshot_io_) {
-        // Only for synchronous IO.
+        // Synchronous IO: directly send here.
         srv_to_join_->send_req(srv_to_join_, req, ex_resp_handler_);
+    } else {
+        // Asynchronous IO: invoke the thread.
+        snapshot_io_mgr::instance().invoke();
     }
 }
 

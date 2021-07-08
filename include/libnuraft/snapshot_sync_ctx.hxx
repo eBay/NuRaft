@@ -117,6 +117,11 @@ public:
               std::function< void(ptr<resp_msg>&, ptr<rpc_exception>&) >& h);
 
     /**
+     * Invoke IO thread.
+     */
+    void invoke();
+
+    /**
      * Drop all pending requests belonging to the given Raft instance.
      *
      * @param r Raft server instance.
