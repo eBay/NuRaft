@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef _SNAPSHOT_SYNC_CTX_HXX_
 #define _SNAPSHOT_SYNC_CTX_HXX_
 
+#include "basic_types.hxx"
 #include "event_awaiter.h"
 #include "internal_timer.hxx"
 #include "pp_util.hxx"
