@@ -53,13 +53,14 @@ class rpc_client;
 class req_msg;
 class resp_msg;
 class rpc_exception;
+class snapshot_sync_ctx;
 class state_machine;
 class state_mgr;
 struct context;
 struct raft_params;
-struct snapshot_sync_ctx;
 class raft_server : public std::enable_shared_from_this<raft_server> {
     friend class nuraft_global_mgr;
+    friend class snapshot_io_mgr;
 public:
     struct init_options {
         init_options()
@@ -744,11 +745,12 @@ protected:
     void handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p);
     void reset_srv_to_join();
     void reset_srv_to_leave();
-    ptr<req_msg> create_append_entries_req(peer& p);
-    ptr<req_msg> create_sync_snapshot_req(peer& p,
+    ptr<req_msg> create_append_entries_req(ptr<peer>& pp);
+    ptr<req_msg> create_sync_snapshot_req(ptr<peer>& pp,
                                           ulong last_log_idx,
                                           ulong term,
-                                          ulong commit_idx);
+                                          ulong commit_idx,
+                                          bool& succeeded_out);
     bool check_snapshot_timeout(ptr<peer> pp);
     void destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx);
     void clear_snapshot_sync_ctx(peer& pp);

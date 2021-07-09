@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "event_awaiter.h"
 #include "peer.hxx"
+#include "snapshot_sync_ctx.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
 #include "tracer.hxx"
@@ -257,11 +258,13 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     // We should tolerate this.
     if (/* start_idx > 0 && */ start_idx < log_store_->start_index()) {
         srv_to_join_snp_retry_required_ = false;
-        req = create_sync_snapshot_req( *srv_to_join_,
+        bool succeeded_out = false;
+        req = create_sync_snapshot_req( srv_to_join_,
                                         start_idx,
                                         state_->get_term(),
-                                        quick_commit_index_);
-        if (req == nullptr) {
+                                        quick_commit_index_,
+                                        succeeded_out );
+        if (!succeeded_out) {
             // If reading snapshot fails, enable HB temporarily to retry it.
             srv_to_join_snp_retry_required_ = true;
             enable_hb_for_peer(*srv_to_join_);
@@ -285,7 +288,13 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
               ( state_->get_term(), log_pack, log_val_type::log_pack) );
     }
 
-    srv_to_join_->send_req(srv_to_join_, req, ex_resp_handler_);
+    if (!params->use_bg_thread_for_snapshot_io_) {
+        // Synchronous IO: directly send here.
+        srv_to_join_->send_req(srv_to_join_, req, ex_resp_handler_);
+    } else {
+        // Asynchronous IO: invoke the thread.
+        snapshot_io_mgr::instance().invoke();
+    }
 }
 
 ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {

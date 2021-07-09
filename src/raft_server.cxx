@@ -28,6 +28,7 @@ limitations under the License.
 #include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
+#include "snapshot_sync_ctx.hxx"
 #include "stat_mgr.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
@@ -354,7 +355,8 @@ void raft_server::apply_and_log_current_params() {
           "custom election quorum size %d, "
           "snapshot receiver %s, "
           "leadership transfer wait time %d, "
-          "grace period of lagging state machine %d",
+          "grace period of lagging state machine %d, "
+          "snapshot IO: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -372,7 +374,8 @@ void raft_server::apply_and_log_current_params() {
           params->custom_election_quorum_size_,
           params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
           params->leadership_transfer_min_wait_time_,
-          params->grace_period_of_lagging_state_machine_ );
+          params->grace_period_of_lagging_state_machine_,
+          params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING" );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();
@@ -404,6 +407,12 @@ void raft_server::shutdown() {
 
     // If the global manager exists, cancel all pending requests.
     cancel_global_requests();
+
+    // Cancel snapshot requests if exist.
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->use_bg_thread_for_snapshot_io_) {
+        snapshot_io_mgr::instance().drop_reqs(this);
+    }
 
     // Terminate background commit thread.
     {   recur_lock(lock_);
