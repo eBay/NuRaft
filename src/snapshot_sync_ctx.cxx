@@ -241,7 +241,7 @@ void snapshot_io_mgr::async_io_loop() {
                 elem->dst_->set_rsv_msg(nullptr, nullptr);
                 elem->dst_->send_req(elem->dst_, req, elem->handler_);
                 elem->dst_->reset_ls_timer();
-                p_tr("sent message to peer %d", dst_id);
+                p_tr("bg thread sent message to peer %d", dst_id);
 
             } else {
                 p_db("peer %d is busy, push the request back to queue", dst_id);

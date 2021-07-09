@@ -81,6 +81,7 @@ public:
 
     void initServer(bool enable_ssl = false,
                     bool use_global_asio = false,
+                    bool use_bg_snapshot_io = true,
                     const raft_server::init_options& opt = raft_server::init_options()) {
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
         myLogWrapper = cs_new<logger_wrapper>(log_file_name);
@@ -125,7 +126,7 @@ public:
         params.with_reserved_log_items(10);
         params.with_snapshot_enabled(5);
         params.with_client_req_timeout(10000);
-        params.use_bg_thread_for_snapshot_io_ = true;
+        params.use_bg_thread_for_snapshot_io_ = use_bg_snapshot_io;
         context* ctx( new context( sMgr, sm, listener, myLog,
                                    rpc_cli_factory, scheduler, params ) );
         raftServer = cs_new<raft_server>(ctx, opt);

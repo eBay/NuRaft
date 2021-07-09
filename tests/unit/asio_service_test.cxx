@@ -28,11 +28,14 @@ limitations under the License.
 using namespace nuraft;
 using namespace raft_functional_common;
 
+static bool flag_bg_snapshot_io = false;
+
 namespace asio_service_test {
 
 int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
                    bool enable_ssl,
                    bool use_global_asio = false,
+                   bool use_bg_snapshot_io = true,
                    const raft_server::init_options & opt = raft_server::init_options())
 {
     size_t num_srvs = pkgs.size();
@@ -40,7 +43,7 @@ int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
 
     for (auto& entry: pkgs) {
         RaftAsioPkg* pp = entry;
-        pp->initServer(enable_ssl, use_global_asio, opt);
+        pp->initServer(enable_ssl, use_global_asio, use_bg_snapshot_io, opt);
     }
     // Wait longer than upper timeout.
     TestSuite::sleep_sec(1);
@@ -1335,7 +1338,7 @@ int auto_forwarding_timeout_test() {
         return cb_func::ReturnCode::Ok;
     };
 
-    CHK_Z( launch_servers(pkgs, false, false, opt) );
+    CHK_Z( launch_servers(pkgs, false, false, true, opt) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
@@ -1655,7 +1658,7 @@ int snapshot_read_failure_during_join_test(size_t log_sync_gap) {
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
     _msg("launching asio-raft servers\n");
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, false, flag_bg_snapshot_io) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group({&s1, &s2}) );
@@ -1711,7 +1714,7 @@ int snapshot_read_failure_for_lagging_server_test(size_t num_failures) {
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
     _msg("launching asio-raft servers\n");
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, false, flag_bg_snapshot_io) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
@@ -1770,7 +1773,7 @@ int snapshot_context_timeout_normal_test() {
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
     _msg("launching asio-raft servers\n");
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, false, flag_bg_snapshot_io) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
@@ -1843,7 +1846,7 @@ int snapshot_context_timeout_join_test() {
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
     _msg("launching asio-raft servers\n");
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, false, flag_bg_snapshot_io) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group( {&s1, &s2} ) );
@@ -1925,7 +1928,7 @@ int snapshot_context_timeout_removed_server_test() {
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
     _msg("launching asio-raft servers\n");
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, false, flag_bg_snapshot_io) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
@@ -2045,22 +2048,28 @@ int main(int argc, char** argv) {
     ts.doTest( "enforced state machine catch-up with term increment test",
                enforced_state_machine_catchup_with_term_inc_test );
 
-    ts.doTest( "snapshot read failure during join test",
-               snapshot_read_failure_during_join_test,
-               TestRange<size_t>( {10, 999999} ) );
+    for (bool flag: {true, false}) {
+        flag_bg_snapshot_io = flag;
+        std::string opt_str = flag_bg_snapshot_io ? " (async)" : " (sync)";
 
-    ts.doTest( "snapshot read failure for lagging server test",
-               snapshot_read_failure_for_lagging_server_test,
-               TestRange<size_t>( {1, 5} ) );
+        ts.doTest( "snapshot read failure during join test" + opt_str,
+                   snapshot_read_failure_during_join_test,
+                   TestRange<size_t>( {10, 999999} ) );
 
-    ts.doTest( "snapshot context timeout normal test",
-               snapshot_context_timeout_normal_test );
+        ts.doTest( "snapshot read failure for lagging server test" + opt_str,
+                   snapshot_read_failure_for_lagging_server_test,
+                   TestRange<size_t>( {1, 5} ) );
 
-    ts.doTest( "snapshot context timeout join test",
-               snapshot_context_timeout_join_test );
+        ts.doTest( "snapshot context timeout normal test" + opt_str,
+                   snapshot_context_timeout_normal_test );
 
-    ts.doTest( "snapshot context timeout removed server test",
-               snapshot_context_timeout_removed_server_test );
+        ts.doTest( "snapshot context timeout join test" + opt_str,
+                   snapshot_context_timeout_join_test );
+
+        ts.doTest( "snapshot context timeout removed server test" + opt_str,
+                   snapshot_context_timeout_removed_server_test );
+    }
+
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
