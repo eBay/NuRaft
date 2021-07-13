@@ -632,7 +632,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         // WARNING:
         //   1) Rollback should be done separately before overwriting,
         //      and MUST BE in backward direction.
-        //   2) Should do rollback ONLY WHEN we have more than one log
+        //   2) Should do rollback ONLY WHEN we have at least one log
         //      to overwrite.
         ulong my_last_log_idx = log_store_->next_slot() - 1;
         bool rollback_in_progress = false;
