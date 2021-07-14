@@ -2353,6 +2353,133 @@ int custom_term_counter_test() {
     return 0;
 }
 
+int config_log_replay_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+    std::string s4_addr = "S4";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    RaftPkg s4(f_base, 4, s4_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4};
+    std::vector<RaftPkg*> pkgs_123 = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.snapshot_distance_ = 10000;
+        param.reserved_log_items_ = 10000;
+        param.log_sync_stop_gap_ = 10000;
+        param.max_append_size_ = 100;
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 10;
+
+    for (auto ss: {&s2, &s3}) {
+        // Append a few logs.
+        std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                s1.raftServer->append_entries( {msg} );
+
+            CHK_TRUE( ret->get_accepted() );
+            CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+
+            handlers.push_back(ret);
+        }
+
+        for (size_t ii = 0; ii < NUM; ++ii) {
+            s1.fNet->execReqResp();
+        }
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+        // Add each server.
+        s1.raftServer->add_srv( *(ss->getTestMgr()->get_srv_config()) );
+        for (size_t ii = 0; ii < NUM; ++ii) {
+            s1.fNet->execReqResp();
+        }
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+        // A few heartbeats.
+        for (size_t ii = 0; ii < NUM; ++ii) {
+            s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+            for (size_t jj = 0; jj < 3; ++jj) {
+                s1.fNet->execReqResp();
+            }
+        }
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    }
+
+    // S1-3 should have the same data.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // Remember the log index of S4.
+    uint64_t last_committed_index = s4.raftServer->get_committed_log_idx();
+
+    // Add S4 to S1.
+    s1.raftServer->add_srv( *(s4.getTestMgr()->get_srv_config()) );
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        s1.fNet->execReqResp();
+    }
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // A few heartbeats.
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        for (size_t jj = 0; jj < 3; ++jj) {
+            s1.fNet->execReqResp();
+        }
+    }
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Confirm the data consistency.
+    CHK_OK( s4.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // Now stop S4 and rollback state machine.
+    s4.raftServer->shutdown();
+    TestSuite::_msgt("truncate");
+    s4.getTestSm()->truncateData(last_committed_index);
+    launch_servers({&s4}, nullptr, true);
+
+    // Send heartbeat.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    for (size_t jj = 0; jj < 3; ++jj) {
+        s1.fNet->execReqResp();
+    }
+
+    // Wait for replaying logs for state machine.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // S4 should have all peer info.
+    std::vector<ptr<srv_config>> configs_out;
+    s4.raftServer->get_srv_config_all(configs_out);
+    CHK_EQ(pkgs.size(), configs_out.size());
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    s4.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 }  // namespace raft_server_test;
 using namespace raft_server_test;
 
@@ -2438,6 +2565,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "custom term counter test",
                custom_term_counter_test );
+
+    ts.doTest( "config log replay test",
+               config_log_replay_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
