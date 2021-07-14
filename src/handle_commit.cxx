@@ -361,6 +361,9 @@ void raft_server::commit_conf(ulong idx_to_commit,
     config_changing_ = false;
     if (cur_conf->get_log_idx() < new_conf->get_log_idx()) {
         reconfigure(new_conf);
+    } else {
+        p_in( "skipped config %lu, latest config %lu",
+              new_conf->get_log_idx(), cur_conf->get_log_idx() );
     }
 
     cb_func::Param param(id_, leader_);
