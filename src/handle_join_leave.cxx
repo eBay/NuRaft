@@ -178,7 +178,15 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     state_->set_voted_for(-1);
     state_->set_term(req.get_term());
     ctx_->state_mgr_->save_state(*state_);
-    reconfigure(cluster_config::deserialize(entries[0]->get_buf()));
+
+    ptr<cluster_config> c_config = cluster_config::deserialize(entries[0]->get_buf());
+    // WARNING: We should make cluster config durable here. Otherwise, if
+    //          this server gets restarted before receiving the first
+    //          committed config (the first config that includes this server),
+    //          this server will remove itself immediately by replaying
+    //          previous config which does not include this server.
+    ctx_->state_mgr_->save_config(*c_config);
+    reconfigure(c_config);
 
     resp->accept( quick_commit_index_.load() + 1 );
     return resp;

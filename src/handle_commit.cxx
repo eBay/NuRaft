@@ -357,9 +357,10 @@ void raft_server::commit_conf(ulong idx_to_commit,
     p_in( "config at index %llu is committed, prev config log idx %llu",
           new_conf->get_log_idx(), cur_conf->get_log_idx() );
 
-    ctx_->state_mgr_->save_config(*new_conf);
     config_changing_ = false;
     if (cur_conf->get_log_idx() < new_conf->get_log_idx()) {
+        // WARNING: Should not overwrite newer config with older one.
+        ctx_->state_mgr_->save_config(*new_conf);
         reconfigure(new_conf);
     } else {
         p_in( "skipped config %lu, latest config %lu",
