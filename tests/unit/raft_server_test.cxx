@@ -2357,6 +2357,8 @@ int config_log_replay_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
 
+    removed_servers.clear();
+
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
     std::string s3_addr = "S3";
@@ -2385,6 +2387,22 @@ int config_log_replay_test() {
     const size_t NUM = 10;
 
     for (auto ss: {&s2, &s3}) {
+        // Add each server.
+        s1.raftServer->add_srv( *(ss->getTestMgr()->get_srv_config()) );
+        for (size_t ii = 0; ii < NUM; ++ii) {
+            s1.fNet->execReqResp();
+        }
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+        // A few heartbeats.
+        for (size_t ii = 0; ii < NUM; ++ii) {
+            s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+            for (size_t jj = 0; jj < 3; ++jj) {
+                s1.fNet->execReqResp();
+            }
+        }
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
         // Append a few logs.
         std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
         for (size_t ii=0; ii<NUM; ++ii) {
@@ -2404,22 +2422,6 @@ int config_log_replay_test() {
             s1.fNet->execReqResp();
         }
         CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
-
-        // Add each server.
-        s1.raftServer->add_srv( *(ss->getTestMgr()->get_srv_config()) );
-        for (size_t ii = 0; ii < NUM; ++ii) {
-            s1.fNet->execReqResp();
-        }
-        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
-
-        // A few heartbeats.
-        for (size_t ii = 0; ii < NUM; ++ii) {
-            s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-            for (size_t jj = 0; jj < 3; ++jj) {
-                s1.fNet->execReqResp();
-            }
-        }
-        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
     }
 
     // S1-3 should have the same data.
@@ -2429,14 +2431,53 @@ int config_log_replay_test() {
     // Remember the log index of S4.
     uint64_t last_committed_index = s4.raftServer->get_committed_log_idx();
 
-    // Add S4 to S1.
+    // Also remember the last config of the leader.
+    uint64_t last_config_index = s1.raftServer->get_config()->get_log_idx();
+
+    {   // Reduce the batch size of the leader.
+        raft_params param = s1.raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.max_append_size_ = 1;
+        s1.raftServer->update_params(param);
+    }
+
+    // Add S4 to S1, and do log catch-up until the last config index.
     s1.raftServer->add_srv( *(s4.getTestMgr()->get_srv_config()) );
-    for (size_t ii = 0; ii < NUM; ++ii) {
+    for (size_t ii = 0; ii < 3; ++ii) {
         s1.fNet->execReqResp();
     }
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
-    // A few heartbeats.
+    // Send just one heartbeat (so as not to reach the config index).
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    for (size_t jj = 0; jj < 3; ++jj) {
+        s1.fNet->execReqResp();
+    }
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Now stop S4 and rollback state machine.
+    s4.raftServer->shutdown();
+    TestSuite::_msgt("truncate");
+    s4.getTestSm()->truncateData(last_committed_index);
+    launch_servers({&s4}, nullptr, true);
+
+    // Send heartbeat.
+    for (size_t ii = 0; ii < NUM * 100; ++ii) {
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        for (size_t jj = 0; jj < 3; ++jj) {
+            s1.fNet->execReqResp();
+        }
+
+        uint64_t s4_idx = s4.raftServer->get_last_log_idx();
+        if (s4_idx >= last_config_index) {
+            break;
+        }
+    }
+
+    // Remove server shouldn't have happened.
+    CHK_Z(removed_servers.size());
+
+    // More heartbeats.
     for (size_t ii = 0; ii < NUM; ++ii) {
         s1.fTimer->invoke( timer_task_type::heartbeat_timer );
         for (size_t jj = 0; jj < 3; ++jj) {
@@ -2447,21 +2488,6 @@ int config_log_replay_test() {
 
     // Confirm the data consistency.
     CHK_OK( s4.getTestSm()->isSame( *s1.getTestSm() ) );
-
-    // Now stop S4 and rollback state machine.
-    s4.raftServer->shutdown();
-    TestSuite::_msgt("truncate");
-    s4.getTestSm()->truncateData(last_committed_index);
-    launch_servers({&s4}, nullptr, true);
-
-    // Send heartbeat.
-    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
-    for (size_t jj = 0; jj < 3; ++jj) {
-        s1.fNet->execReqResp();
-    }
-
-    // Wait for replaying logs for state machine.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // S4 should have all peer info.
     std::vector<ptr<srv_config>> configs_out;

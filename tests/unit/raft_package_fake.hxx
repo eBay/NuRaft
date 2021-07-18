@@ -161,6 +161,7 @@ public:
 // ===== Helper functions waiting for the execution of state machine ====
 // NOTE: A single thread at a time (not MT-safe).
 static std::atomic<bool> commit_done(false);
+static std::list<int> removed_servers;
 static std::vector<RaftPkg*> pkgs_to_watch;
 static std::mutex pkgs_to_watch_lock;
 static EventAwaiter ea_wait_for_commit;
@@ -216,6 +217,10 @@ static cb_func::ReturnCode ATTR_UNUSED cb_default(
             if (commit_done.compare_exchange_strong(exp, true)) {
                 ea_wait_for_commit.invoke();
             }
+        }
+    } else if (type == cb_func::Type::RemovedFromCluster) {
+        if (param) {
+            removed_servers.push_back(param->myId);
         }
     }
     return cb_func::ReturnCode::Ok;
