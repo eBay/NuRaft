@@ -638,6 +638,32 @@ public:
      */
     void set_inc_term_func(srv_state::inc_term_func func);
 
+    /**
+     * Pause the background execution of the state machine.
+     * If an operation execution is currently happening, the state
+     * machine may not be paused immediately.
+     *
+     * @param timeout_ms If non-zero, this function will be blocked until
+     *                   either it completely pauses the state machine execution
+     *                   or reaches the given time limit in milliseconds.
+     *                   Otherwise, this function will return immediately, and
+     *                   there is a possibility that the state machine execution
+     *                   is still happening.
+     */
+    void pause_state_machine_exeuction(size_t timeout_ms = 0);
+
+    /**
+     * Resume the background execution of state machine.
+     */
+    void resume_state_machine_execution();
+
+    /**
+     * Check if the state machine execution is paused.
+     *
+     * @return `true` if paused.
+     */
+    bool is_state_machine_execution_paused() const;
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 
@@ -995,6 +1021,16 @@ protected:
      * leader re-election.
      */
     std::atomic<bool> write_paused_;
+
+    /**
+     * If `true`, state machine commit will be paused.
+     */
+    std::atomic<bool> sm_commit_paused_;
+
+    /**
+     * If `true`, the background thread is doing state machine execution.
+     */
+    std::atomic<bool> sm_commit_exec_in_progress_;
 
     /**
      * Server ID indicates the candidate for the next leader,
