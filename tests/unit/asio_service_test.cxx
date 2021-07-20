@@ -2037,6 +2037,8 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     // Pause S3's state machine.
     s3.raftServer->pause_state_machine_exeuction(100);
 
+    CHK_TRUE( s3.raftServer->is_state_machine_execution_paused() );
+
     TestSuite::sleep_sec(1, "replication");
 
     // Now all async handlers should have result.
