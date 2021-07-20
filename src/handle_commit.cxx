@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "internal_timer.hxx"
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
@@ -107,9 +108,16 @@ void raft_server::commit_in_bg() {
                 sm_commit_index_ >= log_store_->next_slot() - 1 ) {
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
 
-            auto wait_check = [this] () {
-                return (log_store_->next_slot() - 1 > sm_commit_index_ &&
-                        quick_commit_index_ > sm_commit_index_) || stopping_;
+            auto wait_check = [this]() {
+                if (stopping_) {
+                    // WARNING: `stopping_` flag should have the highest priority.
+                    return true;
+                }
+                if (sm_commit_paused_) {
+                    return false;
+                }
+                return ( log_store_->next_slot() - 1 > sm_commit_index_ &&
+                         quick_commit_index_ > sm_commit_index_ );
             };
             p_tr("commit_cv_ sleep\n");
             commit_cv_.wait(lock, wait_check);
@@ -161,6 +169,14 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         return true;
     }
 
+    sm_commit_exec_in_progress_ = true;
+    // Clear the flag automatically once we exit this function.
+    struct ExecCommitAutoCleaner {
+        ExecCommitAutoCleaner(std::function<void()> func) : clean_func_(func) {}
+        ~ExecCommitAutoCleaner() { clean_func_(); }
+        std::function<void()> clean_func_;
+    } exec_auto_cleaner([this](){ sm_commit_exec_in_progress_ = false; });
+
     p_db( "commit upto %ld, curruent idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
 
@@ -192,6 +208,11 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             break;
         }
         first_loop_exec = false;
+
+        // Break the loop if state machine commit is paused.
+        if (sm_commit_paused_) {
+            break;
+        }
 
         ulong index_to_commit = sm_commit_index_ + 1;
         ptr<log_entry> le = log_store_->entry_at(index_to_commit);
@@ -774,6 +795,50 @@ void raft_server::remove_peer_from_peers(const ptr<peer>& pp) {
     pp->enable_hb(false);
     clear_snapshot_sync_ctx(*pp);
     peers_.erase(pp->get_id());
+}
+
+void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
+    p_in( "pause state machine execution, previously %s, state machine %s, "
+          "timeout %zu ms",
+          sm_commit_paused_ ? "PAUSED" : "ACTIVE",
+          sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING",
+          timeout_ms );
+    sm_commit_paused_ = true;
+
+    if (!timeout_ms) {
+        return;
+    }
+    timer_helper timer(timeout_ms * 1000);
+    while (sm_commit_exec_in_progress_ && !timer.timeout()) {
+        timer_helper::sleep_ms(10);
+    }
+    p_in( "waited %zu ms, state machine %s",
+          timer.get_ms(),
+          sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
+}
+
+void raft_server::resume_state_machine_execution() {
+    p_in( "pause state machine execution, previously %s, state machine %s",
+          sm_commit_paused_ ? "PAUSED" : "ACTIVE",
+          sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
+    sm_commit_paused_ = false;
+
+    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    if (mgr) {
+        // Global mgr.
+        mgr->request_commit( this->shared_from_this() );
+    } else {
+        // Local commit thread.
+        std::unique_lock<std::mutex> l(commit_cv_lock_);
+        commit_cv_.notify_one();
+    }
+}
+
+bool raft_server::is_state_machine_execution_paused() const {
+    if (sm_commit_paused_ && !sm_commit_exec_in_progress_) {
+        return true;
+    }
+    return false;
 }
 
 } // namespace nuraft;

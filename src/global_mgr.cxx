@@ -305,6 +305,21 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
         }
         if (!target) continue;
 
+        ptr<logger>& l_ = target->l_;
+
+        // Whenever we find a task to execute, skip next sleeping for any tasks
+        // that can be queued in the meantime.
+        skip_sleeping = true;
+
+        p_tr("execute commit for %p", target.get());
+
+        if (target->sm_commit_paused_) {
+            p_tr("commit of this server has been paused");
+            // Since there can be other Raft server waiting for being served,
+            // need to skip nest sleep.
+            continue;
+        }
+
         if ( target->quick_commit_index_ <= target->sm_commit_index_ ||
              target->log_store_->next_slot() - 1 <= target->sm_commit_index_ ) {
             // State machine's commit index is large enough not to execute commit
@@ -312,8 +327,7 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
             continue;
         }
 
-        ptr<logger>& l_ = target->l_;
-        p_tr("executed commit by global worker, queue length %zu", queue_length);
+        p_tr("execute commit by global worker, queue length %zu", queue_length);
         bool finished_in_time =
             target->commit_in_bg_exec(config_.max_scheduling_unit_ms_);
         if (!finished_in_time) {
@@ -322,7 +336,8 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
             p_tr("couldn't finish in time (%zu ms), re-push to queue",
                  config_.max_scheduling_unit_ms_);
             request_commit(target);
-            skip_sleeping = true;
+        } else {
+            p_tr("executed in time");
         }
     }
 }
@@ -367,6 +382,11 @@ void nuraft_global_mgr::append_worker_loop(ptr<worker_handle> handle) {
         if (!target) continue;
 
         ptr<logger>& l_ = target->l_;
+
+        // Whenever we find a task to execute, skip next sleeping for any tasks
+        // that can be queued in the meantime.
+        skip_sleeping = true;
+
         p_tr("executed append_entries by global worker, queue length %zu",
              queue_length);
         target->append_entries_in_bg_exec();

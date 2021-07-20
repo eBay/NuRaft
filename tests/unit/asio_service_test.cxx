@@ -1981,6 +1981,100 @@ int snapshot_context_timeout_removed_server_test() {
     return 0;
 }
 
+int pause_state_machine_execution_test(bool use_global_mgr) {
+    reset_log_files();
+
+    if (use_global_mgr) {
+        nuraft_global_mgr::init();
+    }
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        cmd_result< ptr<buffer> >::handler_type my_handler =
+            std::bind( async_handler,
+                       &idx_list,
+                       &idx_list_lock,
+                       std::placeholders::_1,
+                       std::placeholders::_2 );
+        ret->when_ready( my_handler );
+
+        handlers.push_back(ret);
+    }
+
+    // Pause S3's state machine.
+    s3.raftServer->pause_state_machine_exeuction(100);
+
+    CHK_TRUE( s3.raftServer->is_state_machine_execution_paused() );
+
+    TestSuite::sleep_sec(1, "replication");
+
+    // Now all async handlers should have result.
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
+
+    // The state machines of S1 and S2 should be identical, but not S3.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_FALSE( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // Resume the state machine.
+    s3.raftServer->resume_state_machine_execution();
+    TestSuite::sleep_sec(1, "resuming state machine execution");
+
+    // Now it should have the same data.
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // Pause again.
+    s3.raftServer->pause_state_machine_exeuction(100);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+
+    // Even with paused state machine, shutdown should work.
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    if (use_global_mgr) {
+        nuraft_global_mgr::shutdown();
+    }
+    return 0;
+}
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -2070,6 +2164,9 @@ int main(int argc, char** argv) {
                    snapshot_context_timeout_removed_server_test );
     }
 
+    ts.doTest( "pause state machine execution test",
+               pause_state_machine_execution_test,
+               TestRange<bool>( {false, true} ) );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
