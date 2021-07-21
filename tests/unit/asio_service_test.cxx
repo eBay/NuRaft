@@ -1645,6 +1645,19 @@ int enforced_state_machine_catchup_with_term_inc_test() {
     return 0;
 }
 
+void wait_for_catch_up( const RaftAsioPkg& ll,
+                        const RaftAsioPkg& rr,
+                        size_t count_limit = 10 )
+{
+    for (size_t ii = 0; ii < count_limit; ++ii) {
+        if ( ll.raftServer->get_committed_log_idx() ==
+                 rr.raftServer->get_committed_log_idx() ) {
+            break;
+        }
+        TestSuite::sleep_sec(1, "waiting for catch-up");
+    }
+}
+
 int snapshot_read_failure_during_join_test(size_t log_sync_gap) {
     reset_log_files();
 
@@ -1687,6 +1700,9 @@ int snapshot_read_failure_during_join_test(size_t log_sync_gap) {
     // Add S3.
     s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
     TestSuite::sleep_sec(1, "add S3");
+
+    // Wait until S3 completes catch-up.
+    wait_for_catch_up(s1, s3);
 
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -1746,6 +1762,9 @@ int snapshot_read_failure_for_lagging_server_test(size_t num_failures) {
     // Restart S3.
     s3.restartServer();
     TestSuite::sleep_sec(1, "restarting S3");
+
+    // Wait until S3 completes catch-up.
+    wait_for_catch_up(s1, s3);
 
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -1819,6 +1838,9 @@ int snapshot_context_timeout_normal_test() {
     s3.getTestSm()->setSnpDelay(0);
     s3.restartServer();
     TestSuite::sleep_sec(1, "restarting S3");
+
+    // Wait until S3 completes catch-up.
+    wait_for_catch_up(s1, s3);
 
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -1901,6 +1923,9 @@ int snapshot_context_timeout_join_test() {
     // Re-attempt adding S3.
     s1.raftServer->add_srv( *s3.getTestMgr()->get_srv_config() );
     TestSuite::sleep_sec(1, "adding S3");
+
+    // Wait until S3 completes catch-up.
+    wait_for_catch_up(s1, s3);
 
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -2016,32 +2041,36 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
     std::list<ulong> idx_list;
     std::mutex idx_list_lock;
-    for (size_t ii=0; ii<NUM; ++ii) {
-        std::string test_msg = "test" + std::to_string(ii);
-        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
-        msg->put(test_msg);
-        ptr< cmd_result< ptr<buffer> > > ret =
-            s1.raftServer->append_entries( {msg} );
+    auto do_async_append = [&]() {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                s1.raftServer->append_entries( {msg} );
 
-        cmd_result< ptr<buffer> >::handler_type my_handler =
-            std::bind( async_handler,
-                       &idx_list,
-                       &idx_list_lock,
-                       std::placeholders::_1,
-                       std::placeholders::_2 );
-        ret->when_ready( my_handler );
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                        &idx_list,
+                        &idx_list_lock,
+                        std::placeholders::_1,
+                        std::placeholders::_2 );
+            ret->when_ready( my_handler );
 
-        handlers.push_back(ret);
-    }
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append();
 
     // Pause S3's state machine.
     s3.raftServer->pause_state_machine_exeuction(100);
 
     CHK_TRUE( s3.raftServer->is_state_machine_execution_paused() );
 
-    TestSuite::sleep_sec(1, "replication");
-
     // Now all async handlers should have result.
+    TestSuite::sleep_sec(1, "replication");
     {
         std::lock_guard<std::mutex> l(idx_list_lock);
         CHK_EQ(NUM, idx_list.size());
@@ -2061,10 +2090,33 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     // Pause again.
     s3.raftServer->pause_state_machine_exeuction(100);
 
+    // Do append again.
+    do_async_append();
+    TestSuite::sleep_sec(1, "replication");
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
+
+    // S2 should have the same data, but not S3.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_FALSE( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // Restart S3.
+    // Even with paused state machine, shutdown should work.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_sec(1, "stop S1");
+
+    // (Pause flag will be reset upon restart.)
+    s3.restartServer();
+    TestSuite::sleep_sec(1, "restarting S3");
+
+    // It should have the same data.
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
-
-    // Even with paused state machine, shutdown should work.
     s3.raftServer->shutdown();
     TestSuite::sleep_sec(1, "shutting down");
 
