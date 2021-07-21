@@ -1658,6 +1658,30 @@ void wait_for_catch_up( const RaftAsioPkg& ll,
     }
 }
 
+int try_adding_server( RaftAsioPkg& leader,
+                       const RaftAsioPkg& srv_to_add,
+                       size_t count_limit = 10 )
+{
+    for (size_t ii = 0; ii < count_limit; ++ii) {
+        ptr<srv_config> s_conf = srv_to_add.getTestMgr()->get_srv_config();
+        ptr< cmd_result< ptr<buffer> > > ret = leader.raftServer->add_srv(*s_conf);
+
+        std::string ret_string = "adding S" + std::to_string(s_conf->get_id());
+        bool succeeded = false;
+
+        if (ret->get_result_code() == cmd_result_code::OK) {
+            succeeded = true;
+        } else {
+            ret_string += " failed: " + std::to_string(ret->get_result_code());
+        }
+        TestSuite::sleep_sec(1, ret_string);
+        if (succeeded) {
+            return 0;
+        }
+    }
+    return -1;
+}
+
 int snapshot_read_failure_during_join_test(size_t log_sync_gap) {
     reset_log_files();
 
@@ -1698,8 +1722,7 @@ int snapshot_read_failure_during_join_test(size_t log_sync_gap) {
     s1.getTestSm()->setSnpReadFailure(2);
 
     // Add S3.
-    s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
-    TestSuite::sleep_sec(1, "add S3");
+    CHK_Z( try_adding_server(s1, s3) );
 
     // Wait until S3 completes catch-up.
     wait_for_catch_up(s1, s3);
@@ -1894,8 +1917,7 @@ int snapshot_context_timeout_join_test() {
 
     // Set snapshot delay for S3 and add it to the group.
     s3.getTestSm()->setSnpDelay(100);
-    s1.raftServer->add_srv( *s3.getTestMgr()->get_srv_config() );
-    TestSuite::sleep_sec(1, "adding S3");
+    CHK_Z( try_adding_server(s1, s3) );
 
     // User snapshot ctx should exist.
     CHK_EQ(1, s1.getTestSm()->getNumOpenedUserCtxs());
@@ -1921,8 +1943,7 @@ int snapshot_context_timeout_join_test() {
     TestSuite::sleep_sec(2, "wait for previous adding server to be expired");
 
     // Re-attempt adding S3.
-    s1.raftServer->add_srv( *s3.getTestMgr()->get_srv_config() );
-    TestSuite::sleep_sec(1, "adding S3");
+    CHK_Z( try_adding_server(s1, s3) );
 
     // Wait until S3 completes catch-up.
     wait_for_catch_up(s1, s3);

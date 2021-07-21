@@ -92,7 +92,8 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
             return resp;
         }
         // Otherwise: activity timeout, reset the server.
-        p_wn("activity timeout, start over");
+        p_wn("activity timeout (last activity %lu ms ago), start over",
+             last_active_ms);
         reset_srv_to_join();
     }
 
