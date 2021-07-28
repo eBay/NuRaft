@@ -192,6 +192,15 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         p->clear_reconnection();
     }
 
+    if (params->use_bg_thread_for_snapshot_io_) {
+        // Check the current queue if previous request exists.
+        if (snapshot_io_mgr::instance().has_pending_request(this, p->get_id())) {
+            p_tr( "previous snapshot request for peer %d already exists",
+                  p->get_id() );
+            return true;
+        }
+    }
+
     if (p->make_busy()) {
         p_tr("send request to %d\n", (int)p->get_id());
 
@@ -206,12 +215,18 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
         } else {
             // Normal message.
-            msg = create_append_entries_req(*p);
+            msg = create_append_entries_req(p);
             m_handler = resp_handler_;
         }
+
         if (!msg) {
             // Even normal message doesn't exist.
             p->set_free();
+            if ( params->use_bg_thread_for_snapshot_io_ &&
+                 p->get_snapshot_sync_ctx() ) {
+                // If this is an async snapshot request, invoke IO thread.
+                snapshot_io_mgr::instance().invoke();
+            }
             return true;
         }
 
@@ -288,7 +303,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     return false;
 }
 
-ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
+ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
+    peer& p = *pp;
     ulong cur_nxt_idx(0L);
     ulong commit_idx(0L);
     ulong last_log_idx(0L);
@@ -387,7 +403,10 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
                   p.get_id(),
                   last_log_idx, starting_idx, cur_nxt_idx,
                   snp_local->get_last_log_idx() );
-            return create_sync_snapshot_req(p, last_log_idx, term, commit_idx);
+
+            bool succeeded_out = false;
+            return create_sync_snapshot_req( pp, last_log_idx, term,
+                                             commit_idx, succeeded_out );
         }
 
         // Cannot recover using snapshot. Return here to protect the leader.
@@ -613,7 +632,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         // WARNING:
         //   1) Rollback should be done separately before overwriting,
         //      and MUST BE in backward direction.
-        //   2) Should do rollback ONLY WHEN we have more than one log
+        //   2) Should do rollback ONLY WHEN we have at least one log
         //      to overwrite.
         ulong my_last_log_idx = log_store_->next_slot() - 1;
         bool rollback_in_progress = false;
@@ -880,14 +899,17 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                           resp.get_next_idx() < log_store_->next_slot();
 
     } else {
-        ulong prev_next_log = p->get_next_log_idx();
         std::lock_guard<std::mutex> guard(p->get_lock());
-        if (resp.get_next_idx() > 0 && p->get_next_log_idx() > resp.get_next_idx()) {
+        ulong prev_next_log = p->get_next_log_idx();
+        if (resp.get_next_idx() > 0 && prev_next_log > resp.get_next_idx()) {
             // fast move for the peer to catch up
             p->set_next_log_idx(resp.get_next_idx());
         } else {
             // if not, move one log backward.
-            p->set_next_log_idx(p->get_next_log_idx() - 1);
+            // WARNING: Make sure that `next_log_idx_` shouldn't be smaller than 0.
+            if (prev_next_log) {
+                p->set_next_log_idx(prev_next_log - 1);
+            }
         }
         bool suppress = p->need_to_suppress_error();
 
@@ -1008,7 +1030,7 @@ ulong raft_server::get_expected_committed_log_idx() {
                std::greater<ulong>() );
 
     size_t quorum_idx = get_quorum_for_commit();
-    if (l_->get_level() >= 6) {
+    if (l_ && l_->get_level() >= 6) {
         std::string tmp_str;
         for (ulong m_idx: matched_indexes) {
             tmp_str += std::to_string(m_idx) + " ";

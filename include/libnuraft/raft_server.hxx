@@ -60,6 +60,7 @@ struct context;
 struct raft_params;
 class raft_server : public std::enable_shared_from_this<raft_server> {
     friend class nuraft_global_mgr;
+    friend class snapshot_io_mgr;
 public:
     struct init_options {
         init_options()
@@ -637,6 +638,32 @@ public:
      */
     void set_inc_term_func(srv_state::inc_term_func func);
 
+    /**
+     * Pause the background execution of the state machine.
+     * If an operation execution is currently happening, the state
+     * machine may not be paused immediately.
+     *
+     * @param timeout_ms If non-zero, this function will be blocked until
+     *                   either it completely pauses the state machine execution
+     *                   or reaches the given time limit in milliseconds.
+     *                   Otherwise, this function will return immediately, and
+     *                   there is a possibility that the state machine execution
+     *                   is still happening.
+     */
+    void pause_state_machine_exeuction(size_t timeout_ms = 0);
+
+    /**
+     * Resume the background execution of state machine.
+     */
+    void resume_state_machine_execution();
+
+    /**
+     * Check if the state machine execution is paused.
+     *
+     * @return `true` if paused.
+     */
+    bool is_state_machine_execution_paused() const;
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 
@@ -744,11 +771,12 @@ protected:
     void handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p);
     void reset_srv_to_join();
     void reset_srv_to_leave();
-    ptr<req_msg> create_append_entries_req(peer& p);
-    ptr<req_msg> create_sync_snapshot_req(peer& p,
+    ptr<req_msg> create_append_entries_req(ptr<peer>& pp);
+    ptr<req_msg> create_sync_snapshot_req(ptr<peer>& pp,
                                           ulong last_log_idx,
                                           ulong term,
-                                          ulong commit_idx);
+                                          ulong commit_idx,
+                                          bool& succeeded_out);
     bool check_snapshot_timeout(ptr<peer> pp);
     void destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx);
     void clear_snapshot_sync_ctx(peer& pp);
@@ -993,6 +1021,16 @@ protected:
      * leader re-election.
      */
     std::atomic<bool> write_paused_;
+
+    /**
+     * If `true`, state machine commit will be paused.
+     */
+    std::atomic<bool> sm_commit_paused_;
+
+    /**
+     * If `true`, the background thread is doing state machine execution.
+     */
+    std::atomic<bool> sm_commit_exec_in_progress_;
 
     /**
      * Server ID indicates the candidate for the next leader,

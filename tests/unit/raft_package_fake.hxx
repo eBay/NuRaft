@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "fake_network.hxx"
 #include "raft_functional_common.hxx"
 
 #include "event_awaiter.h"
@@ -89,6 +90,32 @@ public:
         raftServer = cs_new<raft_server>(ctx, opt);
     }
 
+    /**
+     * Re-init Raft server without changing internal data including state machine.
+     */
+    void restartServer(raft_params* given_params = nullptr,
+                       const raft_server::init_options& opt =
+                           raft_server::init_options())
+    {
+        if (!given_params) {
+            params.with_election_timeout_lower(0);
+            params.with_election_timeout_upper(10000);
+            params.with_hb_interval(5000);
+            params.with_client_req_timeout(1000000);
+            params.with_reserved_log_items(0);
+            params.with_snapshot_enabled(5);
+            params.with_log_sync_stopping_gap(1);
+        } else {
+            params = *given_params;
+        }
+        // For deterministic test, we should not use BG thread.
+        params.use_bg_thread_for_urgent_commit_ = false;
+
+        ctx = new context( sMgr, sm, listener, myLog,
+                           rpcCliFactory, scheduler, params );
+        raftServer = cs_new<raft_server>(ctx, opt);
+    }
+
     void free() {
         // WARNING:
         //   Due to circular reference base <-> net,
@@ -134,6 +161,7 @@ public:
 // ===== Helper functions waiting for the execution of state machine ====
 // NOTE: A single thread at a time (not MT-safe).
 static std::atomic<bool> commit_done(false);
+static std::list<int> removed_servers;
 static std::vector<RaftPkg*> pkgs_to_watch;
 static std::mutex pkgs_to_watch_lock;
 static EventAwaiter ea_wait_for_commit;
@@ -190,6 +218,10 @@ static cb_func::ReturnCode ATTR_UNUSED cb_default(
                 ea_wait_for_commit.invoke();
             }
         }
+    } else if (type == cb_func::Type::RemovedFromCluster) {
+        if (param) {
+            removed_servers.push_back(param->myId);
+        }
     }
     return cb_func::ReturnCode::Ok;
 }
@@ -197,7 +229,8 @@ static cb_func::ReturnCode ATTR_UNUSED cb_default(
 
 
 static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
-                                 raft_params* custom_params = nullptr) {
+                                 raft_params* custom_params = nullptr,
+                                 bool restart = false) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
@@ -206,7 +239,11 @@ static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
 
     for (size_t ii = 0; ii < num_srvs; ++ii) {
         RaftPkg* ff = pkgs[ii];
-        ff->initServer(custom_params, opt);
+        if (restart) {
+            ff->restartServer(custom_params, opt);
+        } else {
+            ff->initServer(custom_params, opt);
+        }
         ff->fNet->listen(ff->raftServer);
         ff->fTimer->invoke( timer_task_type::election_timer );
     }

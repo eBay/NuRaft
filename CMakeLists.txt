@@ -236,6 +236,7 @@ set(RAFT_CORE
     ${ROOT_SRC}/peer.cxx
     ${ROOT_SRC}/raft_server.cxx
     ${ROOT_SRC}/snapshot.cxx
+    ${ROOT_SRC}/snapshot_sync_ctx.cxx
     ${ROOT_SRC}/snapshot_sync_req.cxx
     ${ROOT_SRC}/srv_config.cxx
     ${ROOT_SRC}/stat_mgr.cxx

@@ -187,7 +187,7 @@ public:
             snp_sync_ctx_.reset();
         }
         else {
-            snp_sync_ctx_ = cs_new<snapshot_sync_ctx>(s, timeout_ms);
+            snp_sync_ctx_ = cs_new<snapshot_sync_ctx>(s, get_id(), timeout_ms);
         }
     }
 
