@@ -696,7 +696,7 @@ public:
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
-        , acceptor_(io, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port))
+        , acceptor_(io, asio::ip::tcp::endpoint(asio::ip::tcp::v6(), port))
         , session_id_cnt_(1)
         , stopped_(false)
         , ssl_enabled_(_enable_ssl)
@@ -1043,13 +1043,13 @@ public:
 
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
+            auto& le_buf = le->get_buf();
             ptr<buffer> entry_buf = buffer::alloc
-                                    ( 8 + 1 + 4 + le->get_buf().size() );
+                                    ( 8 + 1 + 4 + le_buf.size() );
             entry_buf->put( le->get_term() );
             entry_buf->put( (byte)le->get_val_type() );
-            entry_buf->put( (int32)le->get_buf().size() );
-            le->get_buf().pos(0);
-            entry_buf->put( le->get_buf() );
+            entry_buf->put( (int32)le_buf.size() );
+            entry_buf->put_raw( le_buf.data_begin(), le_buf.size() );
             entry_buf->pos( 0 );
 
             log_entry_bufs.push_back(entry_buf);
@@ -1545,8 +1545,14 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
         ssl_server_ctx_.use_private_key_file( _opt.server_key_file_,
                                               ssl_context::pem );
 
-        // For client
-        ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+        if (!_opt.root_cert_file_.empty()) {
+            // For client
+            ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+        }
+
+        if (_opt.load_default_ca_file_) {
+            ssl_client_ctx_.set_default_verify_paths();
+        }
 #endif
     }
 

@@ -118,6 +118,10 @@ struct asio_service_options {
     // Callback function for verifying certificate subject name.
     // If not given, subject name will not be verified.
     std::function< bool(const std::string&) > verify_sn_;
+
+    // If true will try to load CA from default path
+    // call (SSL_CTX_set_default_verify_paths)
+    bool load_default_ca_file_;
 };
 
 }

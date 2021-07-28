@@ -33,7 +33,7 @@ void peer::send_req( ptr<peer> myself,
 {
     if (abandoned_) {
         p_er("peer %d has been shut down, cannot send request",
-             config_->get_id());
+             get_config().get_id());
         return;
     }
 
@@ -95,7 +95,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
     } );
 
     if (abandoned_) {
-        p_in("peer %d has been shut down, ignore response.", config_->get_id());
+        p_in("peer %d has been shut down, ignore response.", get_config().get_id());
         return;
     }
 
@@ -118,7 +118,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 p_wn( "[EDGE CASE] got stale RPC response from %d: "
                       "current %p (%zu), from parameter %p (%zu). "
                       "will ignore this response",
-                      config_->get_id(),
+                      get_config().get_id(),
                       rpc_.get(),
                       cur_rpc_id,
                       my_rpc_client.get(),
@@ -177,7 +177,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 //   SHOULD NOT reset the new one.
                 p_wn( "[EDGE CASE] RPC for %d has been reset before "
                       "returning error: current %p (%zu), from parameter %p (%zu)",
-                      config_->get_id(),
+                      get_config().get_id(),
                       rpc_.get(),
                       cur_rpc_id,
                       my_rpc_client.get(),
@@ -223,7 +223,7 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         reconn_backoff_.set_duration_ms(new_duration_ms);
 
         rpc_ = factory->create_client(config->get_endpoint());
-        p_tr("%p reconnect peer %zu", rpc_.get(), config_->get_id());
+        p_tr("%p reconnect peer %zu", rpc_.get(), get_config().get_id());
 
         // WARNING:
         //   A reconnection attempt should be treated as an activity,

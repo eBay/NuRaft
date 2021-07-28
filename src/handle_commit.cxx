@@ -177,10 +177,12 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         std::function<void()> clean_func_;
     } exec_auto_cleaner([this](){ sm_commit_exec_in_progress_ = false; });
 
-    p_db( "commit upto %ld, curruent idx %ld\n",
+    p_db( "commit upto %ld, current idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
 
+    bool initial_commit = initial_commit_index_ == sm_commit_index_;
     ulong log_start_idx = log_store_->start_index();
+
     if ( log_start_idx &&
          sm_commit_index_ < log_start_idx - 1 ) {
         p_wn("current commit idx %llu is smaller than log start idx %llu - 1, "
@@ -216,7 +218,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
 
         ulong index_to_commit = sm_commit_index_ + 1;
         ptr<log_entry> le = log_store_->entry_at(index_to_commit);
-        p_tr( "commit upto %llu, curruent idx %llu\n",
+        p_tr( "commit upto %llu, current idx %llu\n",
               quick_commit_index_.load(), index_to_commit );
 
         if (le->get_term() == 0) {
@@ -254,8 +256,14 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
                  index_to_commit);
         }
     }
-    p_db( "DONE: commit upto %ld, curruent idx %ld\n",
+    p_db( "DONE: commit upto %ld, current idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
+
+    if (initial_commit) {
+        cb_func::Param param(id_, leader_);
+        ctx_->cb_func_.call(cb_func::InitialBatchCommited, &param);
+    }
+
     if (role_ == srv_role::follower) {
         ulong leader_idx = leader_commit_index_.load();
         ulong local_idx = sm_commit_index_.load();
@@ -274,6 +282,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             (void) ctx_->cb_func_.call(cb_func::BecomeFresh, &param);
         }
     }
+
     return finished_in_time;
 }
 

@@ -22,7 +22,7 @@ limitations under the License.
 #define _JSAHN_CRC32_H
 
 #include <stdint.h>
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__) || defined(__APPLE__) || defined(__sun)
     #include <unistd.h>
 #endif
 
