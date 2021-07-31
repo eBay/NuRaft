@@ -1184,6 +1184,11 @@ protected:
     std::function<int32()> rand_timeout_;
 
     /**
+     * Previous configs for snapshot purpose, protected by `config_lock_`.
+     */
+    std::list<ptr<cluster_config>> prev_configs_;
+
+    /**
      * Previous config for debugging purpose, protected by `config_lock_`.
      */
     ptr<cluster_config> stale_config_;

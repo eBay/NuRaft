@@ -460,7 +460,7 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
         // get the latest configuration info
         ptr<cluster_config> conf = get_config();
         while ( conf->get_log_idx() > committed_idx &&
-                conf->get_prev_log_idx() >= log_store_->start_index() ) {
+                conf->get_prev_log_idx() >= log_store_->start_index() && conf->get_prev_log_idx() < log_store_->next_slot()) {
             ptr<log_entry> conf_log
                 ( log_store_->entry_at( conf->get_prev_log_idx() ) );
             conf = cluster_config::deserialize(conf_log->get_buf());
@@ -493,6 +493,30 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
             //ctx_->state_mgr_->system_exit(raft_err::N7_no_config_at_idx_one);
             //::exit(-1);
             //return;
+        } else if (conf->get_log_idx() > committed_idx && conf->get_prev_log_idx() >= log_store_->next_slot()) {
+            std::lock_guard<std::mutex> l(config_lock_);
+            p_in( "begin find config from prev_configs list\n" );
+            std::list<ptr<cluster_config>>::reverse_iterator it;
+            for (it = prev_configs_.rbegin(); it != prev_configs_.rend(); ++it) {
+                if ((*it)->get_log_idx() <= committed_idx) {
+                    conf = *it;
+                    p_in( "found config log idx %zu, prev log idx %zu, committed idx %zu\n",
+                          conf->get_log_idx(), conf->get_prev_log_idx(), committed_idx );
+                    break;
+                }
+            }
+        }
+
+        // remove not used config
+        {
+            std::lock_guard<std::mutex> l(config_lock_);
+            std::list<ptr<cluster_config>>::iterator it;
+            for (it = prev_configs_.begin(); it != prev_configs_.end();) {
+                if ((*it)->get_log_idx() < conf->get_log_idx())
+                    prev_configs_.erase(it++);
+                else
+                    break;
+            }
         }
 
         ulong log_term_to_compact = log_store_->term_at(committed_idx);

@@ -1555,6 +1555,7 @@ void raft_server::set_config(const ptr<cluster_config>& new_config) {
     std::lock_guard<std::mutex> l(config_lock_);
     stale_config_ = config_;
     config_ = new_config;
+    prev_configs_.push_back(stale_config_);
 }
 
 ptr<snapshot> raft_server::get_last_snapshot() const {
