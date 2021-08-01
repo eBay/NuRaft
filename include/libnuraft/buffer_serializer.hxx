@@ -21,6 +21,7 @@ limitations under the License.
 #include "ptr.hxx"
 
 #include <cstdint>
+#include <string>
 
 namespace nuraft {
 

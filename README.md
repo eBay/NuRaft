@@ -57,7 +57,11 @@ $ brew install openssl
 $ ./prepare.sh
 ```
 * Windows
-    * Clone [Asio](https://github.com/chriskohlhoff/asio) into the project directory.
+    * Clone [Asio](https://github.com/chriskohlhoff/asio) `asio-1-12-0`
+      into the project directory.
+```sh
+C:\NuRaft> git clone https://github.com/chriskohlhoff/asio -b asio-1-12-0
+```
 
 #### 3. Build static library, tests, and examples: ####
 
