@@ -103,6 +103,8 @@ void raft_server::commit_in_bg() {
 #endif
 
     while (true) {
+     bool is_initial_commit_exec = initial_commit_exec_.exchange(false);
+
      try {
         while ( quick_commit_index_ <= sm_commit_index_ ||
                 sm_commit_index_ >= log_store_->next_slot() - 1 ) {
@@ -140,7 +142,7 @@ void raft_server::commit_in_bg() {
             //     2) log store's latest log index.
         }
 
-        commit_in_bg_exec();
+        commit_in_bg_exec(0, is_initial_commit_exec);
 
      } catch (std::exception& err) {
         // LCOV_EXCL_START
@@ -156,7 +158,7 @@ void raft_server::commit_in_bg() {
     commit_bg_stopped_ = true;
 }
 
-bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
+bool raft_server::commit_in_bg_exec(size_t timeout_ms, bool initial_commit_exec) {
     std::unique_lock<std::mutex> ll(commit_lock_, std::try_to_lock);
     if (!ll.owns_lock()) {
         // Other thread is already doing commit.
@@ -180,7 +182,6 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     p_db( "commit upto %ld, current idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
 
-    bool initial_commit = initial_commit_index_ == sm_commit_index_;
     ulong log_start_idx = log_store_->start_index();
 
     if ( log_start_idx &&
@@ -233,7 +234,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         }
 
         if (le->get_val_type() == log_val_type::app_log) {
-            commit_app_log(index_to_commit, le, need_to_handle_commit_elem);
+            commit_app_log(index_to_commit, le, need_to_handle_commit_elem, initial_commit_exec);
 
         } else if (le->get_val_type() == log_val_type::conf) {
             commit_conf(index_to_commit, le);
@@ -259,7 +260,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     p_db( "DONE: commit upto %ld, current idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
 
-    if (initial_commit) {
+    if (initial_commit_exec) {
         cb_func::Param param(id_, leader_);
         ctx_->cb_func_.call(cb_func::InitialBatchCommited, &param);
     }
@@ -288,7 +289,8 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
 
 void raft_server::commit_app_log(ulong idx_to_commit,
                                  ptr<log_entry>& le,
-                                 bool need_to_handle_commit_elem)
+                                 bool need_to_handle_commit_elem,
+                                 bool initial_commit_exec)
 {
     ptr<buffer> ret_value = nullptr;
     ptr<buffer> buf = le->get_buf_ptr();
@@ -335,7 +337,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             }
         }
 
-        if (!match_found) {
+        if (!match_found && !initial_commit_exec) {
             // If not found, commit thread is invoked earlier than user thread.
             // Create one here.
             ptr<commit_ret_elem> elem = cs_new<commit_ret_elem>();

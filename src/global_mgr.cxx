@@ -305,6 +305,8 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
         }
         if (!target) continue;
 
+
+        bool is_initial_commit_exec = target->initial_commit_exec_.exchange(false);
         ptr<logger>& l_ = target->l_;
 
         // Whenever we find a task to execute, skip next sleeping for any tasks
@@ -329,7 +331,7 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
 
         p_tr("execute commit by global worker, queue length %zu", queue_length);
         bool finished_in_time =
-            target->commit_in_bg_exec(config_.max_scheduling_unit_ms_);
+            target->commit_in_bg_exec(config_.max_scheduling_unit_ms_, is_initial_commit_exec);
         if (!finished_in_time) {
             // Commit took too long time and aborted in the middle.
             // Put this server to queue again.
