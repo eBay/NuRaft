@@ -440,6 +440,12 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
         // snapshot is disabled or the log store is not long enough
         return;
     }
+    // get the latest configuration info
+    ptr<cluster_config> conf = get_config();
+    if ( conf->get_prev_log_idx() >= log_store_->next_slot() ) {
+        p_in("The latest config and previous config is not in log_store, so skip the snapshot creation");
+        return;
+    }
     if ( !state_machine_->chk_create_snapshot() ) {
         // User-defined state machine doesn't want to create a snapshot.
         return;
@@ -457,8 +463,6 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
         snapshot_in_action = true;
         p_in("creating a snapshot for index %llu", committed_idx);
 
-        // get the latest configuration info
-        ptr<cluster_config> conf = get_config();
         while ( conf->get_log_idx() > committed_idx &&
                 conf->get_prev_log_idx() >= log_store_->start_index() ) {
             ptr<log_entry> conf_log
