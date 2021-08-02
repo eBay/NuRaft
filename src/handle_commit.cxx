@@ -443,7 +443,7 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
     // get the latest configuration info
     ptr<cluster_config> conf = get_config();
     if ( conf->get_prev_log_idx() >= log_store_->next_slot() ) {
-        p_in("The latest config and previous config is not in log_store, so skip the snapshot creation");
+        // The latest config and previous config is not in log_store, so skip the snapshot creation
         return;
     }
     if ( !state_machine_->chk_create_snapshot() ) {
