@@ -103,7 +103,11 @@ void raft_server::commit_in_bg() {
 #endif
 
     while (true) {
-     bool is_initial_commit_exec = initial_commit_exec_.exchange(false);
+     /// Server can start and have some uncommited entries between snapshots and logs
+     /// This entries are not user requests, so they need to be treated slightly different.
+     /// Also we can start without any uncommited log entries, and in this case first user request
+     /// must be treated as always. That is why we set this flag here.
+     bool is_log_store_commit_exec = initial_commit_exec_.exchange(false);
 
      try {
         while ( quick_commit_index_ <= sm_commit_index_ ||
@@ -142,7 +146,7 @@ void raft_server::commit_in_bg() {
             //     2) log store's latest log index.
         }
 
-        commit_in_bg_exec(0, is_initial_commit_exec);
+        commit_in_bg_exec(0, is_log_store_commit_exec);
 
      } catch (std::exception& err) {
         // LCOV_EXCL_START
