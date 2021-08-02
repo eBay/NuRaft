@@ -806,14 +806,15 @@ protected:
     ulong term_for_log(ulong log_idx);
 
     void commit_in_bg();
-    bool commit_in_bg_exec(size_t timeout_ms = 0);
+    bool commit_in_bg_exec(size_t timeout_ms = 0, bool initial_commit_exec = false);
 
     void append_entries_in_bg();
     void append_entries_in_bg_exec();
 
     void commit_app_log(ulong idx_to_commit,
                         ptr<log_entry>& le,
-                        bool need_to_handle_commit_elem);
+                        bool need_to_handle_commit_elem,
+                        bool initial_commit_exec);
     void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
 
     ptr< cmd_result< ptr<buffer> > > send_msg_to_leader(ptr<req_msg>& req);
@@ -1330,6 +1331,13 @@ protected:
      * The term when `vote_init_timer_` was reset.
      */
     std::atomic<ulong> vote_init_timer_term_;
+
+    /**
+     * This flag is true only for the first execution of commit. Useful when we
+     * need to detect the case when we commiting log store to state-machine during
+     * server startup.
+     */
+    std::atomic<bool> initial_commit_exec_{true};
 };
 
 } // namespace nuraft;
