@@ -1332,6 +1332,11 @@ protected:
      */
     std::atomic<ulong> vote_init_timer_term_;
 
+    /**
+     * This flag is true only for the first execution of commit. Useful when we
+     * need to detect the case when we commiting log store to state-machine during
+     * server startup.
+     */
     std::atomic<bool> initial_commit_exec_{true};
 };
 
