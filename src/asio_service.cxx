@@ -1590,12 +1590,17 @@ std::string asio_service_impl::get_password
 #endif
 
 void asio_service_impl::worker_entry() {
-    std::string thread_name = "nuraft_w_" + std::to_string(worker_id_.fetch_add(1));
+    uint32_t worker_id = worker_id_.fetch_add(1);
+    std::string thread_name = "nuraft_w_" + std::to_string(worker_id);
 #ifdef __linux__
     pthread_setname_np(pthread_self(), thread_name.c_str());
 #elif __APPLE__
     pthread_setname_np(thread_name.c_str());
 #endif
+
+    if (my_opt_.worker_start_) {
+        my_opt_.worker_start_(worker_id);
+    }
 
     static std::atomic<size_t> exception_count(0);
     static timer_helper timer(60 * 1000000); // 1 min.
@@ -1634,6 +1639,10 @@ void asio_service_impl::worker_entry() {
         }
         // LCOV_EXCL_STOP
     } while (stopping_status_ != 1);
+
+    if (my_opt_.worker_stop_) {
+        my_opt_.worker_stop_(worker_id);
+    }
 
     p_in("end of asio worker thread, remaining threads: %zu",
          num_active_workers_.load());
