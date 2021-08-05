@@ -885,6 +885,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p_tr("peer %d, prev matched idx: %ld, new matched idx: %ld",
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
+            p->set_last_accepted_log_idx(new_matched_idx);
         }
         cb_func::Param param(id_, leader_, p->get_id());
         param.ctx = &new_matched_idx;
