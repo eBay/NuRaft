@@ -94,6 +94,7 @@ struct raft_params {
         , auto_forwarding_req_timeout_(0)
         , grace_period_of_lagging_state_machine_(0)
         , use_bg_thread_for_snapshot_io_(false)
+        , use_full_consensus_while_healthy_(false)
         {}
 
     /**
@@ -536,6 +537,17 @@ public:
      * Asynchronous IO will reduce the overall latency of the leader's operations.
      */
     bool use_bg_thread_for_snapshot_io_;
+
+    /**
+     * (Experimental)
+     * If `true`, it will commit a log upon the agreement of all members
+     * while they are all healthy. In other words, with this option,
+     * all members have the log at the moment the leader commits the log.
+     *
+     * If there is more than one unhealthy (not responding for a while)
+     * member, it will follow the regular quorum-based consensus.
+     */
+    bool use_full_consensus_while_healthy_;
 };
 
 }

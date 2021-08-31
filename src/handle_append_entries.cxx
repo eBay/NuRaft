@@ -1031,6 +1031,21 @@ ulong raft_server::get_expected_committed_log_idx() {
                std::greater<ulong>() );
 
     size_t quorum_idx = get_quorum_for_commit();
+    if (ctx_->get_params()->use_full_consensus_while_healthy_) {
+        size_t not_responding_peers = get_not_responding_peers();
+        if (not_responding_peers == 0) {
+            // If full consensus option is on, and all memebers are healthy,
+            // commit should be agreed by all members.
+            size_t prev_quorum_idx = quorum_idx;
+            quorum_idx = get_num_voting_members() - 1;
+            p_tr( "full consensus mode: adjust quorum %zu -> %zu",
+                prev_quorum_idx, quorum_idx );
+        } else {
+            p_tr( "full consensus mode, but %zu peers are not responding",
+                  not_responding_peers );
+        }
+    }
+
     if (l_ && l_->get_level() >= 6) {
         std::string tmp_str;
         for (ulong m_idx: matched_indexes) {
