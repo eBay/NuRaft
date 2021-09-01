@@ -594,7 +594,7 @@ size_t raft_server::get_num_stale_peers() {
     size_t count = 0;
     for (auto& entry: peers_) {
         ptr<peer>& pp = entry.second;
-        if ( get_last_log_idx() > pp->get_matched_idx() +
+        if ( get_last_log_idx() > pp->get_last_accepted_log_idx() +
                                   ctx_->get_params()->stale_log_gap_ ) {
             count++;
         }
