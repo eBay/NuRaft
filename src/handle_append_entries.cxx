@@ -1021,7 +1021,8 @@ ulong raft_server::get_expected_committed_log_idx() {
 
         matched_indexes.push_back( p->get_matched_idx() );
     }
-    assert((int32)matched_indexes.size() == get_num_voting_members());
+    int voting_members = get_num_voting_members();
+    assert((int32)matched_indexes.size() == voting_members);
 
     // NOTE: Descending order.
     //       e.g.) 100 100 99 95 92
@@ -1031,18 +1032,22 @@ ulong raft_server::get_expected_committed_log_idx() {
                std::greater<ulong>() );
 
     size_t quorum_idx = get_quorum_for_commit();
-    if (ctx_->get_params()->use_full_consensus_while_healthy_) {
+    if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
         size_t not_responding_peers = get_not_responding_peers();
-        if (not_responding_peers == 0) {
-            // If full consensus option is on, and all memebers are healthy,
-            // commit should be agreed by all members.
+        if (not_responding_peers < voting_members - quorum_idx) {
+            // If full consensus option is on, commit should be
+            // agreed by all healthy members, and the number of
+            // aggreed members should be bigger than regular quorum size.
             size_t prev_quorum_idx = quorum_idx;
-            quorum_idx = get_num_voting_members() - 1;
-            p_tr( "full consensus mode: adjust quorum %zu -> %zu",
-                prev_quorum_idx, quorum_idx );
+            quorum_idx = voting_members - not_responding_peers - 1;
+            p_tr( "full consensus mode: %zu peers are not responding out of %d, "
+                  "adjust quorum %zu -> %zu",
+                  not_responding_peers, voting_members,
+                  prev_quorum_idx, quorum_idx );
         } else {
-            p_tr( "full consensus mode, but %zu peers are not responding",
-                  not_responding_peers );
+            p_tr( "full consensus mode, but %zu peers are not responding, "
+                  "required quorum size %zu/%d",
+                  not_responding_peers, quorum_idx + 1, voting_members );
         }
     }
 

@@ -94,7 +94,7 @@ struct raft_params {
         , auto_forwarding_req_timeout_(0)
         , grace_period_of_lagging_state_machine_(0)
         , use_bg_thread_for_snapshot_io_(false)
-        , use_full_consensus_while_healthy_(false)
+        , use_full_consensus_among_healthy_members_(false)
         {}
 
     /**
@@ -540,14 +540,16 @@ public:
 
     /**
      * (Experimental)
-     * If `true`, it will commit a log upon the agreement of all members
-     * while they are all healthy. In other words, with this option,
-     * all members have the log at the moment the leader commits the log.
+     * If `true`, it will commit a log upon the agreement of all healthy members.
+     * In other words, with this option, all healthy members have the log at the
+     * moment the leader commits the log. If the number of healthy members is
+     * smaller than the regular quorum size, the leader is not be able to
+     * commit the log.
      *
-     * If there is more than one unhealthy (not responding for a while)
-     * member, it will follow the regular quorum-based consensus.
+     * A member becomes "unhealthy" if it does not respond to the leader's
+     * request for a configured time (`response_limit_`).
      */
-    bool use_full_consensus_while_healthy_;
+    bool use_full_consensus_among_healthy_members_;
 };
 
 }

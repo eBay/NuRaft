@@ -2202,7 +2202,7 @@ int full_consensus_test() {
         RaftAsioPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
-        param.use_full_consensus_while_healthy_ = true;
+        param.use_full_consensus_among_healthy_members_ = true;
         pp->raftServer->update_params(param);
     }
 
