@@ -543,8 +543,8 @@ public:
      * If `true`, it will commit a log upon the agreement of all healthy members.
      * In other words, with this option, all healthy members have the log at the
      * moment the leader commits the log. If the number of healthy members is
-     * smaller than the regular quorum size, the leader is not be able to
-     * commit the log.
+     * smaller than the regular (or configured custom) quorum size, the leader
+     * cannot commit the log.
      *
      * A member becomes "unhealthy" if it does not respond to the leader's
      * request for a configured time (`response_limit_`).
