@@ -1089,7 +1089,10 @@ void SimpleLogger::put(int level,
             while (ll->needToFlush()) std::this_thread::yield();
         }
     }
-    ll->write(cur_len, msg);
+    {
+        std::unique_lock<std::mutex> write_lock(flushingLogs, std::try_to_lock);
+        ll->write(cur_len, msg);
+    }
 
     if (level > curDispLevel) return;
 
