@@ -1090,7 +1090,7 @@ void SimpleLogger::put(int level,
         }
     }
     {
-        std::unique_lock<std::mutex> write_lock(flushingLogs, std::try_to_lock);
+        std::unique_lock<std::mutex> write_lock(flushingLogs);
         ll->write(cur_len, msg);
     }
 
