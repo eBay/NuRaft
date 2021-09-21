@@ -205,7 +205,8 @@ void raft_server::initiate_vote(bool force_vote) {
         votes_granted_ = 0;
         votes_responded_ = 0;
         election_completed_ = false;
-        ctx_->state_mgr_->save_state(*state_);
+        // NOTE: Following `request_vote` will call `save_state()`,
+        //       hence we don't call it here even though `state_` changes.
         request_vote(force_vote);
     }
 
