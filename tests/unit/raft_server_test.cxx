@@ -2621,6 +2621,8 @@ int full_consensus_synth_test() {
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
     s3.raftServer->shutdown();
+    s4.raftServer->shutdown();
+    s5.raftServer->shutdown();
 
     f_base->destroy();
 
