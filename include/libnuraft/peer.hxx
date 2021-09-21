@@ -187,6 +187,7 @@ public:
 
     void set_snapshot_in_sync(const ptr<snapshot>& s,
                               ulong timeout_ms = 10 * 1000) {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         if (s == nilptr) {
             snp_sync_ctx_.reset();
         }
@@ -196,6 +197,7 @@ public:
     }
 
     ptr<snapshot_sync_ctx> get_snapshot_sync_ctx() const {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         return snp_sync_ctx_;
     }
 
@@ -394,6 +396,11 @@ private:
      * Snapshot context if snapshot transmission is in progress.
      */
     ptr<snapshot_sync_ctx> snp_sync_ctx_;
+
+    /**
+     * Lock for `snp_sync_ctx_`.
+     */
+    mutable std::mutex snp_sync_ctx_lock_;
 
     /**
      * Lock for this peer.
