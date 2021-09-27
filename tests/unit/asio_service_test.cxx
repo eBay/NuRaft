@@ -2231,10 +2231,10 @@ int full_consensus_test() {
 
             cmd_result< ptr<buffer> >::handler_type my_handler =
                 std::bind( async_handler,
-                        &idx_list,
-                        &idx_list_lock,
-                        std::placeholders::_1,
-                        std::placeholders::_2 );
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
             ret->when_ready( my_handler );
 
             handlers.push_back(ret);
@@ -2257,6 +2257,96 @@ int full_consensus_test() {
     TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 5, "wait for replication");
     // They should be committed immediately.
     CHK_GT(s1.raftServer->get_committed_log_idx(), new_commit_idx);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int custom_commit_condition_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async & full consensus mode.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Stop S3.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 5, "stop S3");
+
+    // Remember the commit index.
+    uint64_t commit_idx = s1.raftServer->get_committed_log_idx();
+
+    // Set custom quorum set: {S1, S3}.
+    s1.getTestSm()->setServersForCommit({1, 3});
+
+    // Append messages asynchronously.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    auto do_async_append = [&]() {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                s1.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append();
+
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // No request should have been committed, as S1 cannot reach quorum due to S3.
+    CHK_EQ(commit_idx, s1.raftServer->get_committed_log_idx());
+
+    // Restart S3.
+    raft_params new_params = s1.raftServer->get_current_params();
+    s3.restartServer(&new_params);
+    TestSuite::sleep_ms(500, "restarting S3");
+
+    // More replication.
+    do_async_append();
+    TestSuite::sleep_sec(1, "wait for replication");
+    // They should be committed immediately.
+    CHK_GT(s1.raftServer->get_committed_log_idx(), commit_idx);
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
@@ -2362,6 +2452,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "full consensus test",
                full_consensus_test );
+
+    ts.doTest( "custom commit condition test",
+               custom_commit_condition_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

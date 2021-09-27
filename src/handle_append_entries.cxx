@@ -1011,14 +1011,19 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
 ulong raft_server::get_expected_committed_log_idx() {
     std::vector<ulong> matched_indexes;
+    state_machine::adjust_commit_index_params aci_params;
     matched_indexes.reserve(16);
+    aci_params.peer_index_map_.reserve(16);
 
     // Leader itself.
     matched_indexes.push_back( precommit_index_ );
+    aci_params.peer_index_map_[id_] = precommit_index_;
+
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
-        if (!is_regular_member(p)) continue;
+        aci_params.peer_index_map_[p->get_id()] = p->get_matched_idx();
 
+        if (!is_regular_member(p)) continue;
         matched_indexes.push_back( p->get_matched_idx() );
     }
     int voting_members = get_num_voting_members();
@@ -1059,7 +1064,14 @@ ulong raft_server::get_expected_committed_log_idx() {
         p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
     }
 
-    return matched_indexes[ quorum_idx ];
+    aci_params.current_commit_index_ = precommit_index_;
+    aci_params.expected_commit_index_ = matched_indexes[quorum_idx];
+    uint64_t adjusted_commit_index = state_machine_->adjust_commit_index(aci_params);
+    if (aci_params.expected_commit_index_ != adjusted_commit_index) {
+        p_tr( "commit index adjusted: %lu -> %lu",
+              aci_params.expected_commit_index_, adjusted_commit_index );
+    }
+    return adjusted_commit_index;
 }
 
 } // namespace nuraft;
