@@ -24,6 +24,7 @@ limitations under the License.
 #include "test_common.h"
 
 #include <cassert>
+#include <limits>
 #include <list>
 #include <map>
 #include <set>
@@ -250,6 +251,25 @@ public:
         return customBatchSize;
     }
 
+    uint64_t adjust_commit_index(const adjust_commit_index_params& params) {
+        std::lock_guard<std::mutex> l(serversForCommitLock);
+        if (serversForCommit.empty()) {
+            return params.expected_commit_index_;
+        }
+
+        uint64_t min_index = std::numeric_limits<uint64_t>::max();
+        for (int srv_id: serversForCommit) {
+            auto entry = params.peer_index_map_.find(srv_id);
+            if (entry == params.peer_index_map_.end()) {
+                // Something went wrong.
+                assert(0);
+                return params.expected_commit_index_;
+            }
+            min_index = std::min(entry->second, min_index);
+        }
+        return min_index;
+    }
+
     const std::list<uint64_t>& getRollbackIdxs() const {
         return rollbacks;
     }
@@ -343,6 +363,11 @@ public:
         snpDelayMs = delay_ms;
     }
 
+    void setServersForCommit(const std::list<int>& src) {
+        std::lock_guard<std::mutex> l(serversForCommitLock);
+        serversForCommit = src;
+    }
+
 private:
     std::map<uint64_t, ptr<buffer>> preCommits;
     std::map<uint64_t, ptr<buffer>> commits;
@@ -362,6 +387,12 @@ private:
 
     std::set<void*> openedUserCtxs;
     mutable std::mutex openedUserCtxsLock;
+
+    /**
+     * If non-empty, the commit index will be min(log index of servers).
+     */
+    std::list<int> serversForCommit;
+    mutable std::mutex serversForCommitLock;
 
     SimpleLogger* myLog;
 };
