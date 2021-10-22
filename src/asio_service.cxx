@@ -702,6 +702,9 @@ public:
         , ssl_enabled_(_enable_ssl)
         , l_(l)
     {
+        asio::socket_base::reuse_address option(true);
+        acceptor_.set_option(option);
+
         p_in("Raft ASIO listener initiated, %s",
              ssl_enabled_ ? "SSL ENABLED" : "UNSECURED");
     }
