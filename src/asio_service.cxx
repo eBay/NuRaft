@@ -1801,7 +1801,7 @@ ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
                        l );
     } catch (std::exception& ee) {
         // Most likely exception happens due to wrong endpoint.
-        p_er("got exception: %s", ee.what());
+        p_er("got exception: %s on port %u", ee.what(), listening_port);
         return nullptr;
     }
 }
