@@ -706,7 +706,7 @@ public:
         acceptor_.set_option(option);
 
         p_in("Raft ASIO listener initiated, %s",
-             ssl_enabled_ ? "ssl enabled" : "unsecured");
+             ssl_enabled_ ? "SSL enabled" : "unsecured");
     }
 
     __nocopy__(asio_rpc_listener);
