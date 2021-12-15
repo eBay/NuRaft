@@ -27,6 +27,8 @@ limitations under the License.
 #include "pp_util.hxx"
 #include "ptr.hxx"
 
+#include <unordered_map>
+
 namespace nuraft {
 
 class cluster_config;
@@ -312,6 +314,46 @@ public:
      *         `false` if not.
      */
     virtual bool allow_leadership_transfer() { return true; }
+
+    /**
+     * Parameters for `adjust_commit_index` API.
+     */
+    struct adjust_commit_index_params {
+        adjust_commit_index_params()
+            : current_commit_index_(0)
+            , expected_commit_index_(0)
+            {}
+
+        /**
+         * The current committed index.
+         */
+        uint64_t current_commit_index_;
+
+        /**
+         * The new target commit index determined by Raft.
+         */
+        uint64_t expected_commit_index_;
+
+        /**
+         * A map of <peer ID, peer's log index>, including the
+         * leader and learners.
+         */
+        std::unordered_map<int, uint64_t> peer_index_map_;
+    };
+
+    /**
+     * This function will be called when Raft succeeds in replicating logs
+     * to an arbitrary follower and attempts to commit logs. Users can manually
+     * adjust the commit index. The adjusted commit index should be equal to
+     * or greater than the given `current_commit_index`. Otherwise, no log
+     * will be committed.
+     *
+     * @param params Parameters.
+     * @return Adjusted commit index.
+     */
+    virtual uint64_t adjust_commit_index(const adjust_commit_index_params& params) {
+        return params.expected_commit_index_;
+    }
 };
 
 }

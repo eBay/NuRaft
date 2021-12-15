@@ -48,6 +48,7 @@ public:
         , rpc_backoff_( ctx.get_params()->rpc_failure_backoff_ )
         , max_hb_interval_( ctx.get_params()->max_hb_interval() )
         , next_log_idx_(0)
+        , last_accepted_log_idx_(0)
         , next_batch_size_hint_in_bytes_(0)
         , matched_idx_(0)
         , busy_flag_(false)
@@ -156,6 +157,14 @@ public:
         next_log_idx_ = idx;
     }
 
+    uint64_t get_last_accepted_log_idx() const {
+        return last_accepted_log_idx_;
+    }
+
+    void set_last_accepted_log_idx(uint64_t to) {
+        last_accepted_log_idx_ = to;
+    }
+
     int64 get_next_batch_size_hint_in_bytes() const {
         return next_batch_size_hint_in_bytes_;
     }
@@ -183,6 +192,7 @@ public:
 
     void set_snapshot_in_sync(const ptr<snapshot>& s,
                               ulong timeout_ms = 10 * 1000) {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         if (s == nilptr) {
             snp_sync_ctx_.reset();
         }
@@ -192,6 +202,7 @@ public:
     }
 
     ptr<snapshot_sync_ctx> get_snapshot_sync_ctx() const {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         return snp_sync_ctx_;
     }
 
@@ -352,6 +363,11 @@ private:
     std::atomic<ulong> next_log_idx_;
 
     /**
+     * The last log index accepted by this server.
+     */
+    std::atomic<uint64_t> last_accepted_log_idx_;
+
+    /**
      * Hint of the next log batch size in bytes.
      */
     std::atomic<int64> next_batch_size_hint_in_bytes_;
@@ -387,6 +403,11 @@ private:
      * Snapshot context if snapshot transmission is in progress.
      */
     ptr<snapshot_sync_ctx> snp_sync_ctx_;
+
+    /**
+     * Lock for `snp_sync_ctx_`.
+     */
+    mutable std::mutex snp_sync_ctx_lock_;
 
     /**
      * Lock for this peer.

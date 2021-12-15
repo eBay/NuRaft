@@ -205,7 +205,8 @@ void raft_server::initiate_vote(bool force_vote) {
         votes_granted_ = 0;
         votes_responded_ = 0;
         election_completed_ = false;
-        ctx_->state_mgr_->save_state(*state_);
+        // NOTE: Following `request_vote` will call `save_state()`,
+        //       hence we don't call it here even though `state_` changes.
         request_vote(force_vote);
     }
 
@@ -299,16 +300,22 @@ ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
         ( state_->get_voted_for() == req.get_src() ||
           state_->get_voted_for() == -1 );
 
-    bool force_vote = (req.log_entries().size() > 0);
-    if (force_vote) {
+    bool ignore_priority = false;
+    if (req.log_entries().size() > 0) {
         p_in("[VOTE REQ] force vote request, will ignore priority");
+        ignore_priority = true;
+    }
+    if (catching_up_) {
+        p_in("[VOTE REQ] this server is catching-up with leader, "
+             "will ignore priority");
+        ignore_priority = true;
     }
 
     if (grant) {
         ptr<cluster_config> c_conf = get_config();
         for (auto& entry: c_conf->get_servers()) {
             srv_config* s_conf = entry.get();
-            if ( !force_vote &&
+            if ( !ignore_priority &&
                  s_conf->get_id() == req.get_src() &&
                  s_conf->get_priority() &&
                  s_conf->get_priority() < target_priority_ ) {

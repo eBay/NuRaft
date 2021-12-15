@@ -569,11 +569,9 @@ size_t raft_server::get_not_responding_peers() {
     // (i.e., don't respond 20x heartbeat time long).
     size_t num_not_resp_nodes = 0;
 
-    int expiry = get_leadership_expiry();
-    if (expiry < 0) {
-        // Negative expiry, leadership will never be expired.
-        return 0;
-    }
+    ptr<raft_params> params = ctx_->get_params();
+    int expiry = params->heart_beat_interval_ *
+                     raft_server::raft_limits_.response_limit_;
 
     // Check the number of not responding peers.
     for (auto& entry: peers_) {
@@ -596,7 +594,7 @@ size_t raft_server::get_num_stale_peers() {
     size_t count = 0;
     for (auto& entry: peers_) {
         ptr<peer>& pp = entry.second;
-        if ( get_last_log_idx() > pp->get_matched_idx() +
+        if ( get_last_log_idx() > pp->get_last_accepted_log_idx() +
                                   ctx_->get_params()->stale_log_gap_ ) {
             count++;
         }
@@ -1019,7 +1017,13 @@ bool raft_server::check_leadership_validity() {
 
     // Check if quorum is not responding.
     int32 num_voting_members = get_num_voting_members();
+
+    int leadership_expiry = get_leadership_expiry();
     int32 nr_peers = (int32)get_not_responding_peers();
+    if (leadership_expiry < 0) {
+        // Negative expiry: leadership will never expire.
+        nr_peers = 0;
+    }
     int32 min_quorum_size = get_quorum_for_commit() + 1;
     if ( (num_voting_members - nr_peers) < min_quorum_size ) {
         p_er("%zu nodes (out of %zu, %zu including learners) are not "
@@ -1524,7 +1528,7 @@ raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
     peer_info ret;
     ptr<peer> pp = entry->second;
     ret.id_ = pp->get_id();
-    ret.last_log_idx_ = pp->get_next_log_idx() - 1;
+    ret.last_log_idx_ = pp->get_last_accepted_log_idx();
     ret.last_succ_resp_us_ = pp->get_resp_timer_us();
     return ret;
 }
@@ -1538,7 +1542,7 @@ std::vector<raft_server::peer_info> raft_server::get_peer_info_all() const {
         peer_info pi;
         ptr<peer> pp = entry.second;
         pi.id_ = pp->get_id();
-        pi.last_log_idx_ = pp->get_next_log_idx() - 1;
+        pi.last_log_idx_ = pp->get_last_accepted_log_idx();
         pi.last_succ_resp_us_ = pp->get_resp_timer_us();
         ret.push_back(pi);
     }

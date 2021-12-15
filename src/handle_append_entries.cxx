@@ -885,6 +885,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p_tr("peer %d, prev matched idx: %ld, new matched idx: %ld",
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
+            p->set_last_accepted_log_idx(new_matched_idx);
         }
         cb_func::Param param(id_, leader_, p->get_id());
         param.ctx = &new_matched_idx;
@@ -1010,17 +1011,23 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
 ulong raft_server::get_expected_committed_log_idx() {
     std::vector<ulong> matched_indexes;
+    state_machine::adjust_commit_index_params aci_params;
     matched_indexes.reserve(16);
+    aci_params.peer_index_map_.reserve(16);
 
     // Leader itself.
     matched_indexes.push_back( precommit_index_ );
+    aci_params.peer_index_map_[id_] = precommit_index_;
+
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
-        if (!is_regular_member(p)) continue;
+        aci_params.peer_index_map_[p->get_id()] = p->get_matched_idx();
 
+        if (!is_regular_member(p)) continue;
         matched_indexes.push_back( p->get_matched_idx() );
     }
-    assert((int32)matched_indexes.size() == get_num_voting_members());
+    int voting_members = get_num_voting_members();
+    assert((int32)matched_indexes.size() == voting_members);
 
     // NOTE: Descending order.
     //       e.g.) 100 100 99 95 92
@@ -1030,6 +1037,25 @@ ulong raft_server::get_expected_committed_log_idx() {
                std::greater<ulong>() );
 
     size_t quorum_idx = get_quorum_for_commit();
+    if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
+        size_t not_responding_peers = get_not_responding_peers();
+        if (not_responding_peers < voting_members - quorum_idx) {
+            // If full consensus option is on, commit should be
+            // agreed by all healthy members, and the number of
+            // aggreed members should be bigger than regular quorum size.
+            size_t prev_quorum_idx = quorum_idx;
+            quorum_idx = voting_members - not_responding_peers - 1;
+            p_tr( "full consensus mode: %zu peers are not responding out of %d, "
+                  "adjust quorum %zu -> %zu",
+                  not_responding_peers, voting_members,
+                  prev_quorum_idx, quorum_idx );
+        } else {
+            p_tr( "full consensus mode, but %zu peers are not responding, "
+                  "required quorum size %zu/%d",
+                  not_responding_peers, quorum_idx + 1, voting_members );
+        }
+    }
+
     if (l_ && l_->get_level() >= 6) {
         std::string tmp_str;
         for (ulong m_idx: matched_indexes) {
@@ -1038,7 +1064,14 @@ ulong raft_server::get_expected_committed_log_idx() {
         p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
     }
 
-    return matched_indexes[ quorum_idx ];
+    aci_params.current_commit_index_ = precommit_index_;
+    aci_params.expected_commit_index_ = matched_indexes[quorum_idx];
+    uint64_t adjusted_commit_index = state_machine_->adjust_commit_index(aci_params);
+    if (aci_params.expected_commit_index_ != adjusted_commit_index) {
+        p_tr( "commit index adjusted: %lu -> %lu",
+              aci_params.expected_commit_index_, adjusted_commit_index );
+    }
+    return adjusted_commit_index;
 }
 
 } // namespace nuraft;

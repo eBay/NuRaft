@@ -1039,6 +1039,90 @@ int leader_election_with_aggressive_node_test() {
 
     return 0;
 }
+int leader_election_with_catching_up_server_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2};
+
+    CHK_Z( launch_servers( pkgs ) );
+
+    // Set priority of S1 to 80 and S2 to 100.
+    s1.raftServer->set_priority(1, 80);
+    s2.raftServer->set_priority(2, 100);
+
+    // Append logs to S1 to trigger log compaction.
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.log_sync_stop_gap_ = 0;
+        pp->raftServer->update_params(param);
+    }
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+
+        handlers.push_back(ret);
+    }
+    // Pre-commit and commit.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    // Wait for bg commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Add S2 to S1.
+    s1.raftServer->add_srv( *s2.getTestMgr()->get_srv_config() );
+
+    // Join req/resp.
+    s1.fNet->execReqResp();
+    // Add new server, notify existing peers.
+    // After getting response, it will make configuration commit.
+    s1.fNet->execReqResp();
+    // Notify new commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Now S2 is the member of the cluster.
+
+    // S1 resigns immediately (to schedule election timer).
+    s1.raftServer->yield_leadership(true);
+    CHK_FALSE( s1.raftServer->is_leader() );
+
+    // Invoke election timer of S1.
+    s1.dbgLog(" --- invoke election timer of S1 ---");
+    s1.fTimer->invoke( timer_task_type::election_timer );
+    // Send pre-vote request, S2 should accept it as it is in catch-up mode.
+    s1.fNet->execReqResp();
+    // Send vote request, S2 should accept it as it is in catch-up mode.
+    s1.fNet->execReqResp();
+
+    // Leader election should succeed.
+    CHK_TRUE( s1.raftServer->is_leader() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
 
 int leadership_takeover_basic_test() {
     reset_log_files();
@@ -2506,6 +2590,130 @@ int config_log_replay_test() {
     return 0;
 }
 
+int full_consensus_synth_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+    std::string s4_addr = "S4";
+    std::string s5_addr = "S5";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    RaftPkg s4(f_base, 4, s4_addr);
+    RaftPkg s5(f_base, 5, s5_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4, &s5};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.use_full_consensus_among_healthy_members_ = true;
+        param.leadership_expiry_ = -1; // Leadership never expires.
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 10;
+
+    // Append messages asynchronously.
+    auto append_msg = [&]() {
+        std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                s1.raftServer->append_entries( {msg} );
+
+            CHK_TRUE( ret->get_accepted() );
+            CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+
+            handlers.push_back(ret);
+        }
+        return 0;
+    };
+    append_msg();
+
+    // Send messages to S2-4 only.
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        for (auto addr: {s2_addr, s3_addr, s4_addr}) {
+            s1.fNet->execReqResp(addr);
+        }
+    }
+    // Wait for bg commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Above messages shouldn't be committed, as S5 is still considered healthy,
+    // and it needs the consensus from all members.
+    CHK_GT( s1.raftServer->get_last_log_idx(),
+            s1.raftServer->get_target_committed_log_idx() );
+
+    // Set short heartbeat.
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.heart_beat_interval_ = 10;
+        pp->raftServer->update_params(param);
+    }
+
+    // Mimic 25 heartbeats (S2-4 only).
+    for (size_t ii = 0; ii < 25; ++ii) {
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        for (auto addr: {s2_addr, s3_addr, s4_addr}) {
+            s1.fNet->execReqResp(addr);
+            s1.fNet->execReqResp(addr);
+        }
+        TestSuite::sleep_ms(10);
+    }
+
+    // Now above messages should be committed, as S5 is unhealthy.
+    CHK_EQ( s1.raftServer->get_last_log_idx(),
+            s1.raftServer->get_target_committed_log_idx() );
+
+    // Mimic 25 heartbeats (S2 only).
+    for (size_t ii = 0; ii < 25; ++ii) {
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        for (auto addr: {s2_addr}) {
+            s1.fNet->execReqResp(addr);
+            s1.fNet->execReqResp(addr);
+        }
+        TestSuite::sleep_ms(10);
+    }
+
+    // Append entries.
+    append_msg();
+
+    // Send messages to S2 only.
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        for (auto addr: {s2_addr}) {
+            s1.fNet->execReqResp(addr);
+        }
+    }
+
+    // Commit shouldn't happen.
+    CHK_GT( s1.raftServer->get_last_log_idx(),
+            s1.raftServer->get_target_committed_log_idx() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    s4.raftServer->shutdown();
+    s5.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
+
 }  // namespace raft_server_test;
 using namespace raft_server_test;
 
@@ -2549,6 +2757,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "leader election with aggressive node test",
                leader_election_with_aggressive_node_test );
+
+    ts.doTest( "leader election with catching-up server test",
+               leader_election_with_catching_up_server_test );
 
     ts.doTest( "leadership takeover basic test",
                leadership_takeover_basic_test );
@@ -2594,6 +2805,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "config log replay test",
                config_log_replay_test );
+
+    ts.doTest( "full consensus test",
+               full_consensus_synth_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
