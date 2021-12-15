@@ -368,7 +368,6 @@ void raft_server::apply_and_log_current_params() {
           params->snapshot_distance_,
           params->log_sync_stop_gap_,
           params->reserved_log_items_,
-          params->reserved_log_items_,
           params->client_req_timeout_,
           ( params->auto_forwarding_ ? "on" : "off" ),
           ( params->return_method_ == raft_params::blocking
