@@ -692,7 +692,7 @@ public:
                        ushort port,
                        bool _enable_ssl,
                        ptr<logger>& l,
-                       bool _enable_ipv6 = false )
+                       bool _enable_ipv6 = true )
         : impl_(_impl)
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
