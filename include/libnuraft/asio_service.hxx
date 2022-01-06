@@ -58,7 +58,8 @@ public:
                             __override__;
 
     ptr<rpc_listener> create_rpc_listener(ushort listening_port,
-                                          ptr<logger>& l);
+                                          ptr<logger>& l,
+                                          bool _enable_ipv6 = false);
 
     void stop();
 
