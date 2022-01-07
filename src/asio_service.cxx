@@ -691,12 +691,13 @@ public:
                        ssl_context& ssl_ctx,
                        ushort port,
                        bool _enable_ssl,
-                       ptr<logger>& l )
+                       ptr<logger>& l,
+                       bool _enable_ipv6 = true )
         : impl_(_impl)
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
-        , acceptor_(io, asio::ip::tcp::endpoint(asio::ip::tcp::v6(), port))
+        , acceptor_(io, asio::ip::tcp::endpoint(_enable_ipv6 ? asio::ip::tcp::v6() : asio::ip::tcp::v4(), port))
         , session_id_cnt_(1)
         , stopped_(false)
         , ssl_enabled_(_enable_ssl)
@@ -1798,7 +1799,8 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
 }
 
 ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
-                                                     ptr<logger>& l )
+                                                     ptr<logger>& l,
+                                                     bool _enable_ipv6 )
 {
     try {
         return cs_new< asio_rpc_listener >
@@ -1807,7 +1809,8 @@ ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
                        impl_->ssl_server_ctx_,
                        listening_port,
                        impl_->my_opt_.enable_ssl_,
-                       l );
+                       l,
+                       _enable_ipv6 );
     } catch (std::exception& ee) {
         // Most likely exception happens due to wrong endpoint.
         p_er("got exception: %s on port %u", ee.what(), listening_port);
