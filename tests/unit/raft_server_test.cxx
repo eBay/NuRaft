@@ -2194,6 +2194,22 @@ int async_append_handler_cancel_test() {
         result->when_ready( my_handler );
     }
 
+    // Append message to the old leader should fail immediately.
+    {
+        std::string test_msg = "test" + std::to_string(999);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        auto fail_handler = [&](cmd_result< ptr<buffer> >& res,
+                                ptr<std::exception>& exp) -> int {
+            CHK_EQ( cmd_result_code::NOT_LEADER, res.get_result_code() );
+            return 0;
+        };
+        ret->when_ready( fail_handler );
+    }
+
     print_stats(pkgs);
 
     s1.raftServer->shutdown();
