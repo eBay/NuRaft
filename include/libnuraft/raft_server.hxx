@@ -50,6 +50,7 @@ class delayed_task_scheduler;
 class logger;
 class peer;
 class rpc_client;
+class raft_server_handler;
 class req_msg;
 class resp_msg;
 class rpc_exception;
@@ -60,6 +61,7 @@ struct context;
 struct raft_params;
 class raft_server : public std::enable_shared_from_this<raft_server> {
     friend class nuraft_global_mgr;
+    friend class raft_server_handler;
     friend class snapshot_io_mgr;
 public:
     struct init_options {
@@ -169,14 +171,6 @@ public:
 
 public:
     /**
-     * Process Raft request.
-     *
-     * @param req Request.
-     * @return Response.
-     */
-    virtual ptr<resp_msg> process_req(req_msg& req);
-
-    /**
      * Check if this server is ready to serve operation.
      *
      * @return `true` if it is ready.
@@ -236,6 +230,65 @@ public:
      */
     ptr< cmd_result< ptr<buffer> > >
         append_entries(const std::vector< ptr<buffer> >& logs);
+
+    /**
+     * Parameters for `req_ext_cb` callback function.
+     */
+    struct req_ext_cb_params {
+        req_ext_cb_params() : log_idx(0), log_term(0) {}
+
+        /**
+         * Raft log index number.
+         */
+        uint64_t log_idx;
+
+        /**
+         * Raft log term number.
+         */
+        uint64_t log_term;
+    };
+
+    /**
+     * Callback function type to be called inside extended APIs.
+     */
+    using req_ext_cb = std::function< void(const req_ext_cb_params&) >;
+
+    /**
+     * Extended parameters for advanced features.
+     */
+    struct req_ext_params {
+        req_ext_params() : expected_term_(0) {}
+
+        /**
+         * If given, this function will be invokced right after the pre-commit
+         * call for each log.
+         */
+        req_ext_cb after_precommit_;
+
+        /**
+         * If given (non-zero), the operation will return failure if the current
+         * server's term does not match the given term.
+         */
+        uint64_t expected_term_;
+    };
+
+    /**
+     * An extended version of `append_entries`.
+     * Append and replicate the given logs.
+     * Only leader will accept this operation.
+     *
+     * @param logs Set of logs to replicate.
+     * @param ext_params Extended parameters.
+     * @return
+     *     In blocking mode, it will be blocked during replication, and
+     *     return `cmd_result` instance which contains the commit results from
+     *     the state machine.
+     *     In async mode, this function will return immediately, and the
+     *     commit results will be set to returned `cmd_result` instance later.
+     */
+    ptr< cmd_result< ptr<buffer> > >
+        append_entries_ext(const std::vector< ptr<buffer> >& logs,
+                           const req_ext_params& ext_params);
 
     /**
      * Update the priority of given server.
@@ -702,6 +755,14 @@ protected:
     struct auto_fwd_pkg;
 
 protected:
+    /**
+     * Process Raft request.
+     *
+     * @param req Request.
+     * @return Response.
+     */
+    virtual ptr<resp_msg> process_req(req_msg& req, const req_ext_params& ext_params);
+
     void apply_and_log_current_params();
     void cancel_schedulers();
     void schedule_task(ptr<delayed_task>& task, int32 milliseconds);
@@ -722,8 +783,8 @@ protected:
     ptr<resp_msg> handle_append_entries(req_msg& req);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
-    ptr<resp_msg> handle_cli_req_prelock(req_msg& req);
-    ptr<resp_msg> handle_cli_req(req_msg& req);
+    ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
+    ptr<resp_msg> handle_cli_req(req_msg& req, const req_ext_params& ext_params);
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
     ptr< cmd_result< ptr<buffer> > >
@@ -816,7 +877,9 @@ protected:
                         bool need_to_handle_commit_elem);
     void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
 
-    ptr< cmd_result< ptr<buffer> > > send_msg_to_leader(ptr<req_msg>& req);
+    ptr< cmd_result< ptr<buffer> > >
+        send_msg_to_leader(ptr<req_msg>& req,
+                           const req_ext_params& ext_params = req_ext_params());
 
     void auto_fwd_release_rpc_cli(ptr<auto_fwd_pkg> cur_pkg,
                                   ptr<rpc_client> rpc_cli);

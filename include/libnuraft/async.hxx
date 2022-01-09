@@ -48,6 +48,9 @@ enum cmd_result_code {
     SERVER_NOT_FOUND                = -8,
     CANNOT_REMOVE_LEADER            = -9,
     SERVER_IS_LEAVING               = -10,
+    TERM_MISMATCH                   = -11,
+
+    RESULT_NOT_EXIST_YET            = -10000,
 
     FAILED                          = -32768,
 };
@@ -76,20 +79,23 @@ public:
         , handler2_(nullptr)
         {}
 
-    explicit cmd_result(T& result)
+    explicit cmd_result(T& result,
+                        cmd_result_code code = cmd_result_code::OK)
         : result_(result)
         , err_()
-        , code_(cmd_result_code::OK)
+        , code_(code)
         , has_result_(true)
         , accepted_(false)
         , handler_(nullptr)
         , handler2_(nullptr)
         {}
 
-    explicit cmd_result(T& result, bool _accepted)
+    explicit cmd_result(T& result,
+                        bool _accepted,
+                        cmd_result_code code = cmd_result_code::OK)
         : result_(result)
         , err_()
-        , code_(cmd_result_code::OK)
+        , code_(code)
         , has_result_(true)
         , accepted_(_accepted)
         , handler_(nullptr)
@@ -150,8 +156,9 @@ public:
      * @param err Exception if necessary.
      * @return void.
      */
-    void set_result(T& result, TE& err) {
+    void set_result(T& result, TE& err, cmd_result_code code = cmd_result_code::OK) {
         bool call_handler = false;
+        code_ = code;
         {   std::lock_guard<std::mutex> guard(lock_);
             result_ = result;
             err_ = err;
@@ -201,7 +208,16 @@ public:
      */
     cmd_result_code get_result_code() const {
         std::lock_guard<std::mutex> guard(lock_);
-        return code_;
+        if (has_result_) {
+            return code_;
+        } else {
+            return RESULT_NOT_EXIST_YET;
+        }
+    }
+
+    bool has_result() const {
+        std::lock_guard<std::mutex> guard(lock_);
+        return has_result_;
     }
 
     /**
@@ -234,6 +250,10 @@ public:
                  "Cannot find server."},
                 {cmd_result_code::CANNOT_REMOVE_LEADER,
                  "Cannot remove leader."},
+                {cmd_result_code::TERM_MISMATCH,
+                 "The current term does not match the expected term."},
+                {cmd_result_code::RESULT_NOT_EXIST_YET,
+                 "Operation is in progress and the result does not exist yet."},
                 {cmd_result_code::FAILED,
                  "Failed."}
             } );

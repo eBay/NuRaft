@@ -359,8 +359,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
         ptr<commit_ret_elem>& elem = entry;
         if (elem->async_result_) {
             ptr<std::exception> err = nullptr;
-            elem->async_result_->set_result_code(cmd_result_code::OK);
-            elem->async_result_->set_result( elem->ret_value_, err );
+            elem->async_result_->set_result( elem->ret_value_, err, cmd_result_code::OK );
             elem->ret_value_.reset();
             elem->async_result_.reset();
         }
