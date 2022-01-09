@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "nuraft.hxx"
 
+#include "raft_server_handler.hxx"
+
 #include <map>
 #include <unordered_map>
 
@@ -29,7 +31,8 @@ namespace nuraft {
 class FakeClient;
 class FakeNetworkBase;
 class FakeNetwork
-    : public rpc_client_factory
+    : public raft_server_handler
+    , public rpc_client_factory
     , public rpc_listener
     , public std::enable_shared_from_this<FakeNetwork>
 {

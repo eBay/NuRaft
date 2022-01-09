@@ -95,7 +95,7 @@ void FakeNetwork::listen(ptr<msg_handler>& _handler) {
 }
 
 ptr<resp_msg> FakeNetwork::gotMsg(ptr<req_msg>& msg) {
-    ptr<resp_msg> resp = handler->process_req(*msg);
+    ptr<resp_msg> resp = raft_server_handler::process_req(handler.get(), *msg);
     return resp;
 }
 

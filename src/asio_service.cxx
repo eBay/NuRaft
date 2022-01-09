@@ -34,6 +34,7 @@ limitations under the License.
 #include "internal_timer.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
+#include "raft_server_handler.hxx"
 #include "strfmt.hxx"
 #include "tracer.hxx"
 
@@ -198,7 +199,10 @@ private:
 class rpc_session;
 typedef std::function<void(const ptr<rpc_session>&)> session_closed_callback;
 
-class rpc_session : public std::enable_shared_from_this<rpc_session> {
+class rpc_session
+    : public std::enable_shared_from_this<rpc_session>
+    , public raft_server_handler
+     {
 public:
     rpc_session( uint64_t id,
                  asio_service_impl* _impl,
@@ -545,7 +549,7 @@ private:
         }
 
         // === RAFT server processes the request here. ===
-        ptr<resp_msg> resp = handler_->process_req(*req);
+        ptr<resp_msg> resp = raft_server_handler::process_req(handler_.get(), *req);
         if (!resp) {
             p_wn("no response is returned from raft message handler");
             this->stop();
