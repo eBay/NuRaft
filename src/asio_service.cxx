@@ -276,11 +276,12 @@ public:
             this->start(self);
 
         } else {
-            p_er( "session %zu handshake with %s:%u failed: error %d",
+            p_er( "session %zu handshake with %s:%u failed: error %d, %s",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_,
-                  err.value() );
+                  err.value(),
+                  err.message().c_str() );
 
             // Lazy stop.
             ptr<asio::steady_timer> timer =
@@ -293,9 +294,10 @@ public:
             {
                 if (err) {
                     p_er("session %zu error happend during "
-                         "async wait: %d",
+                         "async wait: %d, %s",
                          session_id_,
-                         err.value());
+                         err.value(),
+                         err.message().c_str());
                 }
                 this->stop();
             });
@@ -311,11 +313,12 @@ public:
         {
             if (err) {
                 p_er( "session %zu failed to read rpc header from socket %s:%u "
-                      "due to error %d",
+                      "due to error %d, %s",
                       session_id_,
                       cached_address_.c_str(),
                       cached_port_,
-                      err.value() );
+                      err.value(),
+                      err.message().c_str() );
                 this->stop();
                 return;
             }
@@ -437,9 +440,10 @@ private:
             this->read_complete(header_, log_ctx);
         } else {
             p_er( "session %zu failed to read rpc log data from socket due "
-                  "to error %d",
+                  "to error %d, %s",
                   session_id_,
-                  err.value() );
+                  err.value(),
+                  err.message().c_str() );
             this->stop();
         }
     }
@@ -770,8 +774,8 @@ private:
             session->prepare_handshake();
 
         } else {
-            p_er( "failed to accept a rpc connection due to error %d",
-                  err.value() );
+            p_er( "failed to accept a rpc connection due to error %d, %s",
+                  err.value(), err.message().c_str() );
         }
 
         if (!stopped_) {
@@ -1002,8 +1006,10 @@ public:
                     ptr<rpc_exception> except
                        ( cs_new<rpc_exception>
                                ( lstrfmt("failed to resolve host %s "
-                                         "due to error %d")
-                                        .fmt( host_.c_str(), err.value() ),
+                                         "due to error %d, %s")
+                                        .fmt( host_.c_str(),
+                                              err.value(),
+                                              err.message().c_str() ),
                                  req ) );
                     when_done(rsp, except);
                 }
@@ -1212,9 +1218,9 @@ private:
             ptr<resp_msg> rsp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
-                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d")
+                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(rsp, except);
         }
@@ -1235,17 +1241,18 @@ private:
 
         } else {
             abandoned_ = true;
-            p_er( "failed SSL handshake with peer %d, %s:%s, error %d",
-                  req->get_dst(), host_.c_str(), port_.c_str(), err.value() );
+            p_er( "failed SSL handshake with peer %d, %s:%s, error %d, %s",
+                  req->get_dst(), host_.c_str(), port_.c_str(), err.value(),
+                  err.message().c_str() );
 
             // Immediately stop.
             ptr<resp_msg> resp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt("failed SSL handshake with peer %d, %s:%s, "
-                            "error %d")
+                            "error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(resp, except);
         }
@@ -1280,9 +1287,9 @@ private:
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to send request to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
@@ -1302,9 +1309,9 @@ private:
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to read response to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
