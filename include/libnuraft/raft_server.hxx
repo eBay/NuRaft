@@ -727,7 +727,7 @@ protected:
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
     ptr< cmd_result< ptr<buffer> > >
-        handle_cli_req_callback_async(ptr< cmd_result< ptr<buffer> > > async_res);
+        handle_cli_req_callback_async(ptr< cmd_result< ptr<buffer> > > async_res, uint64_t elem_idx);
 
     void drop_all_pending_commit_elems();
 
