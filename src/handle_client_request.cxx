@@ -157,7 +157,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
                 resp->set_async_cb
                       ( std::bind( &raft_server::handle_cli_req_callback_async,
                                    this,
-                                   elem->async_result_, elem->idx_ ) );
+                                   elem->async_result_ ) );
                 break;
             }
         }
@@ -214,18 +214,9 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
 }
 
 ptr< cmd_result< ptr<buffer> > >
-    raft_server::handle_cli_req_callback_async(ptr< cmd_result< ptr<buffer> > > async_res, uint64_t elem_idx)
+    raft_server::handle_cli_req_callback_async(ptr< cmd_result< ptr<buffer> > > async_res)
 {
     async_res->accept();
-    /// If element was added into commit_ret_elems_ from commit thread we have
-    /// to remove it here to avoid memory leak. Otherwise it will be already
-    /// removed.
-    {   auto_lock(commit_ret_elems_lock_);
-        auto it = commit_ret_elems_.find(elem_idx)
-        if (it != commit_ret_elems_.end()) {
-            commit_ret_elems_.erase(it);
-        }
-    }
     return async_res;
 }
 
