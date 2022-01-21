@@ -315,14 +315,27 @@ void raft_server::commit_app_log(ulong idx_to_commit,
     std::list< ptr<commit_ret_elem> > async_elems;
     if (need_to_handle_commit_elem) {
         std::unique_lock<std::mutex> cre_lock(commit_ret_elems_lock_);
-        bool match_found = false;
+        /// Sometimes user can batch requests to RAFT: for example send 30
+        /// append entries requests in a single batch. For such request batch
+        /// user will receive a single response: all was successful or all
+        /// failed. Obviously we don't need to add info about responses
+        /// (commit_ret_elems) for 29 requests from batch and need to do it only
+        /// for 30-th request. precommit_index is exact value which identify ID
+        /// of the last request from the latest batch. So if we commiting this
+        /// last request and for some reason it was not added into
+        /// commit_ret_elems in the handle_cli_req method (logical race
+        /// condition) we have to add it here. Otherwise we don't need to add
+        /// anything into commit_ret_elems_, because nobody will wait for the
+        /// responses of the intermediate requests from requests batch.
+        bool need_to_wait_commit_ret = sm_idx == pc_idx;
+
         auto entry = commit_ret_elems_.find(sm_idx);
         if (entry != commit_ret_elems_.end()) {
             ptr<commit_ret_elem> elem = entry->second;
             if (elem->idx_ == sm_idx) {
                 elem->result_code_ = cmd_result_code::OK;
                 elem->ret_value_ = ret_value;
-                match_found = true;
+                need_to_wait_commit_ret = false;
                 p_dv("notify cb %ld %p", sm_idx, &elem->awaiter_);
 
                 switch (ctx_->get_params()->return_method_) {
@@ -341,7 +354,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             }
         }
 
-        if (!match_found && !initial_commit_exec) {
+        if (need_to_wait_commit_ret && !initial_commit_exec) {
             // If not found, commit thread is invoked earlier than user thread.
             // Create one here.
             ptr<commit_ret_elem> elem = cs_new<commit_ret_elem>();
