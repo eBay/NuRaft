@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "internal_timer.hxx"
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
@@ -39,6 +40,7 @@ namespace nuraft {
 void raft_server::commit(ulong target_idx) {
     if (target_idx > quick_commit_index_) {
         quick_commit_index_ = target_idx;
+        lagging_sm_target_index_ = target_idx;
         p_db( "trigger commit upto %lu", quick_commit_index_.load() );
 
         // if this is a leader notify peers to commit as well
@@ -106,9 +108,16 @@ void raft_server::commit_in_bg() {
                 sm_commit_index_ >= log_store_->next_slot() - 1 ) {
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
 
-            auto wait_check = [this] () {
-                return (log_store_->next_slot() - 1 > sm_commit_index_ &&
-                        quick_commit_index_ > sm_commit_index_) || stopping_;
+            auto wait_check = [this]() {
+                if (stopping_) {
+                    // WARNING: `stopping_` flag should have the highest priority.
+                    return true;
+                }
+                if (sm_commit_paused_) {
+                    return false;
+                }
+                return ( log_store_->next_slot() - 1 > sm_commit_index_ &&
+                         quick_commit_index_ > sm_commit_index_ );
             };
             p_tr("commit_cv_ sleep\n");
             commit_cv_.wait(lock, wait_check);
@@ -160,6 +169,14 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         return true;
     }
 
+    sm_commit_exec_in_progress_ = true;
+    // Clear the flag automatically once we exit this function.
+    struct ExecCommitAutoCleaner {
+        ExecCommitAutoCleaner(std::function<void()> func) : clean_func_(func) {}
+        ~ExecCommitAutoCleaner() { clean_func_(); }
+        std::function<void()> clean_func_;
+    } exec_auto_cleaner([this](){ sm_commit_exec_in_progress_ = false; });
+
     p_db( "commit upto %ld, curruent idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
 
@@ -191,6 +208,11 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             break;
         }
         first_loop_exec = false;
+
+        // Break the loop if state machine commit is paused.
+        if (sm_commit_paused_) {
+            break;
+        }
 
         ulong index_to_commit = sm_commit_index_ + 1;
         ptr<log_entry> le = log_store_->entry_at(index_to_commit);
@@ -311,18 +333,24 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             elem->idx_ = sm_idx;
             elem->result_code_ = cmd_result_code::OK;
             elem->ret_value_ = ret_value;
+            p_tr("commit thread is invoked earlier than user thread, "
+                 "log %lu, elem %p", sm_idx, elem.get());
+
             switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
             default:
                 elem->awaiter_.invoke(); // Callback will not sleep.
-                commit_ret_elems_.insert( std::make_pair(sm_idx, elem) );
                 break;
             case raft_params::async_handler:
-                // Async handler: put into list.
-                elem->async_result_ = cs_new< cmd_result< ptr<buffer> > >();
-                async_elems.push_back(elem);
+                // Async handler:
+                //   Set the result, but should not put it into the
+                //   `async_elems` list, as the user thread (supposed to be
+                //   executed right after this) will invoke the callback immediately.
+                elem->async_result_ =
+                    cs_new< cmd_result< ptr<buffer> > >( elem->ret_value_ );
                 break;
             }
+            commit_ret_elems_.insert( std::make_pair(sm_idx, elem) );
         }
     }
 
@@ -331,8 +359,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
         ptr<commit_ret_elem>& elem = entry;
         if (elem->async_result_) {
             ptr<std::exception> err = nullptr;
-            elem->async_result_->set_result_code(cmd_result_code::OK);
-            elem->async_result_->set_result( elem->ret_value_, err );
+            elem->async_result_->set_result( elem->ret_value_, err, cmd_result_code::OK );
             elem->ret_value_.reset();
             elem->async_result_.reset();
         }
@@ -350,16 +377,22 @@ void raft_server::commit_conf(ulong idx_to_commit,
     p_in( "config at index %llu is committed, prev config log idx %llu",
           new_conf->get_log_idx(), cur_conf->get_log_idx() );
 
-    ctx_->state_mgr_->save_config(*new_conf);
     config_changing_ = false;
     if (cur_conf->get_log_idx() < new_conf->get_log_idx()) {
+        // WARNING: Should not overwrite newer config with older one.
+        ctx_->state_mgr_->save_config(*new_conf);
         reconfigure(new_conf);
+    } else {
+        p_in( "skipped config %lu, latest config %lu",
+              new_conf->get_log_idx(), cur_conf->get_log_idx() );
     }
 
     cb_func::Param param(id_, leader_);
     uint64_t log_idx = idx_to_commit;
     param.ctx = &log_idx;
     ctx_->cb_func_.call(cb_func::NewConfig, &param);
+
+    state_machine_->commit_config(idx_to_commit, new_conf);
 
     // Modified by Jung-Sang Ahn, May 18 2018:
     //   This causes an endless catch-up issue when we add a new node,
@@ -406,6 +439,12 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
         // snapshot is disabled or the log store is not long enough
         return;
     }
+    // get the latest configuration info
+    ptr<cluster_config> conf = get_config();
+    if ( conf->get_prev_log_idx() >= log_store_->next_slot() ) {
+        // The latest config and previous config is not in log_store, so skip the snapshot creation
+        return;
+    }
     if ( !state_machine_->chk_create_snapshot() ) {
         // User-defined state machine doesn't want to create a snapshot.
         return;
@@ -423,8 +462,6 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
         snapshot_in_action = true;
         p_in("creating a snapshot for index %llu", committed_idx);
 
-        // get the latest configuration info
-        ptr<cluster_config> conf = get_config();
         while ( conf->get_log_idx() > committed_idx &&
                 conf->get_prev_log_idx() >= log_store_->start_index() ) {
             ptr<log_entry> conf_log
@@ -675,6 +712,15 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             if (role_ == srv_role::leader && srv_to_leave_) {
                 // If leader, keep the to-be-removed server in peer list
                 // until 1) catch-up is done, or 2) timeout.
+                p_in("srv_to_leave_: %d", srv_to_leave_->get_id());
+                ptr<snapshot_sync_ctx> snp_ctx = srv_to_leave_->get_snapshot_sync_ctx();
+                if (snp_ctx) {
+                    void* user_ctx = snp_ctx->get_user_snp_ctx();
+                    p_in("srv_to_leave_ has snapshot context %p and user context %p, "
+                         "destroy them",
+                         snp_ctx.get(), user_ctx);
+                    clear_snapshot_sync_ctx(*srv_to_leave_);
+                }
 
                 // However, if `srv_to_leave_` is NULL,
                 // it is replaying old config. We can remove it
@@ -725,6 +771,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         // SHOULD update peer's srv_config.
         for (auto& entry_peer: peers_) {
             peer* pp = entry_peer.second.get();
+            std::lock_guard<std::mutex> l(pp->get_lock());
             if (pp->get_id() == s_conf->get_id()) {
                 pp->set_config(entry);
             }
@@ -749,7 +796,52 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
 void raft_server::remove_peer_from_peers(const ptr<peer>& pp) {
     p_in("server %d is removed from cluster", pp->get_id());
     pp->enable_hb(false);
+    clear_snapshot_sync_ctx(*pp);
     peers_.erase(pp->get_id());
+}
+
+void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
+    p_in( "pause state machine execution, previously %s, state machine %s, "
+          "timeout %zu ms",
+          sm_commit_paused_ ? "PAUSED" : "ACTIVE",
+          sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING",
+          timeout_ms );
+    sm_commit_paused_ = true;
+
+    if (!timeout_ms) {
+        return;
+    }
+    timer_helper timer(timeout_ms * 1000);
+    while (sm_commit_exec_in_progress_ && !timer.timeout()) {
+        timer_helper::sleep_ms(10);
+    }
+    p_in( "waited %zu ms, state machine %s",
+          timer.get_ms(),
+          sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
+}
+
+void raft_server::resume_state_machine_execution() {
+    p_in( "pause state machine execution, previously %s, state machine %s",
+          sm_commit_paused_ ? "PAUSED" : "ACTIVE",
+          sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
+    sm_commit_paused_ = false;
+
+    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    if (mgr) {
+        // Global mgr.
+        mgr->request_commit( this->shared_from_this() );
+    } else {
+        // Local commit thread.
+        std::unique_lock<std::mutex> l(commit_cv_lock_);
+        commit_cv_.notify_one();
+    }
+}
+
+bool raft_server::is_state_machine_execution_paused() const {
+    if (sm_commit_paused_ && !sm_commit_exec_in_progress_) {
+        return true;
+    }
+    return false;
 }
 
 } // namespace nuraft;

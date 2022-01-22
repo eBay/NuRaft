@@ -24,10 +24,41 @@ limitations under the License.
 #include "raft_server.hxx"
 #include "tracer.hxx"
 
+#include <memory>
+
 namespace nuraft {
 
-std::atomic<nuraft_global_mgr*> nuraft_global_mgr::instance_(nullptr);
-std::mutex nuraft_global_mgr::instance_lock_;
+class ngm_singleton {
+public:
+    static ngm_singleton& get_instance() {
+        static ngm_singleton instance;
+        return instance;
+    }
+
+    nuraft_global_mgr* get() {
+        return internal_.get();
+    }
+
+    bool create() {
+        if (internal_.get()) {
+            // Already created.
+            return false;
+        }
+        // C++11 doesn't have `make_unique`.
+        internal_ =
+            std::move( std::unique_ptr<nuraft_global_mgr>( new nuraft_global_mgr() ) );
+        return true;
+    }
+
+    void clear() {
+        internal_.reset();
+    }
+
+private:
+    ngm_singleton() : internal_(nullptr) {}
+
+    std::unique_ptr<nuraft_global_mgr> internal_;
+};
 
 struct nuraft_global_mgr::worker_handle {
     worker_handle(size_t id = 0)
@@ -60,7 +91,7 @@ struct nuraft_global_mgr::worker_handle {
     size_t id_;
     EventAwaiter ea_;
     ptr<std::thread> thread_;
-    bool stopping_;
+    std::atomic<bool> stopping_;
     std::atomic<status> status_;
 };
 
@@ -84,13 +115,11 @@ nuraft_global_mgr::~nuraft_global_mgr() {
 }
 
 nuraft_global_mgr* nuraft_global_mgr::init(const nuraft_global_config& config) {
-    nuraft_global_mgr* mgr = instance_.load();
+    nuraft_global_mgr* mgr = ngm_singleton::get_instance().get();
     if (!mgr) {
-        std::lock_guard<std::mutex> l(instance_lock_);
-        mgr = instance_.load();
-        if (!mgr) {
-            mgr = new nuraft_global_mgr();
-            instance_.store(mgr);
+        bool created = ngm_singleton::get_instance().create();
+        mgr = ngm_singleton::get_instance().get();
+        if (created) {
             mgr->config_ = config;
             mgr->init_thread_pool();
         }
@@ -99,16 +128,11 @@ nuraft_global_mgr* nuraft_global_mgr::init(const nuraft_global_config& config) {
 }
 
 void nuraft_global_mgr::shutdown() {
-    std::lock_guard<std::mutex> l(instance_lock_);
-    nuraft_global_mgr* mgr = instance_.load();
-    if (mgr) {
-        delete mgr;
-        instance_.store(nullptr);
-    }
+    ngm_singleton::get_instance().clear();
 }
 
 nuraft_global_mgr* nuraft_global_mgr::get_instance() {
-    return instance_.load();
+    return ngm_singleton::get_instance().get();
 }
 
 void nuraft_global_mgr::init_thread_pool() {
@@ -281,6 +305,21 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
         }
         if (!target) continue;
 
+        ptr<logger>& l_ = target->l_;
+
+        // Whenever we find a task to execute, skip next sleeping for any tasks
+        // that can be queued in the meantime.
+        skip_sleeping = true;
+
+        p_tr("execute commit for %p", target.get());
+
+        if (target->sm_commit_paused_) {
+            p_tr("commit of this server has been paused");
+            // Since there can be other Raft server waiting for being served,
+            // need to skip nest sleep.
+            continue;
+        }
+
         if ( target->quick_commit_index_ <= target->sm_commit_index_ ||
              target->log_store_->next_slot() - 1 <= target->sm_commit_index_ ) {
             // State machine's commit index is large enough not to execute commit
@@ -288,8 +327,7 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
             continue;
         }
 
-        ptr<logger>& l_ = target->l_;
-        p_tr("executed commit by global worker, queue length %zu", queue_length);
+        p_tr("execute commit by global worker, queue length %zu", queue_length);
         bool finished_in_time =
             target->commit_in_bg_exec(config_.max_scheduling_unit_ms_);
         if (!finished_in_time) {
@@ -298,7 +336,8 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
             p_tr("couldn't finish in time (%zu ms), re-push to queue",
                  config_.max_scheduling_unit_ms_);
             request_commit(target);
-            skip_sleeping = true;
+        } else {
+            p_tr("executed in time");
         }
     }
 }
@@ -343,6 +382,11 @@ void nuraft_global_mgr::append_worker_loop(ptr<worker_handle> handle) {
         if (!target) continue;
 
         ptr<logger>& l_ = target->l_;
+
+        // Whenever we find a task to execute, skip next sleeping for any tasks
+        // that can be queued in the meantime.
+        skip_sleeping = true;
+
         p_tr("executed append_entries by global worker, queue length %zu",
              queue_length);
         target->append_entries_in_bg_exec();

@@ -1,10 +1,10 @@
 /************************************************************************
-Modifications Copyright 2017-2019 eBay Inc.
+Modifications Copyright 2017-present eBay Inc.
 Author/Developer(s): Jung-Sang Ahn
 
 Original Copyright 2017 Jung-Sang Ahn
 See URL: https://github.com/greensky00/simple_logger
-         (v0.3.24)
+         (v0.3.28)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -103,14 +103,14 @@ limitations under the License.
     prefix std::mutex timer_lock;                                       \
     prefix bool first_event_fired = false;                              \
     prefix std::chrono::system_clock::time_point last_timeout =         \
-        std::chrono::system_clock::now();
+        std::chrono::system_clock::now();                               \
 
 #define _timed_log_body(l, interval_ms, lv1, lv2, ...)                  \
     std::chrono::system_clock::time_point cur =                         \
         std::chrono::system_clock::now();                               \
-    std::chrono::duration<double> elapsed = cur - last_timeout;         \
     bool timeout = false;                                               \
     {   std::lock_guard<std::mutex> l(timer_lock);                      \
+        std::chrono::duration<double> elapsed = cur - last_timeout;     \
         if ( elapsed.count() * 1000 > interval_ms ||                    \
              !first_event_fired ) {                                     \
             cur = std::chrono::system_clock::now();                     \
@@ -238,10 +238,6 @@ private:
         int write(size_t _len, char* msg);
         int flush(std::ofstream& fs);
 
-#ifdef SUPPRESS_TSAN_FALSE_ALARMS
-        // To avoid false alarm by TSan.
-        std::mutex ctxLock;
-#endif
         size_t len;
         char ctx[MSG_SIZE];
         std::atomic<Status> status;
@@ -273,6 +269,7 @@ public:
 
     void setLogLevel(int level);
     void setDispLevel(int level);
+    void setMaxLogFiles(size_t max_log_files);
 
     inline int getLogLevel()  const { return curLogLevel.load(MOR); }
     inline int getDispLevel() const { return curDispLevel.load(MOR); }
@@ -301,7 +298,7 @@ private:
     std::string filePath;
     size_t minRevnum;
     size_t curRevnum;
-    size_t maxLogFiles;
+    std::atomic<size_t> maxLogFiles;
     std::ofstream fs;
 
     uint64_t maxLogFileSize;
@@ -483,4 +480,3 @@ private:
     // Assume that only one thread is updating this.
     std::vector<RawStackInfo> crashDumpThreadStacks;
 };
-

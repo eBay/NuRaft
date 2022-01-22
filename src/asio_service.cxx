@@ -34,6 +34,7 @@ limitations under the License.
 #include "internal_timer.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
+#include "raft_server_handler.hxx"
 #include "strfmt.hxx"
 #include "tracer.hxx"
 
@@ -198,7 +199,10 @@ private:
 class rpc_session;
 typedef std::function<void(const ptr<rpc_session>&)> session_closed_callback;
 
-class rpc_session : public std::enable_shared_from_this<rpc_session> {
+class rpc_session
+    : public std::enable_shared_from_this<rpc_session>
+    , public raft_server_handler
+     {
 public:
     rpc_session( uint64_t id,
                  asio_service_impl* _impl,
@@ -272,11 +276,12 @@ public:
             this->start(self);
 
         } else {
-            p_er( "session %zu handshake with %s:%u failed: error %d",
+            p_er( "session %zu handshake with %s:%u failed: error %d, %s",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_,
-                  err.value() );
+                  err.value(),
+                  err.message().c_str() );
 
             // Lazy stop.
             ptr<asio::steady_timer> timer =
@@ -289,9 +294,10 @@ public:
             {
                 if (err) {
                     p_er("session %zu error happend during "
-                         "async wait: %d",
+                         "async wait: %d, %s",
                          session_id_,
-                         err.value());
+                         err.value(),
+                         err.message().c_str());
                 }
                 this->stop();
             });
@@ -307,11 +313,12 @@ public:
         {
             if (err) {
                 p_er( "session %zu failed to read rpc header from socket %s:%u "
-                      "due to error %d",
+                      "due to error %d, %s",
                       session_id_,
                       cached_address_.c_str(),
                       cached_port_,
-                      err.value() );
+                      err.value(),
+                      err.message().c_str() );
                 this->stop();
                 return;
             }
@@ -433,9 +440,10 @@ private:
             this->read_complete(header_, log_ctx);
         } else {
             p_er( "session %zu failed to read rpc log data from socket due "
-                  "to error %d",
+                  "to error %d, %s",
                   session_id_,
-                  err.value() );
+                  err.value(),
+                  err.message().c_str() );
             this->stop();
         }
     }
@@ -545,7 +553,7 @@ private:
         }
 
         // === RAFT server processes the request here. ===
-        ptr<resp_msg> resp = handler_->process_req(*req);
+        ptr<resp_msg> resp = raft_server_handler::process_req(handler_.get(), *req);
         if (!resp) {
             p_wn("no response is returned from raft message handler");
             this->stop();
@@ -766,8 +774,8 @@ private:
             session->prepare_handshake();
 
         } else {
-            p_er( "failed to accept a rpc connection due to error %d",
-                  err.value() );
+            p_er( "failed to accept a rpc connection due to error %d, %s",
+                  err.value(), err.message().c_str() );
         }
 
         if (!stopped_) {
@@ -998,8 +1006,10 @@ public:
                     ptr<rpc_exception> except
                        ( cs_new<rpc_exception>
                                ( lstrfmt("failed to resolve host %s "
-                                         "due to error %d")
-                                        .fmt( host_.c_str(), err.value() ),
+                                         "due to error %d, %s")
+                                        .fmt( host_.c_str(),
+                                              err.value(),
+                                              err.message().c_str() ),
                                  req ) );
                     when_done(rsp, except);
                 }
@@ -1208,9 +1218,9 @@ private:
             ptr<resp_msg> rsp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
-                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d")
+                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(rsp, except);
         }
@@ -1231,17 +1241,18 @@ private:
 
         } else {
             abandoned_ = true;
-            p_er( "failed SSL handshake with peer %d, %s:%s, error %d",
-                  req->get_dst(), host_.c_str(), port_.c_str(), err.value() );
+            p_er( "failed SSL handshake with peer %d, %s:%s, error %d, %s",
+                  req->get_dst(), host_.c_str(), port_.c_str(), err.value(),
+                  err.message().c_str() );
 
             // Immediately stop.
             ptr<resp_msg> resp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt("failed SSL handshake with peer %d, %s:%s, "
-                            "error %d")
+                            "error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(resp, except);
         }
@@ -1276,9 +1287,9 @@ private:
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to send request to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
@@ -1298,9 +1309,9 @@ private:
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to read response to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
@@ -1590,12 +1601,17 @@ std::string asio_service_impl::get_password
 #endif
 
 void asio_service_impl::worker_entry() {
-    std::string thread_name = "nuraft_w_" + std::to_string(worker_id_.fetch_add(1));
+    uint32_t worker_id = worker_id_.fetch_add(1);
+    std::string thread_name = "nuraft_w_" + std::to_string(worker_id);
 #ifdef __linux__
     pthread_setname_np(pthread_self(), thread_name.c_str());
 #elif __APPLE__
     pthread_setname_np(thread_name.c_str());
 #endif
+
+    if (my_opt_.worker_start_) {
+        my_opt_.worker_start_(worker_id);
+    }
 
     static std::atomic<size_t> exception_count(0);
     static timer_helper timer(60 * 1000000); // 1 min.
@@ -1634,6 +1650,10 @@ void asio_service_impl::worker_entry() {
         }
         // LCOV_EXCL_STOP
     } while (stopping_status_ != 1);
+
+    if (my_opt_.worker_stop_) {
+        my_opt_.worker_stop_(worker_id);
+    }
 
     p_in("end of asio worker thread, remaining threads: %zu",
          num_active_workers_.load());

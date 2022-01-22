@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "peer.hxx"
 
+#include "debugging_options.hxx"
 #include "tracer.hxx"
 
 #include <unordered_set>
@@ -133,7 +134,10 @@ void peer::handle_rpc_result( ptr<peer> myself,
         }
 
         reset_active_timer();
-        resume_hb_speed();
+        {
+            auto_lock(lock_);
+            resume_hb_speed();
+        }
         ptr<rpc_exception> no_except;
         resp->set_peer(myself);
         pending_result->set_result(resp, no_except);
@@ -147,7 +151,10 @@ void peer::handle_rpc_result( ptr<peer> myself,
         // NOTE: Explicit failure is also treated as an activity
         //       of that connection.
         reset_active_timer();
-        slow_down_hb();
+        {
+            auto_lock(lock_);
+            slow_down_hb();
+        }
         ptr<resp_msg> no_resp;
         pending_result->set_result(no_resp, err);
 
@@ -183,19 +190,32 @@ void peer::handle_rpc_result( ptr<peer> myself,
 bool peer::recreate_rpc(ptr<srv_config>& config,
                         context& ctx)
 {
-    if (abandoned_) return false;
+    if (abandoned_) {
+        p_tr("peer %d is abandoned", config->get_id());
+        return false;
+    }
 
     ptr<rpc_client_factory> factory = nullptr;
     {   std::lock_guard<std::mutex> l(ctx.ctx_lock_);
         factory = ctx.rpc_cli_factory_;
     }
-    if (!factory) return false;
+    if (!factory) {
+        p_tr("client factory is empty");
+        return false;
+    }
 
     std::lock_guard<std::mutex> l(rpc_protector_);
 
+    bool backoff_timer_disabled =
+        debugging_options::get_instance()
+        .disable_reconn_backoff_.load(std::memory_order_relaxed);
+    if (backoff_timer_disabled) {
+        p_tr("reconnection back-off timer is disabled");
+    }
+
     // To avoid too frequent reconnection attempt,
     // we use exponential backoff (x2) from 1 ms to heartbeat interval.
-    if (reconn_backoff_.timeout()) {
+    if (backoff_timer_disabled || reconn_backoff_.timeout()) {
         reconn_backoff_.reset();
         size_t new_duration_ms = reconn_backoff_.get_duration_us() / 1000;
         new_duration_ms = std::min( hb_interval_, (int32)new_duration_ms * 2 );

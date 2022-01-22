@@ -95,7 +95,7 @@ void FakeNetwork::listen(ptr<msg_handler>& _handler) {
 }
 
 ptr<resp_msg> FakeNetwork::gotMsg(ptr<req_msg>& msg) {
-    ptr<resp_msg> resp = handler->process_req(*msg);
+    ptr<resp_msg> resp = raft_server_handler::process_req(handler.get(), *msg);
     return resp;
 }
 
@@ -103,7 +103,7 @@ bool FakeNetwork::execReqResp(const std::string& endpoint) {
     if (endpoint.empty()) {
         // Do the same thing to all.
 
-        std::unordered_map< std::string, ptr<FakeClient> > clients_clone;
+        std::map< std::string, ptr<FakeClient> > clients_clone;
 
         // WARNING:
         //   As a result of processing req or resp, client re-connection

@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "nuraft.hxx"
 
+#include "raft_server_handler.hxx"
+
 #include <map>
 #include <unordered_map>
 
@@ -29,7 +31,8 @@ namespace nuraft {
 class FakeClient;
 class FakeNetworkBase;
 class FakeNetwork
-    : public rpc_client_factory
+    : public raft_server_handler
+    , public rpc_client_factory
     , public rpc_listener
     , public std::enable_shared_from_this<FakeNetwork>
 {
@@ -100,7 +103,10 @@ private:
     std::string myEndpoint;
     ptr<FakeNetworkBase> base;
     ptr<msg_handler> handler;
-    std::unordered_map< std::string, ptr<FakeClient> > clients;
+    // NOTE: We don't use `unordered_map` as the order of traversal
+    //       will be different according to platforms. We should make
+    //       the test deterministic.
+    std::map< std::string, ptr<FakeClient> > clients;
     std::mutex clientsLock;
     std::list< ptr<FakeClient> > staleClients;
     bool online;

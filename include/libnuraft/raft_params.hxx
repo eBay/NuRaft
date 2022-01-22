@@ -85,12 +85,16 @@ struct raft_params {
         , leadership_transfer_min_wait_time_(0)
         , allow_temporary_zero_priority_leader_(true)
         , auto_forwarding_(false)
+        , auto_forwarding_max_connections_(10)
         , use_bg_thread_for_urgent_commit_(true)
         , exclude_snp_receiver_from_quorum_(false)
         , auto_adjust_quorum_for_small_cluster_(false)
         , locking_method_type_(dual_mutex)
         , return_method_(blocking)
         , auto_forwarding_req_timeout_(0)
+        , grace_period_of_lagging_state_machine_(0)
+        , use_bg_thread_for_snapshot_io_(false)
+        , use_full_consensus_among_healthy_members_(false)
         {}
 
     /**
@@ -470,8 +474,13 @@ public:
     bool auto_forwarding_;
 
     /**
+     * The maximum number of connections for auto forwarding (if enabled).
+     */
+    int32 auto_forwarding_max_connections_;
+
+    /**
      * If true, creating replication (append_entries) requests will be
-     * done by a backgroudn thread, instead of doing it in user threads.
+     * done by a background thread, instead of doing it in user threads.
      * There can be some delay a little bit, but it improves reducing
      * the lock contention.
      */
@@ -508,6 +517,39 @@ public:
      * If 0, there will be no timeout for auto forwarding.
      */
     int32 auto_forwarding_req_timeout_;
+
+    /**
+     * If non-zero, any server whose state machine's commit index is
+     * lagging behind the last committed log index will not
+     * initiate vote requests for the given amount of time
+     * in milliseconds.
+     *
+     * The purpose of this option is to avoid a server (whose state
+     * machine is still catching up with the committed logs and does
+     * not contain the latest data yet) being a leader.
+     */
+    int32 grace_period_of_lagging_state_machine_;
+
+    /**
+     * (Experimental)
+     * If `true`, reading snapshot objects will be done by a background thread
+     * asynchronously instead of synchronous read by Raft worker threads.
+     * Asynchronous IO will reduce the overall latency of the leader's operations.
+     */
+    bool use_bg_thread_for_snapshot_io_;
+
+    /**
+     * (Experimental)
+     * If `true`, it will commit a log upon the agreement of all healthy members.
+     * In other words, with this option, all healthy members have the log at the
+     * moment the leader commits the log. If the number of healthy members is
+     * smaller than the regular (or configured custom) quorum size, the leader
+     * cannot commit the log.
+     *
+     * A member becomes "unhealthy" if it does not respond to the leader's
+     * request for a configured time (`response_limit_`).
+     */
+    bool use_full_consensus_among_healthy_members_;
 };
 
 }

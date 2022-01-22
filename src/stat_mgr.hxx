@@ -163,11 +163,7 @@ private:
 // Singleton class
 class stat_mgr {
 public:
-    static stat_mgr* init();
-
     static stat_mgr* get_instance();
-
-    static void destroy();
 
     stat_elem* get_stat(const std::string& stat_name);
 
@@ -180,9 +176,6 @@ public:
     void reset_all_stats();
 
 private:
-    static std::mutex instance_lock_;
-    static std::atomic<stat_mgr*> instance_;
-
     stat_mgr();
     ~stat_mgr();
 

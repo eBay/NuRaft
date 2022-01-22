@@ -40,11 +40,45 @@ int32 raft_server::get_snapshot_sync_block_size() const {
     return block_size == 0 ? default_snapshot_sync_block_size : block_size;
 }
 
-ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
+bool raft_server::check_snapshot_timeout(ptr<peer> pp) {
+    ptr<snapshot_sync_ctx> sync_ctx = pp->get_snapshot_sync_ctx();
+    if (!sync_ctx) return false;
+
+    if ( sync_ctx->get_timer().timeout() ) {
+        p_wn("snapshot install task for peer %d timed out: %lu ms, "
+             "reset snapshot sync context %p",
+             pp->get_id(), sync_ctx->get_timer().get_ms(), sync_ctx.get());
+        clear_snapshot_sync_ctx(*pp);
+        return true;
+    }
+    return false;
+}
+
+void raft_server::destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx) {
+    if (!sync_ctx) return;
+    void*& user_ctx = sync_ctx->get_user_snp_ctx();
+    p_tr("destroy user ctx %p", user_ctx);
+    state_machine_->free_user_snp_ctx(user_ctx);
+}
+
+void raft_server::clear_snapshot_sync_ctx(peer& pp) {
+    ptr<snapshot_sync_ctx> snp_ctx = pp.get_snapshot_sync_ctx();
+    if (snp_ctx) {
+        destroy_user_snp_ctx(snp_ctx);
+        p_tr("destroy snapshot sync ctx %p", snp_ctx.get());
+    }
+    pp.set_snapshot_in_sync(nullptr);
+}
+
+ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
                                                    ulong last_log_idx,
                                                    ulong term,
-                                                   ulong commit_idx) {
-    std::lock_guard<std::mutex> guard(p.get_lock());
+                                                   ulong commit_idx,
+                                                   bool& succeeded_out) {
+    succeeded_out = false;
+    peer& p = *pp;
+    ptr<raft_params> params = ctx_->get_params();
+    std::unique_lock<std::mutex> guard(p.get_lock());
     ptr<snapshot_sync_ctx> sync_ctx = p.get_snapshot_sync_ctx();
     ptr<snapshot> snp = nullptr;
     ulong prev_sync_snp_log_idx = 0;
@@ -52,16 +86,16 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         snp = sync_ctx->get_snapshot();
         p_db( "previous sync_ctx exists %p, offset %zu, snp idx %zu, user_ctx %p",
               sync_ctx.get(),
-              sync_ctx->offset_,
+              sync_ctx->get_offset(),
               snp->get_last_log_idx(),
               sync_ctx->get_user_snp_ctx() );
         prev_sync_snp_log_idx = snp->get_last_log_idx();
 
         if (sync_ctx->get_timer().timeout()) {
             p_in("previous sync_ctx %p timed out, reset it", sync_ctx.get());
-            void*& user_ctx = sync_ctx->get_user_snp_ctx();
-            state_machine_->free_user_snp_ctx(user_ctx);
-            sync_ctx->set_offset(0);
+            destroy_user_snp_ctx(sync_ctx);
+            sync_ctx.reset();
+            snp.reset();
         }
     }
 
@@ -113,11 +147,27 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
         if (sync_ctx) {
             // If previous user context exists, should free it
             // as it causes memory leak.
-            void*& user_ctx = sync_ctx->get_user_snp_ctx();
-            state_machine_->free_user_snp_ctx(user_ctx);
+            destroy_user_snp_ctx(sync_ctx);
         }
-        p.set_snapshot_in_sync(snp);
+
+        // Timeout: heartbeat * response limit.
+        ulong snp_timeout_ms = ctx_->get_params()->heart_beat_interval_ *
+                               raft_server::raft_limits_.response_limit_;
+        p.set_snapshot_in_sync(snp, snp_timeout_ms);
     }
+
+    if (params->use_bg_thread_for_snapshot_io_) {
+        // If async snapshot IO, push the snapshot read request to the manager
+        // and immediately return here.
+        snapshot_io_mgr::instance().push( this->shared_from_this(),
+                                          pp,
+                                          ( (pp == srv_to_join_)
+                                            ? ex_resp_handler_
+                                            : resp_handler_ ) );
+        succeeded_out = true;
+        return nullptr;
+    }
+    // Otherwise (sync snapshot IO), read the requested object here and then return.
 
     bool last_request = false;
     ptr<buffer> data = nullptr;
@@ -146,12 +196,24 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
 
     } else {
         // Logical object type snapshot
-        ulong obj_idx = p.get_snapshot_sync_ctx()->get_offset();
-        void*& user_snp_ctx = p.get_snapshot_sync_ctx()->get_user_snp_ctx();
+        sync_ctx = p.get_snapshot_sync_ctx();
+        ulong obj_idx = sync_ctx->get_offset();
+        void*& user_snp_ctx = sync_ctx->get_user_snp_ctx();
         p_dv("peer: %d, obj_idx: %ld, user_snp_ctx %p\n",
              (int)p.get_id(), obj_idx, user_snp_ctx);
-        state_machine_->read_logical_snp_obj( *snp, user_snp_ctx, obj_idx,
-                                              data, last_request );
+
+        int rc = state_machine_->read_logical_snp_obj( *snp, user_snp_ctx, obj_idx,
+                                                       data, last_request );
+        if (rc < 0) {
+            p_wn( "reading snapshot (idx %lu, term %lu, object %lu) failed: %d",
+                  snp->get_last_log_idx(),
+                  snp->get_last_log_term(),
+                  obj_idx,
+                  rc );
+            // Reset the `sync_ctx` so as to retry with the newer version.
+            clear_snapshot_sync_ctx(p);
+            return nullptr;
+        }
         if (data) data->pos(0);
         data_idx = obj_idx;
     }
@@ -170,6 +232,8 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(peer& p,
                                   ( term,
                                     sync_req->serialize(),
                                     log_val_type::snp_sync_req ) );
+
+    succeeded_out = true;
     return req;
 }
 
@@ -273,7 +337,7 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
     if (resp.get_accepted()) {
         std::lock_guard<std::mutex> guard(p->get_lock());
         ptr<snapshot_sync_ctx> sync_ctx = p->get_snapshot_sync_ctx();
-        if (sync_ctx == nilptr) {
+        if (sync_ctx == nullptr) {
             p_in("no snapshot sync context for this peer, drop the response");
             need_to_catchup = false;
 
@@ -294,12 +358,9 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
 
             if (snp_install_done) {
                 p_db("snapshot sync is done (raw type)");
-                ptr<snapshot> nil_snp = nullptr;
                 p->set_next_log_idx(sync_ctx->get_snapshot()->get_last_log_idx() + 1);
                 p->set_matched_idx(sync_ctx->get_snapshot()->get_last_log_idx());
-                void*& user_ctx = sync_ctx->get_user_snp_ctx();
-                state_machine_->free_user_snp_ctx(user_ctx);
-                p->set_snapshot_in_sync(nil_snp);
+                clear_snapshot_sync_ctx(*p);
 
                 need_to_catchup = p->clear_pending_commit() ||
                                   p->get_next_log_idx() < log_store_->next_slot();
@@ -324,12 +385,7 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
         // Should reset current snapshot context,
         // to continue with more recent snapshot.
         std::lock_guard<std::mutex> guard(p->get_lock());
-        ptr<snapshot_sync_ctx> sync_ctx = p->get_snapshot_sync_ctx();
-        if (sync_ctx) {
-            void*& user_ctx = sync_ctx->get_user_snp_ctx();
-            state_machine_->free_user_snp_ctx(user_ctx);
-            p->set_snapshot_in_sync(nilptr);
-        }
+        clear_snapshot_sync_ctx(*p);
     }
 
     // This may not be a leader anymore, such as
@@ -354,9 +410,10 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
              resp.get_next_idx());
         srv_to_join_->set_next_log_idx(resp.get_next_idx());
     }
+    srv_to_join_->reset_resp_timer();
 
     ptr<snapshot_sync_ctx> sync_ctx = srv_to_join_->get_snapshot_sync_ctx();
-    if (sync_ctx == nilptr) {
+    if (sync_ctx == nullptr) {
         p_ft("SnapshotSyncContext must not be null: "
              "src %d dst %d my id %d leader id %d, "
              "maybe leader election happened in the meantime. "
@@ -375,14 +432,13 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
     if (snp_install_done) {
         // snapshot is done
         p_in("snapshot install is done\n");
-        ptr<snapshot> nil_snap;
-        srv_to_join_->set_snapshot_in_sync(nil_snap);
         srv_to_join_->set_next_log_idx
             ( sync_ctx->get_snapshot()->get_last_log_idx() + 1 );
         srv_to_join_->set_matched_idx
             ( sync_ctx->get_snapshot()->get_last_log_idx() );
-        void*& user_ctx = sync_ctx->get_user_snp_ctx();
-        state_machine_->free_user_snp_ctx(user_ctx);
+
+        clear_snapshot_sync_ctx(*srv_to_join_);
+
         p_in( "snapshot has been copied and applied to new server, "
               "continue to sync logs after snapshot, "
               "next log idx %llu, matched idx %llu",
@@ -497,6 +553,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             precommit_index_ = req.get_snapshot().get_last_log_idx();
             sm_commit_index_ = req.get_snapshot().get_last_log_idx();
             quick_commit_index_ = req.get_snapshot().get_last_log_idx();
+            lagging_sm_target_index_ = req.get_snapshot().get_last_log_idx();
 
             ctx_->state_mgr_->save_state(*state_);
 

@@ -65,6 +65,8 @@ struct asio_service_meta_cb_params {
 struct asio_service_options {
     asio_service_options()
         : thread_pool_size_(0)
+        , worker_start_(nullptr)
+        , worker_stop_(nullptr)
         , enable_ssl_(false)
         , skip_verification_(false)
         , write_req_meta_(nullptr)
@@ -79,6 +81,12 @@ struct asio_service_options {
     // Number of ASIO worker threads.
     // If zero, it will be automatically set to number of cores.
     size_t thread_pool_size_;
+
+    // Lifecycle callback function on worker thread start.
+    std::function< void(uint32_t) > worker_start_;
+
+    // Lifecycle callback function on worker thread stop.
+    std::function< void(uint32_t) > worker_stop_;
 
     // If `true`, enable SSL/TLS secure connection.
     bool enable_ssl_;

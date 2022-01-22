@@ -192,6 +192,15 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         p->clear_reconnection();
     }
 
+    if (params->use_bg_thread_for_snapshot_io_) {
+        // Check the current queue if previous request exists.
+        if (snapshot_io_mgr::instance().has_pending_request(this, p->get_id())) {
+            p_tr( "previous snapshot request for peer %d already exists",
+                  p->get_id() );
+            return true;
+        }
+    }
+
     if (p->make_busy()) {
         p_tr("send request to %d\n", (int)p->get_id());
 
@@ -206,12 +215,18 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
         } else {
             // Normal message.
-            msg = create_append_entries_req(*p);
+            msg = create_append_entries_req(p);
             m_handler = resp_handler_;
         }
+
         if (!msg) {
             // Even normal message doesn't exist.
             p->set_free();
+            if ( params->use_bg_thread_for_snapshot_io_ &&
+                 p->get_snapshot_sync_ctx() ) {
+                // If this is an async snapshot request, invoke IO thread.
+                snapshot_io_mgr::instance().invoke();
+            }
             return true;
         }
 
@@ -268,6 +283,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     }
 
     p_db("Server %d is busy, skip the request", p->get_id());
+    check_snapshot_timeout(p);
 
     int32 last_ts_ms = p->get_ls_timer_us() / 1000;
     if ( last_ts_ms > params->heart_beat_interval_ ) {
@@ -287,7 +303,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     return false;
 }
 
-ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
+ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
+    peer& p = *pp;
     ulong cur_nxt_idx(0L);
     ulong commit_idx(0L);
     ulong last_log_idx(0L);
@@ -386,7 +403,10 @@ ptr<req_msg> raft_server::create_append_entries_req(peer& p) {
                   p.get_id(),
                   last_log_idx, starting_idx, cur_nxt_idx,
                   snp_local->get_last_log_idx() );
-            return create_sync_snapshot_req(p, last_log_idx, term, commit_idx);
+
+            bool succeeded_out = false;
+            return create_sync_snapshot_req( pp, last_log_idx, term,
+                                             commit_idx, succeeded_out );
         }
 
         // Cannot recover using snapshot. Return here to protect the leader.
@@ -612,7 +632,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         // WARNING:
         //   1) Rollback should be done separately before overwriting,
         //      and MUST BE in backward direction.
-        //   2) Should do rollback ONLY WHEN we have more than one log
+        //   2) Should do rollback ONLY WHEN we have at least one log
         //      to overwrite.
         ulong my_last_log_idx = log_store_->next_slot() - 1;
         bool rollback_in_progress = false;
@@ -865,6 +885,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p_tr("peer %d, prev matched idx: %ld, new matched idx: %ld",
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
+            p->set_last_accepted_log_idx(new_matched_idx);
         }
         cb_func::Param param(id_, leader_, p->get_id());
         param.ctx = &new_matched_idx;
@@ -879,14 +900,17 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                           resp.get_next_idx() < log_store_->next_slot();
 
     } else {
-        ulong prev_next_log = p->get_next_log_idx();
         std::lock_guard<std::mutex> guard(p->get_lock());
-        if (resp.get_next_idx() > 0 && p->get_next_log_idx() > resp.get_next_idx()) {
+        ulong prev_next_log = p->get_next_log_idx();
+        if (resp.get_next_idx() > 0 && prev_next_log > resp.get_next_idx()) {
             // fast move for the peer to catch up
             p->set_next_log_idx(resp.get_next_idx());
         } else {
             // if not, move one log backward.
-            p->set_next_log_idx(p->get_next_log_idx() - 1);
+            // WARNING: Make sure that `next_log_idx_` shouldn't be smaller than 0.
+            if (prev_next_log) {
+                p->set_next_log_idx(prev_next_log - 1);
+            }
         }
         bool suppress = p->need_to_suppress_error();
 
@@ -987,17 +1011,23 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
 ulong raft_server::get_expected_committed_log_idx() {
     std::vector<ulong> matched_indexes;
+    state_machine::adjust_commit_index_params aci_params;
     matched_indexes.reserve(16);
+    aci_params.peer_index_map_.reserve(16);
 
     // Leader itself.
     matched_indexes.push_back( precommit_index_ );
+    aci_params.peer_index_map_[id_] = precommit_index_;
+
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
-        if (!is_regular_member(p)) continue;
+        aci_params.peer_index_map_[p->get_id()] = p->get_matched_idx();
 
+        if (!is_regular_member(p)) continue;
         matched_indexes.push_back( p->get_matched_idx() );
     }
-    assert((int32)matched_indexes.size() == get_num_voting_members());
+    int voting_members = get_num_voting_members();
+    assert((int32)matched_indexes.size() == voting_members);
 
     // NOTE: Descending order.
     //       e.g.) 100 100 99 95 92
@@ -1007,7 +1037,26 @@ ulong raft_server::get_expected_committed_log_idx() {
                std::greater<ulong>() );
 
     size_t quorum_idx = get_quorum_for_commit();
-    if (l_->get_level() >= 6) {
+    if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
+        size_t not_responding_peers = get_not_responding_peers();
+        if (not_responding_peers < voting_members - quorum_idx) {
+            // If full consensus option is on, commit should be
+            // agreed by all healthy members, and the number of
+            // aggreed members should be bigger than regular quorum size.
+            size_t prev_quorum_idx = quorum_idx;
+            quorum_idx = voting_members - not_responding_peers - 1;
+            p_tr( "full consensus mode: %zu peers are not responding out of %d, "
+                  "adjust quorum %zu -> %zu",
+                  not_responding_peers, voting_members,
+                  prev_quorum_idx, quorum_idx );
+        } else {
+            p_tr( "full consensus mode, but %zu peers are not responding, "
+                  "required quorum size %zu/%d",
+                  not_responding_peers, quorum_idx + 1, voting_members );
+        }
+    }
+
+    if (l_ && l_->get_level() >= 6) {
         std::string tmp_str;
         for (ulong m_idx: matched_indexes) {
             tmp_str += std::to_string(m_idx) + " ";
@@ -1015,7 +1064,14 @@ ulong raft_server::get_expected_committed_log_idx() {
         p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
     }
 
-    return matched_indexes[ quorum_idx ];
+    aci_params.current_commit_index_ = precommit_index_;
+    aci_params.expected_commit_index_ = matched_indexes[quorum_idx];
+    uint64_t adjusted_commit_index = state_machine_->adjust_commit_index(aci_params);
+    if (aci_params.expected_commit_index_ != adjusted_commit_index) {
+        p_tr( "commit index adjusted: %lu -> %lu",
+              aci_params.expected_commit_index_, adjusted_commit_index );
+    }
+    return adjusted_commit_index;
 }
 
 } // namespace nuraft;

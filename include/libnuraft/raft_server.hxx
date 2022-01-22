@@ -32,9 +32,11 @@ limitations under the License.
 #include "srv_state.hxx"
 #include "timer_task.hxx"
 
+#include <list>
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 class EventAwaiter;
 
@@ -48,19 +50,24 @@ class delayed_task_scheduler;
 class logger;
 class peer;
 class rpc_client;
+class raft_server_handler;
 class req_msg;
 class resp_msg;
 class rpc_exception;
+class snapshot_sync_ctx;
 class state_machine;
 class state_mgr;
 struct context;
 struct raft_params;
 class raft_server : public std::enable_shared_from_this<raft_server> {
     friend class nuraft_global_mgr;
+    friend class raft_server_handler;
+    friend class snapshot_io_mgr;
 public:
     struct init_options {
         init_options()
             : skip_initial_election_timeout_(false)
+            , start_server_in_constructor_(true)
             {}
 
         /**
@@ -78,6 +85,12 @@ public:
          * Callback function for hooking the operation.
          */
         cb_func::func_type raft_callback_;
+
+        /**
+         * Option for compatiblity. Starts background commit and append threads
+         * in constructor. Initialize election timer.
+         */
+        bool start_server_in_constructor_;
     };
 
     struct limits {
@@ -158,14 +171,6 @@ public:
 
 public:
     /**
-     * Process Raft request.
-     *
-     * @param req Request.
-     * @return Response.
-     */
-    virtual ptr<resp_msg> process_req(req_msg& req);
-
-    /**
      * Check if this server is ready to serve operation.
      *
      * @return `true` if it is ready.
@@ -225,6 +230,65 @@ public:
      */
     ptr< cmd_result< ptr<buffer> > >
         append_entries(const std::vector< ptr<buffer> >& logs);
+
+    /**
+     * Parameters for `req_ext_cb` callback function.
+     */
+    struct req_ext_cb_params {
+        req_ext_cb_params() : log_idx(0), log_term(0) {}
+
+        /**
+         * Raft log index number.
+         */
+        uint64_t log_idx;
+
+        /**
+         * Raft log term number.
+         */
+        uint64_t log_term;
+    };
+
+    /**
+     * Callback function type to be called inside extended APIs.
+     */
+    using req_ext_cb = std::function< void(const req_ext_cb_params&) >;
+
+    /**
+     * Extended parameters for advanced features.
+     */
+    struct req_ext_params {
+        req_ext_params() : expected_term_(0) {}
+
+        /**
+         * If given, this function will be invokced right after the pre-commit
+         * call for each log.
+         */
+        req_ext_cb after_precommit_;
+
+        /**
+         * If given (non-zero), the operation will return failure if the current
+         * server's term does not match the given term.
+         */
+        uint64_t expected_term_;
+    };
+
+    /**
+     * An extended version of `append_entries`.
+     * Append and replicate the given logs.
+     * Only leader will accept this operation.
+     *
+     * @param logs Set of logs to replicate.
+     * @param ext_params Extended parameters.
+     * @return
+     *     In blocking mode, it will be blocked during replication, and
+     *     return `cmd_result` instance which contains the commit results from
+     *     the state machine.
+     *     In async mode, this function will return immediately, and the
+     *     commit results will be set to returned `cmd_result` instance later.
+     */
+    ptr< cmd_result< ptr<buffer> > >
+        append_entries_ext(const std::vector< ptr<buffer> >& logs,
+                           const req_ext_params& ext_params);
 
     /**
      * Update the priority of given server.
@@ -460,9 +524,56 @@ public:
     void get_srv_config_all(std::vector< ptr<srv_config> >& configs_out) const;
 
     /**
+     * Peer info structure.
+     */
+    struct peer_info {
+        peer_info()
+            : id_(-1)
+            , last_log_idx_(0)
+            , last_succ_resp_us_(0)
+            {}
+
+        /**
+         * Peer ID.
+         */
+        int32 id_;
+
+        /**
+         * The last log index that the peer has, from this server's point of view.
+         */
+        ulong last_log_idx_;
+
+        /**
+         * The elapsed time since the last successful response from this peer,
+         * in microsecond.
+         */
+        ulong last_succ_resp_us_;
+    };
+
+    /**
+     * Get the peer info of the given ID. Only leader will return peer info.
+     *
+     * @param srv_id Server ID.
+     * @return Peer info.
+     */
+    peer_info get_peer_info(int32 srv_id) const;
+
+    /**
+     * Get the info of all peers. Only leader will return peer info.
+     *
+     * @return Vector of peer info.
+     */
+    std::vector<peer_info> get_peer_info_all() const;
+
+    /**
      * Shut down server instance.
      */
     void shutdown();
+
+    /**
+     *  Start internal background threads, initialize election
+     */
+    void start_server(bool skip_initial_election_timeout);
 
     /**
      * Stop background commit thread.
@@ -580,6 +691,32 @@ public:
      */
     void set_inc_term_func(srv_state::inc_term_func func);
 
+    /**
+     * Pause the background execution of the state machine.
+     * If an operation execution is currently happening, the state
+     * machine may not be paused immediately.
+     *
+     * @param timeout_ms If non-zero, this function will be blocked until
+     *                   either it completely pauses the state machine execution
+     *                   or reaches the given time limit in milliseconds.
+     *                   Otherwise, this function will return immediately, and
+     *                   there is a possibility that the state machine execution
+     *                   is still happening.
+     */
+    void pause_state_machine_exeuction(size_t timeout_ms = 0);
+
+    /**
+     * Resume the background execution of state machine.
+     */
+    void resume_state_machine_execution();
+
+    /**
+     * Check if the state machine execution is paused.
+     *
+     * @return `true` if paused.
+     */
+    bool is_state_machine_execution_paused() const;
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 
@@ -612,7 +749,20 @@ protected:
         std::atomic<int32> failure_count_;
     };
 
+    /**
+     * A set of components required for auto-forwarding.
+     */
+    struct auto_fwd_pkg;
+
 protected:
+    /**
+     * Process Raft request.
+     *
+     * @param req Request.
+     * @return Response.
+     */
+    virtual ptr<resp_msg> process_req(req_msg& req, const req_ext_params& ext_params);
+
     void apply_and_log_current_params();
     void cancel_schedulers();
     void schedule_task(ptr<delayed_task>& task, int32 milliseconds);
@@ -633,8 +783,8 @@ protected:
     ptr<resp_msg> handle_append_entries(req_msg& req);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
-    ptr<resp_msg> handle_cli_req_prelock(req_msg& req);
-    ptr<resp_msg> handle_cli_req(req_msg& req);
+    ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
+    ptr<resp_msg> handle_cli_req(req_msg& req, const req_ext_params& ext_params);
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
     ptr< cmd_result< ptr<buffer> > >
@@ -661,8 +811,8 @@ protected:
 
     bool check_cond_for_zp_election();
     void request_prevote();
-    void initiate_vote(bool ignore_priority = false);
-    void request_vote(bool ignore_priority);
+    void initiate_vote(bool force_vote = false);
+    void request_vote(bool force_vote);
     void request_append_entries();
     bool request_append_entries(ptr<peer> p);
     void handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
@@ -682,11 +832,15 @@ protected:
     void handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p);
     void reset_srv_to_join();
     void reset_srv_to_leave();
-    ptr<req_msg> create_append_entries_req(peer& p);
-    ptr<req_msg> create_sync_snapshot_req(peer& p,
+    ptr<req_msg> create_append_entries_req(ptr<peer>& pp);
+    ptr<req_msg> create_sync_snapshot_req(ptr<peer>& pp,
                                           ulong last_log_idx,
                                           ulong term,
-                                          ulong commit_idx);
+                                          ulong commit_idx,
+                                          bool& succeeded_out);
+    bool check_snapshot_timeout(ptr<peer> pp);
+    void destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx);
+    void clear_snapshot_sync_ctx(peer& pp);
     void commit(ulong target_idx);
     void snapshot_and_compact(ulong committed_idx);
     bool update_term(ulong term);
@@ -723,7 +877,20 @@ protected:
                         bool need_to_handle_commit_elem);
     void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
 
-    ptr< cmd_result< ptr<buffer> > > send_msg_to_leader(ptr<req_msg>& req);
+    ptr< cmd_result< ptr<buffer> > >
+        send_msg_to_leader(ptr<req_msg>& req,
+                           const req_ext_params& ext_params = req_ext_params());
+
+    void auto_fwd_release_rpc_cli(ptr<auto_fwd_pkg> cur_pkg,
+                                  ptr<rpc_client> rpc_cli);
+
+
+    void auto_fwd_resp_handler(ptr<cmd_result<ptr<buffer>>> presult,
+                               ptr<auto_fwd_pkg> cur_pkg,
+                               ptr<rpc_client> rpc_cli,
+                               ptr<resp_msg>& resp,
+                               ptr<rpc_exception>& err);
+    void cleanup_auto_fwd_pkgs();
 
     void set_config(const ptr<cluster_config>& new_config);
     ptr<snapshot> get_last_snapshot() const;
@@ -841,6 +1008,13 @@ protected:
     std::atomic<ulong> sm_commit_index_;
 
     /**
+     * If `grace_period_of_lagging_state_machine_` option is enabled,
+     * the server will not initiate vote if its state machine's commit
+     * index is less than this number.
+     */
+    std::atomic<ulong> lagging_sm_target_index_;
+
+    /**
      * (Read-only)
      * Initial commit index when this server started.
      */
@@ -910,6 +1084,16 @@ protected:
      * leader re-election.
      */
     std::atomic<bool> write_paused_;
+
+    /**
+     * If `true`, state machine commit will be paused.
+     */
+    std::atomic<bool> sm_commit_paused_;
+
+    /**
+     * If `true`, the background thread is doing state machine execution.
+     */
+    std::atomic<bool> sm_commit_exec_in_progress_;
 
     /**
      * Server ID indicates the candidate for the next leader,
@@ -986,6 +1170,36 @@ protected:
     std::unordered_map<int32, ptr<rpc_client>> rpc_clients_;
 
     /**
+     * Map of {server ID, auto-forwarding components}.
+     */
+    std::unordered_map<int32, ptr<auto_fwd_pkg>> auto_fwd_pkgs_;
+
+    /**
+     * Definition of request-response pairs.
+     */
+    struct auto_fwd_req_resp {
+        /**
+         * Request.
+         */
+        ptr<req_msg> req;
+
+        /**
+         * Corresponding (future) response.
+         */
+        ptr<cmd_result<ptr<buffer>>> resp;
+    };
+
+    /**
+     * Queue of request-response pairs for auto-forwarding (async mode only).
+     */
+    std::list<auto_fwd_req_resp> auto_fwd_reqs_;
+
+    /**
+     * Lock for auto-forwarding queue.
+     */
+    std::mutex auto_fwd_reqs_lock_;
+
+    /**
      * Current role of this server.
      */
     std::atomic<srv_role> role_;
@@ -1060,6 +1274,12 @@ protected:
     ptr<peer> srv_to_join_;
 
     /**
+     * `true` if `sync_log_to_new_srv` needs to be called again upon
+     * a temporary heartbeat.
+     */
+    std::atomic<bool> srv_to_join_snp_retry_required_;
+
+    /**
      * Server that is agreed to leave,
      * protected by `lock_`.
      */
@@ -1081,7 +1301,7 @@ protected:
     /**
      * Lock of entire Raft operation.
      */
-    std::recursive_mutex lock_;
+    mutable std::recursive_mutex lock_;
 
     /**
      * Lock of handling client request and role change.
@@ -1162,6 +1382,17 @@ protected:
      * for each heartbeat period.
      */
     timer_helper status_check_timer_;
+
+    /**
+     * Timer that will be used for tracking the time that
+     * this server is blocked from leader election.
+     */
+    timer_helper vote_init_timer_;
+
+    /**
+     * The term when `vote_init_timer_` was reset.
+     */
+    std::atomic<ulong> vote_init_timer_term_;
 };
 
 } // namespace nuraft;

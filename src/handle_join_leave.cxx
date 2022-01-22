@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "event_awaiter.h"
 #include "peer.hxx"
+#include "snapshot_sync_ctx.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
 #include "tracer.hxx"
@@ -91,7 +92,8 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
             return resp;
         }
         // Otherwise: activity timeout, reset the server.
-        p_wn("activity timeout, start over");
+        p_wn("activity timeout (last activity %lu ms ago), start over",
+             last_active_ms);
         reset_srv_to_join();
     }
 
@@ -177,7 +179,15 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     state_->set_voted_for(-1);
     state_->set_term(req.get_term());
     ctx_->state_mgr_->save_state(*state_);
-    reconfigure(cluster_config::deserialize(entries[0]->get_buf()));
+
+    ptr<cluster_config> c_config = cluster_config::deserialize(entries[0]->get_buf());
+    // WARNING: We should make cluster config durable here. Otherwise, if
+    //          this server gets restarted before receiving the first
+    //          committed config (the first config that includes this server),
+    //          this server will remove itself immediately by replaying
+    //          previous config which does not include this server.
+    ctx_->state_mgr_->save_config(*c_config);
+    reconfigure(c_config);
 
     resp->accept( quick_commit_index_.load() + 1 );
     return resp;
@@ -256,10 +266,20 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     // When snapshot transmission is still in progress, start_idx can be 0.
     // We should tolerate this.
     if (/* start_idx > 0 && */ start_idx < log_store_->start_index()) {
-        req = create_sync_snapshot_req( *srv_to_join_,
+        srv_to_join_snp_retry_required_ = false;
+        bool succeeded_out = false;
+        req = create_sync_snapshot_req( srv_to_join_,
                                         start_idx,
                                         state_->get_term(),
-                                        quick_commit_index_);
+                                        quick_commit_index_,
+                                        succeeded_out );
+        if (!succeeded_out) {
+            // If reading snapshot fails, enable HB temporarily to retry it.
+            srv_to_join_snp_retry_required_ = true;
+            enable_hb_for_peer(*srv_to_join_);
+            return;
+        }
+
     } else {
         int32 size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
         ptr<buffer> log_pack = log_store_->pack(start_idx, size_to_sync);
@@ -277,7 +297,13 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
               ( state_->get_term(), log_pack, log_val_type::log_pack) );
     }
 
-    srv_to_join_->send_req(srv_to_join_, req, ex_resp_handler_);
+    if (!params->use_bg_thread_for_snapshot_io_) {
+        // Synchronous IO: directly send here.
+        srv_to_join_->send_req(srv_to_join_, req, ex_resp_handler_);
+    } else {
+        // Asynchronous IO: invoke the thread.
+        snapshot_io_mgr::instance().invoke();
+    }
 }
 
 ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {
@@ -560,12 +586,7 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
 }
 
 void raft_server::reset_srv_to_join() {
-    ptr<snapshot_sync_ctx> sync_ctx = srv_to_join_->get_snapshot_sync_ctx();
-    if (sync_ctx) {
-        // If user context exists for snapshot, should free it.
-        void*& user_ctx = sync_ctx->get_user_snp_ctx();
-        state_machine_->free_user_snp_ctx(user_ctx);
-    }
+    clear_snapshot_sync_ctx(*srv_to_join_);
     srv_to_join_->shutdown();
     srv_to_join_.reset();
 }
