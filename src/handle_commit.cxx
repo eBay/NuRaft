@@ -558,7 +558,9 @@ void raft_server::on_snapshot_completed
 
     {
         recur_lock(lock_);
-        p_db("snapshot created, compact the log store");
+        p_in("snapshot idx %lu log_term %lu created, "
+             "compact the log store if needed",
+             s->get_last_log_idx(), s->get_last_log_term());
 
         ptr<snapshot> new_snp = state_machine_->last_snapshot();
         set_last_snapshot(new_snp);
@@ -567,7 +569,7 @@ void raft_server::on_snapshot_completed
                  (ulong)params->reserved_log_items_ ) {
             ulong compact_upto = new_snp->get_last_log_idx() -
                                      (ulong)params->reserved_log_items_;
-            p_db("log_store_ compact upto %ld", compact_upto);
+            p_in("log_store_ compact upto %lu", compact_upto);
             log_store_->compact(compact_upto);
         }
     }

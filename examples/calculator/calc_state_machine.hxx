@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cassert>
+#include <iostream>
 #include <mutex>
 
 #include <string.h>
@@ -31,9 +32,10 @@ namespace calc_server {
 
 class calc_state_machine : public state_machine {
 public:
-    calc_state_machine()
+    calc_state_machine(bool async_snapshot = false)
         : cur_value_(0)
         , last_committed_idx_(0)
+        , async_snapshot_(async_snapshot)
         {}
 
     ~calc_state_machine() {}
@@ -152,7 +154,9 @@ public:
     {
         if (obj_id == 0) {
             // Object ID == 0: it contains dummy value, create snapshot context.
-            create_snapshot_internal(s);
+            ptr<buffer> snp_buf = s.serialize();
+            ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
+            create_snapshot_internal(ss);
 
         } else {
             // Object ID > 0: actual snapshot value.
@@ -200,12 +204,13 @@ public:
     void create_snapshot(snapshot& s,
                          async_result<bool>::handler_type& when_done)
     {
-        {   std::lock_guard<std::mutex> ll(snapshots_lock_);
-            create_snapshot_internal(s);
+        if (!async_snapshot_) {
+            // Create a snapshot in a synchronous way (blocking the thread).
+            create_snapshot_sync(s, when_done);
+        } else {
+            // Create a snapshot in an asynchronous way (in a different thread).
+            create_snapshot_async(s, when_done);
         }
-        ptr<std::exception> except(nullptr);
-        bool ret = true;
-        when_done(ret, except);
     }
 
     int64_t get_current_value() const { return cur_value_; }
@@ -218,14 +223,12 @@ private:
         int64_t value_;
     };
 
-    void create_snapshot_internal(snapshot& s) {
-        // Clone snapshot from `s`.
-        ptr<buffer> snp_buf = s.serialize();
-        ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
+    void create_snapshot_internal(ptr<snapshot> ss) {
+        std::lock_guard<std::mutex> ll(snapshots_lock_);
 
         // Put into snapshot map.
         ptr<snapshot_ctx> ctx = cs_new<snapshot_ctx>(ss, cur_value_);
-        snapshots_[s.get_last_log_idx()] = ctx;
+        snapshots_[ss->get_last_log_idx()] = ctx;
 
         // Maintain last 3 snapshots only.
         const int MAX_SNAPSHOTS = 3;
@@ -235,6 +238,46 @@ private:
             if (entry == snapshots_.end()) break;
             entry = snapshots_.erase(entry);
         }
+    }
+
+    void create_snapshot_sync(snapshot& s,
+                              async_result<bool>::handler_type& when_done)
+    {
+        // Clone snapshot from `s`.
+        ptr<buffer> snp_buf = s.serialize();
+        ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
+        create_snapshot_internal(ss);
+
+        ptr<std::exception> except(nullptr);
+        bool ret = true;
+        when_done(ret, except);
+
+        std::cout << "snapshot (" << ss->get_last_log_term() << ", "
+                  << ss->get_last_log_idx() << ") has been created synchronously"
+                  << std::endl;
+    }
+
+    void create_snapshot_async(snapshot& s,
+                               async_result<bool>::handler_type& when_done)
+    {
+        // Clone snapshot from `s`.
+        ptr<buffer> snp_buf = s.serialize();
+        ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
+
+        // Note that this is a very naive and inefficient example
+        // that creates a new thread for each snapshot creation.
+        std::thread t_hdl([this, ss, when_done]{
+            create_snapshot_internal(ss);
+
+            ptr<std::exception> except(nullptr);
+            bool ret = true;
+            when_done(ret, except);
+
+            std::cout << "snapshot (" << ss->get_last_log_term() << ", "
+                      << ss->get_last_log_idx() << ") has been created asynchronously"
+                      << std::endl;
+        });
+        t_hdl.detach();
     }
 
     // State machine's current value.
@@ -248,6 +291,9 @@ private:
 
     // Mutex for `snapshots_`.
     std::mutex snapshots_lock_;
+
+    // If `true`, snapshot will be created asynchronously.
+    bool async_snapshot_;
 };
 
 }; // namespace calc_server
