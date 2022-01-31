@@ -1064,7 +1064,7 @@ ulong raft_server::get_expected_committed_log_idx() {
         p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
     }
 
-    aci_params.current_commit_index_ = precommit_index_;
+    aci_params.current_commit_index_ = quick_commit_index_;
     aci_params.expected_commit_index_ = matched_indexes[quorum_idx];
     uint64_t adjusted_commit_index = state_machine_->adjust_commit_index(aci_params);
     if (aci_params.expected_commit_index_ != adjusted_commit_index) {
