@@ -717,6 +717,18 @@ public:
      */
     bool is_state_machine_execution_paused() const;
 
+    /**
+     * (Experimental)
+     * This API is used when `raft_params::parallel_log_appending_` is set.
+     * Everytime an asynchronous log appending job is done, users should call
+     * this API to notify Raft server to handle the log.
+     * Note that calling this API once for multiple logs is acceptable
+     * and recommended.
+     *
+     * @param ok `true` if appending succeeded.
+     */
+    void notify_log_append_completion(bool ok);
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 
@@ -913,6 +925,10 @@ protected:
     void remove_peer_from_peers(const ptr<peer>& pp);
 
     void check_overall_status();
+
+    void request_append_entries_for_all();
+
+    uint64_t get_current_leader_index();
 
 protected:
     static const int default_snapshot_sync_block_size;
@@ -1393,6 +1409,17 @@ protected:
      * The term when `vote_init_timer_` was reset.
      */
     std::atomic<ulong> vote_init_timer_term_;
+
+    /**
+     * (Experimental)
+     * Used when `raft_params::parallel_log_appending_` is set.
+     * Follower will wait for the asynchronous log appending using
+     * this event awaiter.
+     *
+     * WARNING: We are assuming that only one thraed is using this
+     *          awaiter at a time, by the help of `lock_`.
+     */
+    EventAwaiter* ea_follower_log_append_;
 };
 
 } // namespace nuraft;

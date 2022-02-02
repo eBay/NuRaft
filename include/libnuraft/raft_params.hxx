@@ -550,6 +550,37 @@ public:
      * request for a configured time (`response_limit_`).
      */
     bool use_full_consensus_among_healthy_members_;
+
+    /**
+     * (Experimental)
+     * If `true`, users can let the leader append logs parallel with their
+     * replication. To implement parallel log appending, users need to make
+     * `log_store::append`, `log_store::write_at`, or
+     * `log_store::end_of_append_batch` API triggers asynchronous disk writes
+     * without blocking the thread. Even while the disk write is in progress,
+     * the other read APIs of log store should be able to read the log.
+     *
+     * The replication and the disk write will be executed in parallel,
+     * and users need to call `raft_server::notify_log_append_completion`
+     * when the asynchronous disk write is done. Also, users need to properly
+     * implement `log_store::last_durable_index` API to return the most recent
+     * durable log index. The leader will commit the log based on the
+     * result of this API.
+     *
+     *   - If the disk write is done earlier than the replication,
+     *     the commit behavior is the same as the original protocol.
+     *
+     *   - If the replication is done earlier than the disk write,
+     *     the leader will commit the log based on the quorum except
+     *     for the leader itself. The leader can apply the log to
+     *     the state machine even before completing the disk write
+     *     of the log.
+     *
+     * Note that parallel log appending is available for the leader only,
+     * and followers will wait for `notify_log_append_completion` call
+     * before returning the response.
+     */
+    bool parallel_log_appending_;
 };
 
 }
