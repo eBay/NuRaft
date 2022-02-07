@@ -1,0 +1,53 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "logger",
+    hdrs = [
+        "backtrace.h",
+        "logger.h",
+        "logger_wrapper.hxx",
+    ],
+    srcs = [
+        "logger.cc",
+    ],
+    strip_include_prefix = "//examples",
+)
+
+cc_library(
+    name = "in_memory_log_store",
+    hdrs = [
+        "in_memory_log_store.hxx",
+    ],
+    srcs = [
+        "in_memory_log_store.cxx",
+    ],
+    deps = [
+        ":logger",
+        "//:nuraft",
+    ],
+    strip_include_prefix = "//examples",
+)
+
+cc_library(
+    name = "in_memory_state_mgr",
+    hdrs = [
+        "in_memory_state_mgr.hxx",
+    ],
+    strip_include_prefix = "//examples",
+    deps = [
+        ":in_memory_log_store",
+    ],
+)
+
+cc_library(
+    name = "example_common",
+    hdrs = [
+        "example_common.hxx",
+    ],
+    deps = [
+        ":in_memory_state_mgr",
+    ],
+    strip_include_prefix = "//examples",
+)

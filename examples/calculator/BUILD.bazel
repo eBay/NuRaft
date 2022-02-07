@@ -1,0 +1,13 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "calculator",
+    srcs = [
+        "calc_server.cxx",
+        "calc_state_machine.hxx",
+    ],
+    deps = [
+        "//examples:example_common",
+        "//tests:test_common",
+    ],
+)

@@ -1,0 +1,108 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+cc_library(
+    name = "unit_test_common",
+    hdrs = glob(["*.hxx"]),
+    srcs = [
+        "fake_network.cxx",
+    ],
+    strip_include_prefix = "//tests/unit",
+    deps = [
+        "//:nuraft",
+        "//examples:in_memory_state_mgr",
+    ],
+)
+
+cc_test(
+    name = "asio_service_test",
+    srcs = [
+        "asio_service_test.cxx",
+    ],
+    data = [
+        "//:key.pem",
+        "//:cert.pem",
+    ],
+    deps = [
+        ":unit_test_common",
+        "//tests:test_common",
+    ],
+    timeout = "long",
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "buffer_test",
+    srcs = [
+        "buffer_test.cxx",
+    ],
+    deps = [
+        "//tests:test_common",
+        "//:nuraft",
+    ],
+)
+
+cc_test(
+    name = "failure_test",
+    srcs = [
+        "failure_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        "//tests:test_common",
+    ],
+)
+
+cc_test(
+    name = "raft_server_test",
+    srcs = [
+        "raft_server_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        "//tests:test_common",
+    ],
+)
+
+cc_test(
+    name = "serialization_test",
+    srcs = [
+        "serialization_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        "//tests:test_common",
+    ],
+)
+
+cc_test(
+    name = "stat_mgr_test",
+    srcs = [
+        "stat_mgr_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        "//tests:test_common",
+    ],
+)
+
+cc_test(
+    name = "strfmt_test",
+    srcs = [
+        "strfmt_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        "//tests:test_common",
+    ],
+)
+
+cc_test(
+    name = "timer_test",
+    srcs = [
+        "timer_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        "//tests:test_common",
+    ],
+)

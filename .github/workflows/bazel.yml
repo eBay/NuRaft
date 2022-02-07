@@ -1,0 +1,31 @@
+name: build-with-bazel
+
+on:
+  # Trigger the workflow on push or pull request,
+  # but only for the main branch
+  push:
+    branches:
+      - master
+      - bazel
+  pull_request:
+    branches:
+      - master
+      - bazel
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Setup Bazel
+      run: |
+        sudo apt-get -qq install npm
+        sudo npm install -g @bazel/bazelisk
+        bazel -h
+    - name: Build All Targets
+      run: bazel build -c dbg //...
+    - name: Run All Tests
+      run: bazel test -c dbg //tests/...
