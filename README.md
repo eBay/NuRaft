@@ -92,6 +92,25 @@ C:\NuRaft\build> c:\Program Files (x86)\Microsoft Visual Studio\2019\Community\V
 ```
 
 
+Build with Bazel
+----------
+#### 1. Install Bazel
+Follow [install instructions](https://docs.bazel.build/versions/5.0.0/install.html)
+
+#### 2. Build static/shared libraries
+```sh
+bazel build -c opt //:nuraft
+```
+If debug version is desirable, run
+```sh
+bazel build -c dbg //:nuraft
+```
+
+#### 3. Run unit tests
+```sh
+bazel test -c dbg //tests/...
+```
+
 How to Use
 ----------
 Please refer to [this document](./docs/how_to_use.md).
