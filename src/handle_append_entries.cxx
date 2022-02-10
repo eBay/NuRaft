@@ -822,7 +822,7 @@ bool raft_server::try_update_precommit_index(ulong desired, const size_t MAX_ATT
     size_t num_attempts = 0;
     ulong prev_precommit_index = precommit_index_;
     while ( prev_precommit_index < desired &&
-            num_attempts < MAX_ATTEMPTS ) {
+            (num_attempts < MAX_ATTEMPTS || MAX_ATTEMPTS == 0) ) {
         if ( precommit_index_.compare_exchange_strong( prev_precommit_index,
                                                        desired ) ) {
             return true;
