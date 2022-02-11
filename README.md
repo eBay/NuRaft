@@ -95,7 +95,8 @@ C:\NuRaft\build> c:\Program Files (x86)\Microsoft Visual Studio\2019\Community\V
 Build with Bazel
 ----------
 #### 1. Install Bazel
-Follow [install instructions](https://docs.bazel.build/versions/5.0.0/install.html)
+Follow [install instructions](https://docs.bazel.build/versions/5.0.0/install.html). 
+LTS versions(4.2.2, 5.0.0) are verified compatible. Bazelisk is preferred as it helps [manage Bazel versions](https://docs.bazel.build/versions/main/updating-bazel.html#managing-bazel-versions-with-bazelisk).
 
 #### 2. Build static/shared libraries
 ```sh
