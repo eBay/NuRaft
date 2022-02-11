@@ -444,6 +444,10 @@ public:
 
     ptr<srv_config> get_srv_config() const { return mySrvConfig; }
 
+    void set_disk_delay(raft_server* raft, size_t delay_ms) {
+        curLogStore->set_disk_delay(raft, delay_ms);
+    }
+
 private:
     int myId;
     std::string myEndpoint;

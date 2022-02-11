@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "context.hxx"
 #include "error_code.hxx"
+#include "event_awaiter.h"
 #include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
@@ -102,6 +103,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                                                 std::placeholders::_1,
                                                 std::placeholders::_2 ) )
     , last_snapshot_(ctx->state_machine_->last_snapshot())
+    , ea_follower_log_append_(new EventAwaiter())
 {
     char temp_buf[4096];
     std::string print_msg;
@@ -309,6 +311,7 @@ raft_server::~raft_server() {
     ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10));
     cancel_schedulers();
     delete bg_append_ea_;
+    delete ea_follower_log_append_;
 }
 
 void raft_server::update_rand_timeout() {
@@ -358,7 +361,8 @@ void raft_server::apply_and_log_current_params() {
           "snapshot receiver %s, "
           "leadership transfer wait time %d, "
           "grace period of lagging state machine %d, "
-          "snapshot IO: %s",
+          "snapshot IO: %s, "
+          "parallel log appending: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -377,7 +381,8 @@ void raft_server::apply_and_log_current_params() {
           params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
           params->leadership_transfer_min_wait_time_,
           params->grace_period_of_lagging_state_machine_,
-          params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING" );
+          params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING",
+          params->parallel_log_appending_ ? "ON" : "OFF" );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();

@@ -25,13 +25,26 @@ namespace nuraft {
 
 inmem_log_store::inmem_log_store()
     : start_idx_(1)
+    , raft_server_bwd_pointer_(nullptr)
+    , disk_emul_delay(0)
+    , disk_emul_thread_(nullptr)
+    , disk_emul_thread_stop_signal_(false)
+    , disk_emul_last_durable_index_(0)
 {
     // Dummy entry for index 0.
     ptr<buffer> buf = buffer::alloc(sz_ulong);
     logs_[0] = cs_new<log_entry>(0, buf);
 }
 
-inmem_log_store::~inmem_log_store() {}
+inmem_log_store::~inmem_log_store() {
+    if (disk_emul_thread_) {
+        disk_emul_thread_stop_signal_ = true;
+        disk_emul_ea_.invoke();
+        if (disk_emul_thread_->joinable()) {
+            disk_emul_thread_->join();
+        }
+    }
+}
 
 ptr<log_entry> inmem_log_store::make_clone(const ptr<log_entry>& entry) {
     ptr<log_entry> clone = cs_new<log_entry>
@@ -68,6 +81,13 @@ ulong inmem_log_store::append(ptr<log_entry>& entry) {
     std::lock_guard<std::mutex> l(logs_lock_);
     size_t idx = start_idx_ + logs_.size() - 1;
     logs_[idx] = clone;
+
+    if (disk_emul_delay) {
+        uint64_t cur_time = timer_helper::get_timeofday_us();
+        disk_emul_logs_being_written_[cur_time + disk_emul_delay * 1000] = idx;
+        disk_emul_ea_.invoke();
+    }
+
     return idx;
 }
 
@@ -81,6 +101,22 @@ void inmem_log_store::write_at(ulong index, ptr<log_entry>& entry) {
         itr = logs_.erase(itr);
     }
     logs_[index] = clone;
+
+    if (disk_emul_delay) {
+        uint64_t cur_time = timer_helper::get_timeofday_us();
+        disk_emul_logs_being_written_[cur_time + disk_emul_delay * 1000] = index;
+
+        // Remove entries greater than `index`.
+        auto entry = disk_emul_logs_being_written_.begin();
+        while (entry != disk_emul_logs_being_written_.end()) {
+            if (entry->second > index) {
+                entry = disk_emul_logs_being_written_.erase(entry);
+            } else {
+                entry++;
+            }
+        }
+        disk_emul_ea_.invoke();
+    }
 }
 
 ptr< std::vector< ptr<log_entry> > >
@@ -236,7 +272,71 @@ bool inmem_log_store::compact(ulong last_log_index) {
     return true;
 }
 
-void inmem_log_store::close() {}
-
+bool inmem_log_store::flush() {
+    disk_emul_last_durable_index_ = next_slot() - 1;
+    return true;
 }
 
+void inmem_log_store::close() {}
+
+void inmem_log_store::set_disk_delay(raft_server* raft, size_t delay_ms) {
+    disk_emul_delay = delay_ms;
+    raft_server_bwd_pointer_ = raft;
+
+    if (!disk_emul_thread_) {
+        disk_emul_thread_ =
+            std::unique_ptr<std::thread>(
+                new std::thread(&inmem_log_store::disk_emul_loop, this) );
+    }
+}
+
+ulong inmem_log_store::last_durable_index() {
+    uint64_t last_log = next_slot() - 1;
+    if (!disk_emul_delay) {
+        return last_log;
+    }
+
+    return disk_emul_last_durable_index_;
+}
+
+void inmem_log_store::disk_emul_loop() {
+    // This thread mimics async disk writes.
+
+    size_t next_sleep_us = 100 * 1000;
+    while (!disk_emul_thread_stop_signal_) {
+        disk_emul_ea_.wait_us(next_sleep_us);
+        disk_emul_ea_.reset();
+        if (disk_emul_thread_stop_signal_) break;
+
+        uint64_t cur_time = timer_helper::get_timeofday_us();
+        next_sleep_us = 100 * 1000;
+
+        bool call_notification = false;
+        {
+            std::lock_guard<std::mutex> l(logs_lock_);
+            // Remove all timestamps equal to or smaller than `cur_time`,
+            // and pick the greatest one among them.
+            auto entry = disk_emul_logs_being_written_.begin();
+            while (entry != disk_emul_logs_being_written_.end()) {
+                if (entry->first <= cur_time) {
+                    disk_emul_last_durable_index_ = entry->second;
+                    entry = disk_emul_logs_being_written_.erase(entry);
+                    call_notification = true;
+                } else {
+                    break;
+                }
+            }
+
+            entry = disk_emul_logs_being_written_.begin();
+            if (entry != disk_emul_logs_being_written_.end()) {
+                next_sleep_us = entry->first - cur_time;
+            }
+        }
+
+        if (call_notification) {
+            raft_server_bwd_pointer_->notify_log_append_completion(true);
+        }
+    }
+}
+
+}

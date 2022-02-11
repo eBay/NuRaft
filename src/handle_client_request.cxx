@@ -55,6 +55,13 @@ ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
     }
 
     // Urgent commit, so that the commit will not depend on hb.
+    request_append_entries_for_all();
+
+    return resp;
+}
+
+void raft_server::request_append_entries_for_all() {
+    ptr<raft_params> params = ctx_->get_params();
     if (params->use_bg_thread_for_urgent_commit_) {
         // Let background generate request (some delay may happen).
         nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
@@ -70,7 +77,6 @@ ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
         recur_lock(lock_);
         request_append_entries();
     }
-    return resp;
 }
 
 ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
