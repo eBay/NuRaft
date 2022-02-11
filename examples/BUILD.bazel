@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_binary")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -50,4 +50,28 @@ cc_library(
         ":in_memory_state_mgr",
     ],
     strip_include_prefix = "//examples",
+)
+
+cc_binary(
+    name = "echo",
+    srcs = [
+        "echo/echo_server.cxx",
+        "echo/echo_state_machine.hxx",
+    ],
+    deps = [
+        ":example_common",
+        "//tests:test_common",
+    ],
+)
+
+cc_binary(
+    name = "calculator",
+    srcs = [
+        "calculator/calc_server.cxx",
+        "calculator/calc_state_machine.hxx",
+    ],
+    deps = [
+        ":example_common",
+        "//tests:test_common",
+    ],
 )

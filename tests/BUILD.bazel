@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 cc_library(
     name = "test_common",
@@ -7,4 +7,111 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     strip_include_prefix = "//tests",
+)
+
+cc_library(
+    name = "unit_test_common",
+    hdrs = glob(["unit/*.hxx"]),
+    srcs = [
+        "unit/fake_network.cxx",
+    ],
+    strip_include_prefix = "//tests/unit",
+    deps = [
+        "//:nuraft",
+        "//examples:in_memory_state_mgr",
+    ],
+)
+
+cc_test(
+    name = "asio_service_test",
+    srcs = [
+        "unit/asio_service_test.cxx",
+    ],
+    data = [
+        "//:key.pem",
+        "//:cert.pem",
+    ],
+    deps = [
+        ":unit_test_common",
+        ":test_common",
+    ],
+    timeout = "long",
+    tags = ["manual"],
+)
+
+cc_test(
+    name = "buffer_test",
+    srcs = [
+        "unit/buffer_test.cxx",
+    ],
+    deps = [
+        ":test_common",
+        "//:nuraft",
+    ],
+)
+
+cc_test(
+    name = "failure_test",
+    srcs = [
+        "unit/failure_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        ":test_common",
+    ],
+)
+
+cc_test(
+    name = "raft_server_test",
+    srcs = [
+        "unit/raft_server_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        ":test_common",
+    ],
+)
+
+cc_test(
+    name = "serialization_test",
+    srcs = [
+        "unit/serialization_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        ":test_common",
+    ],
+)
+
+cc_test(
+    name = "stat_mgr_test",
+    srcs = [
+        "unit/stat_mgr_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        ":test_common",
+    ],
+)
+
+cc_test(
+    name = "strfmt_test",
+    srcs = [
+        "unit/strfmt_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        ":test_common",
+    ],
+)
+
+cc_test(
+    name = "timer_test",
+    srcs = [
+        "unit/timer_test.cxx",
+    ],
+    deps = [
+        ":unit_test_common",
+        ":test_common",
+    ],
 )
