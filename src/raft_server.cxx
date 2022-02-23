@@ -990,7 +990,7 @@ void raft_server::become_leader() {
         ptr<log_entry> entry
             ( cs_new<log_entry>
               ( state_->get_term(), conf_buf, log_val_type::conf ) );
-        p_in("[BECOME LEADER] appended new config at %d\n", log_store_->next_slot());
+        p_in("[BECOME LEADER] appended new config at %zu\n", log_store_->next_slot());
         store_log_entry(entry);
         config_changing_ = true;
     }
