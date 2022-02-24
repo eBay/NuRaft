@@ -1034,7 +1034,7 @@ bool raft_server::check_leadership_validity() {
     if ( (num_voting_members - nr_peers) < min_quorum_size ) {
         p_er("%zu nodes (out of %zu, %zu including learners) are not "
              "responding longer than %zu ms, "
-             "at least %zu nodes (including leader) should be alive "
+             "at least %d nodes (including leader) should be alive "
              "to proceed commit",
              nr_peers,
              num_voting_members,
