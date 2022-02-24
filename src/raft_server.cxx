@@ -1021,6 +1021,9 @@ void raft_server::become_leader() {
 bool raft_server::check_leadership_validity() {
     recur_lock(lock_);
 
+    if (role_ != leader)
+        return false;
+
     // Check if quorum is not responding.
     int32 num_voting_members = get_num_voting_members();
 
@@ -1260,7 +1263,7 @@ bool raft_server::request_leadership() {
 
 void raft_server::become_follower() {
     // stop hb for all peers
-    p_tr("  FOLLOWER\n");
+    p_in("[BECOME FOLLOWER]");
     {   std::lock_guard<std::mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
