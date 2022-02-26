@@ -1263,7 +1263,7 @@ bool raft_server::request_leadership() {
 
 void raft_server::become_follower() {
     // stop hb for all peers
-    p_in("[BECOME FOLLOWER]");
+    p_in("[BECOME FOLLOWER] term %lu", state_->get_term());
     {   std::lock_guard<std::mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
