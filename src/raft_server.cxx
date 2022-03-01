@@ -1291,7 +1291,25 @@ void raft_server::become_follower() {
 
 bool raft_server::update_term(ulong term) {
     if (term > state_->get_term()) {
-        state_->set_term(term);
+        {
+            // NOTE:
+            //   There could be a race between `update_term` (let's say T1) and
+            //   `handle_cli_req` (let's say T2) as follows:
+            //
+            //     * The server was a leader at term X
+            //     [T1] call `state_->set_term(Y)`
+            //     [T2] call `state_->get_term()`
+            //     [T2] write a log with term Y (which should be X).
+            //     [T1] call `become_follower()`
+            //          => now this server becomes a follower at term Y,
+            //             but it still has the incorrect log with term Y.
+            //
+            //   To avoid this issue, we acquire `cli_lock_`,
+            //   and change `role_` first before setting the term.
+            std::lock_guard<std::mutex> ll(cli_lock_);
+            role_ = srv_role::follower;
+            state_->set_term(term);
+        }
         state_->set_voted_for(-1);
         state_->allow_election_timer(true);
         election_completed_ = false;
