@@ -326,8 +326,14 @@ void raft_server::commit_app_log(ulong idx_to_commit,
                 switch (ctx_->get_params()->return_method_) {
                 case raft_params::blocking:
                 default:
-                    // Blocking mode: invoke waiting function.
-                    elem->awaiter_.invoke();
+                    // Blocking mode:
+                    if (elem->callback_invoked_) {
+                        // If elem callback invoked, remove it
+                        commit_ret_elems_.erase(entry);
+                    } else {
+                        // or notify client that request done
+                        elem->awaiter_.invoke();
+                    }
                     break;
 
                 case raft_params::async_handler:
