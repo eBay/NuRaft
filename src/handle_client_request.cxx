@@ -213,9 +213,11 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
         idx = elem->idx_;
         elapsed_us = elem->timer_.get_us();
         ret_value = elem->ret_value_;
-        // If timeout leave commit_app_log method to remove it
+        elem->callback_invoked_ = true;
         if (elem->result_code_ != cmd_result_code::TIMEOUT) {
             commit_ret_elems_.erase(elem->idx_);
+        } else {
+            p_dv("Client timeout leave commit thread to remove commit_ret_elem %zu", idx);
         }
         p_dv("remaining elems in waiting queue: %zu\n", commit_ret_elems_.size());
     }

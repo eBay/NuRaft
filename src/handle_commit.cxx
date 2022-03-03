@@ -326,12 +326,12 @@ void raft_server::commit_app_log(ulong idx_to_commit,
                 switch (ctx_->get_params()->return_method_) {
                 case raft_params::blocking:
                 default:
-                    // Blocking mode
-                    if (elem->timer_.get_ms() > ctx_->get_params()->client_req_timeout_) {
-                        // If client timeout, remove elem here
+                    // Blocking mode:
+                    if (elem->callback_invoked_) {
+                        // If elem callback invoked, remove it
                         commit_ret_elems_.erase(entry);
                     } else {
-                        // Else notify client that request done
+                        // or notify client that request done
                         elem->awaiter_.invoke();
                     }
                     break;
