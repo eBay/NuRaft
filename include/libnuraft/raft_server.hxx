@@ -220,6 +220,11 @@ public:
      * Append and replicate the given logs.
      * Only leader will accept this operation.
      *
+     * Users need to take care of the 2 points
+     *    1. Limit the logs size in one batch
+     *    2. Limit the speed of appending entries,
+     *       user can get the gap of log store and state machine by NuRaft API.
+     *
      * @param logs Set of logs to replicate.
      * @return
      *     In blocking mode, it will be blocked during replication, and
@@ -276,6 +281,11 @@ public:
      * An extended version of `append_entries`.
      * Append and replicate the given logs.
      * Only leader will accept this operation.
+     *
+     * Users need to take care of the 2 points
+     *    1. Limit the logs size in one batch
+     *    2. Limit the speed of appending entries,
+     *       user can get the gap of log store and state machine by NuRaft API.
      *
      * @param logs Set of logs to replicate.
      * @param ext_params Extended parameters.
