@@ -553,7 +553,14 @@ private:
         }
 
         // === RAFT server processes the request here. ===
-        ptr<resp_msg> resp = raft_server_handler::process_req(handler_.get(), *req);
+        // client_request is from follower. If the follower uses the async_handler mode, the leader needs to block until the result is obtained.
+        ptr<resp_msg> resp = raft_server_handler::process_req(
+            handler_.get(),
+            *req,
+            raft_server::req_ext_params(),
+            t == msg_type::client_request ? cs_new<raft_params::return_method_type>(
+                raft_params::return_method_type::blocking)
+                                          : nullptr);
         if (!resp) {
             p_wn("no response is returned from raft message handler");
             this->stop();

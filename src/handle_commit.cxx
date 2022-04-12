@@ -323,7 +323,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
                 need_to_check_commit_ret = false;
                 p_dv("notify cb %ld %p", sm_idx, &elem->awaiter_);
 
-                switch (ctx_->get_params()->return_method_) {
+                switch (elem->ret_method_) {
                 case raft_params::blocking:
                 default:
                     // Blocking mode:
@@ -355,7 +355,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             p_tr("commit thread is invoked earlier than user thread, "
                  "log %lu, elem %p", sm_idx, elem.get());
 
-            switch (ctx_->get_params()->return_method_) {
+            switch (elem->ret_method_) {
             case raft_params::blocking:
             default:
                 elem->awaiter_.invoke(); // Callback will not sleep.

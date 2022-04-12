@@ -31,6 +31,7 @@ limitations under the License.
 #include "srv_role.hxx"
 #include "srv_state.hxx"
 #include "timer_task.hxx"
+#include "raft_params.hxx"
 
 #include <list>
 #include <map>
@@ -773,7 +774,7 @@ protected:
      * @param req Request.
      * @return Response.
      */
-    virtual ptr<resp_msg> process_req(req_msg& req, const req_ext_params& ext_params);
+    virtual ptr<resp_msg> process_req(req_msg& req, const req_ext_params& ext_params, const ptr<raft_params::return_method_type> specify_return_method = nullptr);
 
     void apply_and_log_current_params();
     void cancel_schedulers();
@@ -795,8 +796,8 @@ protected:
     ptr<resp_msg> handle_append_entries(req_msg& req);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
-    ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
-    ptr<resp_msg> handle_cli_req(req_msg& req, const req_ext_params& ext_params);
+    ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params, const ptr<raft_params::return_method_type> specify_return_method = nullptr);
+    ptr<resp_msg> handle_cli_req(req_msg& req, const req_ext_params& ext_params, const ptr<raft_params::return_method_type> specify_return_method = nullptr);
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
     ptr< cmd_result< ptr<buffer> > >

@@ -34,22 +34,24 @@ limitations under the License.
 
 namespace nuraft {
 
-ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
-                                                  const req_ext_params& ext_params)
+ptr<resp_msg> raft_server::handle_cli_req_prelock(
+    req_msg& req,
+    const req_ext_params& ext_params,
+    const ptr<raft_params::return_method_type> specify_return_method)
 {
     ptr<resp_msg> resp = nullptr;
     ptr<raft_params> params = ctx_->get_params();
     switch (params->locking_method_type_) {
         case raft_params::single_mutex: {
             recur_lock(lock_);
-            resp = handle_cli_req(req, ext_params);
+            resp = handle_cli_req(req, ext_params, specify_return_method);
             break;
         }
         case raft_params::dual_mutex:
         default: {
             // TODO: Use RW lock here.
             auto_lock(cli_lock_);
-            resp = handle_cli_req(req, ext_params);
+            resp = handle_cli_req(req, ext_params, specify_return_method);
             break;
         }
     }
@@ -79,8 +81,10 @@ void raft_server::request_append_entries_for_all() {
     }
 }
 
-ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
-                                          const req_ext_params& ext_params)
+ptr<resp_msg> raft_server::handle_cli_req(
+    req_msg& req,
+    const req_ext_params& ext_params,
+    const ptr<raft_params::return_method_type> specify_return_method)
 {
     ptr<resp_msg> resp = nullptr;
     ulong last_idx = 0;
@@ -164,7 +168,11 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
                 commit_ret_elems_.insert( std::make_pair(last_idx, elem) );
             }
 
-            switch (ctx_->get_params()->return_method_) {
+            elem->ret_method_ = ctx_->get_params()->return_method_;
+            if (specify_return_method)
+                elem->ret_method_ = *specify_return_method;
+
+            switch (elem->ret_method_) {
             case raft_params::blocking:
             default:
                 // Blocking call: set callback function waiting for the result.

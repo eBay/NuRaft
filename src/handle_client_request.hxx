@@ -35,6 +35,7 @@ struct raft_server::commit_ret_elem {
         , result_code_(cmd_result_code::OK)
         , async_result_(nullptr)
         , callback_invoked_(false)
+        , ret_method_(raft_params::return_method_type::blocking)
         {}
 
     ~commit_ret_elem() {}
@@ -46,6 +47,7 @@ struct raft_server::commit_ret_elem {
     cmd_result_code result_code_;
     ptr< cmd_result< ptr<buffer> > > async_result_;
     bool callback_invoked_;
+    raft_params::return_method_type ret_method_;
 };
 
 } // namespace nuraft;

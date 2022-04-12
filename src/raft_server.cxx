@@ -607,8 +607,11 @@ size_t raft_server::get_num_stale_peers() {
     return count;
 }
 
-ptr<resp_msg> raft_server::process_req(req_msg& req,
-                                       const req_ext_params& ext_params) {
+ptr<resp_msg> raft_server::process_req(
+    req_msg& req,
+    const req_ext_params& ext_params,
+    const ptr<raft_params::return_method_type> specify_return_method)
+{
     cb_func::Param param(id_, leader_);
     param.ctx = &req;
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::ProcessReq, &param);
@@ -635,7 +638,7 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
 
     if ( req.get_type() == msg_type::client_request ) {
         // Client request doesn't need to go through below process.
-        return handle_cli_req_prelock(req, ext_params);
+        return handle_cli_req_prelock(req, ext_params, specify_return_method);
     }
 
     recur_lock(lock_);
