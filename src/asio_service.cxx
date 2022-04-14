@@ -313,12 +313,13 @@ public:
         {
             if (err) {
                 p_er( "session %zu failed to read rpc header from socket %s:%u "
-                      "due to error %d, %s",
+                      "due to error %d, %s, ref count %u",
                       session_id_,
                       cached_address_.c_str(),
                       cached_port_,
                       err.value(),
-                      err.message().c_str() );
+                      err.message().c_str(),
+                      self.use_count() );
                 this->stop();
                 return;
             }
@@ -560,11 +561,46 @@ private:
             return;
         }
 
-        if (resp->has_cb()) {
-            // If callback function exists, get new response message.
-            resp = resp->call_cb(resp);
+        if (resp->has_async_cb()) {
+            // Response will be ready later, setup a callback function
+            // (only for auto-forwarding with `client_request` type
+            //  in async handling mode).
+            ptr< cmd_result< ptr<buffer> > > ret = resp->call_async_cb();
+
+            // WARNING: `self` should be captured to avoid releasing this `rpc_session`.
+            ret->when_ready(
+                [this, self, req, resp]
+                ( cmd_result<ptr<buffer>, ptr<std::exception>>& res,
+                  ptr<std::exception>& exp ) {
+                    resp->set_ctx(res.get());
+                    on_resp_ready(req, resp);
+                    // This is needed to avoid circular reference.
+                    res.reset();
+                }
+            );
+
+        } else {
+            // Response should already be ready when we reach here.
+            if (resp->has_cb()) {
+                // If callback function exists, get new response message.
+                resp = resp->call_cb(resp);
+            }
+            on_resp_ready(req, resp);
         }
 
+       } catch (std::exception& ex) {
+        p_er( "session %zu failed to process request message "
+              "due to error: %s",
+              this->session_id_,
+              ex.what() );
+        this->stop();
+       }
+    }
+
+    void on_resp_ready(ptr<req_msg> req, ptr<resp_msg> resp) {
+        ptr<rpc_session> self = this->shared_from_this();
+
+       try {
         ptr<buffer> resp_ctx = resp->get_ctx();
         int32 resp_ctx_size = (resp_ctx) ? resp_ctx->size() : 0;
 

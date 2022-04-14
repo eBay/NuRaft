@@ -118,6 +118,20 @@ public:
 public:
 
     /**
+     * Clear all internal data.
+     */
+    void reset() {
+        std::lock_guard<std::mutex> guard(lock_);
+        err_ = TE();
+        code_ = cmd_result_code::OK;
+        has_result_ = false;
+        accepted_ = false;
+        handler_ = nullptr;
+        handler2_ = nullptr;
+        result_ = T();
+    }
+
+    /**
      * Install a handler that will be invoked when
      * we get the result of replication.
      *
