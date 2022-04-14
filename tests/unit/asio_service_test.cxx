@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "buffer_serializer.hxx"
 #include "debugging_options.hxx"
 #include "raft_package_asio.hxx"
 
@@ -1465,6 +1466,22 @@ int auto_forwarding_test(bool async) {
     for (size_t ii = 0; ii < NUM_PARALLEL_MSGS; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
         CHK_GT(s1.getTestSm()->isCommitted(test_msg), 0);
+    }
+
+    // All handlers should have the result.
+    {
+        std::set<uint64_t> commit_results;
+        std::lock_guard<std::mutex> l(handlers_lock);
+        for (auto& handler: handlers) {
+            ptr<buffer> h_result = handler->get();
+            CHK_NONNULL(h_result);
+            CHK_EQ(8, h_result->size());
+            buffer_serializer bs(h_result);
+            uint64_t val = bs.get_u64();
+            commit_results.insert(val);
+        }
+        // All messages should have delivered their results.
+        CHK_EQ(NUM_PARALLEL_MSGS, commit_results.size());
     }
 
     // State machine should be identical.
