@@ -971,6 +971,15 @@ void raft_server::become_leader() {
             ptr<log_entry> le = log_store_->entry_at(ii);
             if (le->get_val_type() != log_val_type::conf) continue;
 
+            if (last_config->get_log_idx() > ii)
+            {
+                p_wn("Currently assigned config is newer than some "
+                     "uncomitted config. This can only happen during "
+                     "force recovery. If force recovery is not currently "
+                     "in progress, this is a bug.");
+                break;
+            }
+
             p_in("found uncommitted config at %zu, size %zu",
                  ii, le->get_buf().size());
             last_config = cluster_config::deserialize(le->get_buf());
