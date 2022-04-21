@@ -974,9 +974,8 @@ void raft_server::become_leader() {
             if (last_config->get_log_idx() > ii)
             {
                 p_wn("Currently assigned config is newer than some "
-                     "uncomitted config. This can only happen during "
-                     "force recovery. If force recovery is not currently "
-                     "in progress, this is a bug.");
+                     "uncomitted config. This can only happen during startup or "
+                     "force recovery. If that is not the case, this is a bug.");
                 break;
             }
 
