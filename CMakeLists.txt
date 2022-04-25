@@ -85,8 +85,10 @@ if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
-        include_directories(BEFORE /usr/local/opt/openssl/include)
-        link_directories(/usr/local/opt/openssl/lib)
+        set(OPENSSL_USE_STATIC_LIBS TRUE)
+        find_package(OpenSSL REQUIRED)
+        include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
+        link_directories(${OPENSSL_INCLUDE_DIR}/../lib)
     else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
@@ -104,8 +106,19 @@ if (DISABLE_SSL GREATER 0)
 endif ()
 
 # === OpenSSL libraries ===
+
+message(STATUS "[raftcore] Looking for OpenSSL libraries")
 if (NOT (DISABLE_SSL GREATER 0))
-    set(LIB_PATH_HINT
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+    find_package(OpenSSL REQUIRED)
+    message(STATUS " OpenSSL found: ${OPENSSL_FOUND}")
+    if(OPENSSL_FOUND)
+      set(OPENSSL_LIBRARY_PATH ${OPENSSL_INCLUDE_DIR}/../lib)
+      set(LIBSSL  ${OPENSSL_SSL_LIBRARY})
+      set(LIBCRYPTO ${OPENSSL_CRYPTO_LIBRARY})
+      message(STATUS "[raftcore] Openssl libraries ${OPENSSL_LIBRARIES}")
+    else()
+      set(LIB_PATH_HINT
         ~/Library/Frameworks
         /Library/Frameworks
         $ENV{HOME}/local/lib64
@@ -119,7 +132,7 @@ if (NOT (DISABLE_SSL GREATER 0))
         /opt/local/lib64
         /opt/csw
         /opt)
-    find_path(OPENSSL_LIBRARY_PATH
+      find_path(OPENSSL_LIBRARY_PATH
               NAMES libssl.a
               PATHS ${PROJECT_SOURCE_DIR}
                     ${DEPS_PREFIX}/lib
@@ -127,15 +140,16 @@ if (NOT (DISABLE_SSL GREATER 0))
                     /usr/local/opt/openssl/lib
                     ${LIB_PATH_HINT})
 
-    if (NOT OPENSSL_LIBRARY_PATH)
+      if (NOT OPENSSL_LIBRARY_PATH)
         message(STATUS "Use system's side OpenSSL library")
         set(LIBSSL ssl)
         set(LIBCRYPTO crypto)
-    else ()
+      else ()
         message(STATUS "Open SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
         set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
         set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
-    endif ()
+      endif ()
+    endif()
 endif ()
 
 # === Compiler options ===
@@ -184,6 +198,7 @@ set(LIBRARIES
     ${LIBDL}
     ${LIBZ})
 
+message(STATUS "[raftcore] LIBRARIES=${LIBRARIES}")
 
 # === Paths ===
 set(ROOT_SRC ${PROJECT_SOURCE_DIR}/src)
