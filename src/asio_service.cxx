@@ -42,11 +42,13 @@ limitations under the License.
 #include <atomic>
 #include <ctime>
 #include <exception>
+#include <ios>
 #include <fstream>
 #include <list>
 #include <queue>
 #include <thread>
 #include <string>
+#include <sstream>
 #include <regex>
 
 #ifdef USE_BOOST_ASIO
@@ -334,8 +336,13 @@ public:
             // Verify CRC.
             if (crc_local != crc_hdr) {
                 auto received_data = std::string(reinterpret_cast<char *>(header_data), RPC_REQ_HEADER_SIZE);
-                p_er("CRC mismatch: local calculation %x, from header %x, message: %s, received from socket %s:%u",
-                     crc_local, crc_hdr, received_data.c_str(), cached_address_.c_str(), cached_port_);
+                std::stringstream ss;
+                for (auto ch : received_data) {
+                    ss << "0x" << std::hex << static_cast<int>(ch) << ' ';
+                }
+                auto received_data_bytes = ss.str();
+                p_er("CRC mismatch: local calculation %x, from header %x, message: %s, message in bytes: %s: received from socket %s:%u",
+                     crc_local, crc_hdr, received_data.c_str(), received_data_bytes.c_str(), cached_address_.c_str(), cached_port_);
                 this->stop();
                 return;
             }
