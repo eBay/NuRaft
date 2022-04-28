@@ -46,6 +46,7 @@ limitations under the License.
 #include <list>
 #include <queue>
 #include <thread>
+#include <string>
 #include <regex>
 
 #ifdef USE_BOOST_ASIO
@@ -327,13 +328,14 @@ public:
 
             header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
             uint64_t flags_and_crc = header_->get_ulong();
-            uint32_t crc_hdr = flags_and_crc & (uint32_t)0xffffffff;
+            uint32_t crc_hdr = flags_and_crc & static_cast<uint32_t>(0xffffffff);
             flags_ = (flags_and_crc >> 32);
 
             // Verify CRC.
             if (crc_local != crc_hdr) {
-                p_er("CRC mismatch: local calculation %x, from header %x",
-                     crc_local, crc_hdr);
+                auto received_data = std::string(reinterpret_cast<char *>(header_data), RPC_REQ_HEADER_SIZE);
+                p_er("CRC mismatch: local calculation %x, from header %x, message: %s, received from socket %s:%u",
+                     crc_local, crc_hdr, received_data.c_str(), cached_address_.c_str(), cached_port_);
                 this->stop();
                 return;
             }
@@ -1848,4 +1850,3 @@ ptr<asio_service> nuraft_global_mgr::get_asio_service() {
     std::lock_guard<std::mutex> l(mgr->asio_service_lock_);
     return mgr->asio_service_;
 }
-
