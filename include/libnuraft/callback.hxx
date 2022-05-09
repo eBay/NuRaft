@@ -61,7 +61,7 @@ public:
 
         /**
          * Became a leader.
-         * ctx: null.
+         * ctx: pointer to term number.
          */
         BecomeLeader = 6,
 
@@ -92,7 +92,7 @@ public:
 
         /**
          * Became a follower.
-         * ctx: null.
+         * ctx: pointer to term number.
          */
         BecomeFollower = 11,
 

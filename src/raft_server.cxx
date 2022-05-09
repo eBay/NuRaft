@@ -1273,6 +1273,8 @@ void raft_server::become_follower() {
         role_ = srv_role::follower;
 
         cb_func::Param param(id_, leader_);
+        uint64_t my_term = state_->get_term();
+        param.ctx = &my_term;
         (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
 
         write_paused_ = false;
