@@ -2134,7 +2134,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     do_async_append();
 
     // Pause S3's state machine.
-    s3.raftServer->pause_state_machine_exeuction(100);
+    s3.raftServer->pause_state_machine_exeuction(1000);
 
     CHK_TRUE( s3.raftServer->is_state_machine_execution_paused() );
 
@@ -2157,7 +2157,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
     // Pause again.
-    s3.raftServer->pause_state_machine_exeuction(100);
+    s3.raftServer->pause_state_machine_exeuction(1000);
 
     // Do append again.
     do_async_append();
