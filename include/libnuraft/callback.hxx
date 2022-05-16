@@ -164,6 +164,8 @@ public:
          * ctx: null
          */
         InitialBatchCommited = 20,
+
+        PreAppendLogs = 21,
     };
 
     struct Param {

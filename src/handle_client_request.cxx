@@ -87,7 +87,15 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         return resp;
     }
 
+    {
+        cb_func::Param param(id_, leader_);
+        param.ctx = &req;
+        CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLogs, &param);
+        if (rc == CbReturnCode::ReturnNull) return nullptr;
+    }
+
     std::vector< ptr<log_entry> >& entries = req.log_entries();
+
     size_t num_entries = entries.size();
 
     for (size_t i = 0; i < num_entries; ++i) {
