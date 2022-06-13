@@ -729,6 +729,14 @@ public:
      */
     void notify_log_append_completion(bool ok);
 
+    /**
+     * Manually create a snapshot based on the latest committed
+     * log index of the state machine.
+     *
+     * @return `true` on success.
+     */
+    bool create_snapshot();
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 
@@ -854,7 +862,7 @@ protected:
     void destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx);
     void clear_snapshot_sync_ctx(peer& pp);
     void commit(ulong target_idx);
-    void snapshot_and_compact(ulong committed_idx);
+    bool snapshot_and_compact(ulong committed_idx, bool forced_creation = false);
     bool update_term(ulong term);
     void reconfigure(const ptr<cluster_config>& new_config);
     void update_target_priority();
@@ -1144,6 +1152,7 @@ protected:
 
     /**
      * `true` if this server is creating a snapshot.
+     * Only one snapshot creation is allowed at a time.
      */
     std::atomic<bool> snp_in_progress_;
 

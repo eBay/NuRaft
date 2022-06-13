@@ -450,30 +450,43 @@ bool raft_server::apply_config_log_entry(ptr<log_entry>& le,
     return true;
 }
 
-void raft_server::snapshot_and_compact(ulong committed_idx) {
+bool raft_server::create_snapshot() {
+    uint64_t committed_idx = sm_commit_index_;
+    p_in("manually create a snapshot on %lu", committed_idx);
+    return snapshot_and_compact(committed_idx, true);
+}
+
+bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation) {
     ptr<raft_params> params = ctx_->get_params();
-    if ( params->snapshot_distance_ == 0 ||
-         ( committed_idx - log_store_->start_index() + 1 ) <
-               (ulong)params->snapshot_distance_ ) {
-        // snapshot is disabled or the log store is not long enough
-        return;
-    }
+
     // get the latest configuration info
     ptr<cluster_config> conf = get_config();
     if ( conf->get_prev_log_idx() >= log_store_->next_slot() ) {
-        // The latest config and previous config is not in log_store, so skip the snapshot creation
-        return;
+        // The latest config and previous config is not in log_store,
+        // so skip the snapshot creation.
+        return false;
     }
-    if ( !state_machine_->chk_create_snapshot() ) {
-        // User-defined state machine doesn't want to create a snapshot.
-        return;
+
+    if (!forced_creation) {
+        // If `forced_creation == true`, ignore below conditions.
+        if ( params->snapshot_distance_ == 0 ||
+             ( committed_idx - log_store_->start_index() + 1 ) <
+                   (ulong)params->snapshot_distance_ ) {
+            // snapshot is disabled or the log store is not long enough
+            return false;
+        }
+        if ( !state_machine_->chk_create_snapshot() ) {
+            // User-defined state machine doesn't want to create a snapshot.
+            return false;
+        }
     }
 
     bool snapshot_in_action = false;
  try {
     bool f = false;
     ptr<snapshot> local_snp = get_last_snapshot();
-    if ( ( !local_snp ||
+    if ( ( forced_creation ||
+           !local_snp ||
            ( committed_idx - local_snp->get_last_log_idx() ) >=
                  (ulong)params->snapshot_distance_ ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
@@ -498,7 +511,7 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
                      "this is a system error, exiting");
                 ctx_->state_mgr_->system_exit(raft_err::N6_no_snapshot_found);
                 ::exit(-1);
-                return;
+                return false;
                 // LCOV_EXCL_STOP
             }
             conf = local_snp->get_last_config();
@@ -535,7 +548,9 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
               committed_idx, log_term_to_compact, tt.get_us() );
 
         snapshot_in_action = false;
+        return true;
     }
+    return false;
 
  } catch (...) {
     p_er( "failed to compact logs at index %llu due to errors",
@@ -544,6 +559,7 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
         bool val = true;
         snp_in_progress_.compare_exchange_strong(val, false);
     }
+    return false;
  }
 }
 
