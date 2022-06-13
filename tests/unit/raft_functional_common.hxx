@@ -128,6 +128,10 @@ public:
     }
 
     bool apply_snapshot(snapshot& s) {
+        std::lock_guard<std::mutex> ll(lastSnapshotLock);
+        // NOTE: We only handle logical snapshot.
+        ptr<buffer> snp_buf = s.serialize();
+        lastSnapshot = snapshot::deserialize(*snp_buf);
         return true;
     }
 
