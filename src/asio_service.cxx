@@ -1017,39 +1017,37 @@ public:
                 break;
             }
 
-            asio::ip::tcp::resolver::query q
-                ( host_, port_, asio::ip::tcp::resolver::query::all_matching );
-
-            resolver_.async_resolve
-            ( q,
-              [self, this, req, when_done, send_timeout_ms]
-              ( std::error_code err,
-                asio::ip::tcp::resolver::iterator itor ) -> void
-            {
-                if (!err) {
-                    asio::async_connect
-                        ( socket(),
-                          itor,
-                          std::bind( &asio_rpc_client::connected,
-                                     self,
-                                     req,
-                                     when_done,
-                                     send_timeout_ms,
-                                     std::placeholders::_1,
-                                     std::placeholders::_2 ) );
-                } else {
-                    ptr<resp_msg> rsp;
-                    ptr<rpc_exception> except
-                       ( cs_new<rpc_exception>
-                               ( lstrfmt("failed to resolve host %s "
-                                         "due to error %d, %s")
-                                        .fmt( host_.c_str(),
-                                              err.value(),
-                                              err.message().c_str() ),
-                                 req ) );
-                    when_done(rsp, except);
-                }
-            } );
+            if (impl_->get_options().custom_resolver_) {
+                impl_->get_options().custom_resolver_(
+                    host_,
+                    port_,
+                    [this, self, req, when_done, send_timeout_ms]
+                    ( const std::string& resolved_host,
+                      const std::string& resolved_port,
+                      std::error_code err ) {
+                        if (!err) {
+                            p_in( "custom resolver: %s:%s to %s:%s",
+                                  host_.c_str(), port_.c_str(),
+                                  resolved_host.c_str(), resolved_port.c_str() );
+                            execute_resolver(self, req, resolved_host, resolved_port,
+                                             when_done, send_timeout_ms);
+                        } else {
+                            ptr<resp_msg> rsp;
+                            ptr<rpc_exception> except
+                               ( cs_new<rpc_exception>
+                                       ( lstrfmt("failed to resolve host %s by given "
+                                                 "custom resolver "
+                                                 "due to error %d, %s")
+                                                .fmt( host_.c_str(),
+                                                      err.value(),
+                                                      err.message().c_str() ),
+                                         req ) );
+                            when_done(rsp, except);
+                        }
+                    } );
+            } else {
+                execute_resolver(self, req, host_, port_, when_done, send_timeout_ms);
+            }
             return;
         }
 
@@ -1174,6 +1172,47 @@ public:
                               std::placeholders::_2 ) );
     }
 private:
+    void execute_resolver(ptr<asio_rpc_client> self,
+                          ptr<req_msg> req,
+                          const std::string& host,
+                          const std::string& port,
+                          rpc_handler when_done,
+                          uint64_t send_timeout_ms) {
+        asio::ip::tcp::resolver::query q
+            ( host, port, asio::ip::tcp::resolver::query::all_matching );
+
+        resolver_.async_resolve
+        ( q,
+          [self, this, req, when_done, host, port, send_timeout_ms]
+          ( std::error_code err,
+            asio::ip::tcp::resolver::iterator itor ) -> void
+        {
+            if (!err) {
+                asio::async_connect
+                    ( socket(),
+                      itor,
+                      std::bind( &asio_rpc_client::connected,
+                                 self,
+                                 req,
+                                 when_done,
+                                 send_timeout_ms,
+                                 std::placeholders::_1,
+                                 std::placeholders::_2 ) );
+            } else {
+                ptr<resp_msg> rsp;
+                ptr<rpc_exception> except
+                   ( cs_new<rpc_exception>
+                           ( lstrfmt("failed to resolve host %s "
+                                     "due to error %d, %s")
+                                    .fmt( host.c_str(),
+                                          err.value(),
+                                          err.message().c_str() ),
+                             req ) );
+                when_done(rsp, except);
+            }
+        } );
+    }
+
     void set_busy_flag(bool to) {
         if (to == true) {
             bool exp = false;
