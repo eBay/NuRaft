@@ -164,6 +164,13 @@ public:
          * ctx: null
          */
         InitialBatchCommited = 20,
+
+        /**
+         * Called before log is appended to the entries.
+         * Happens on leader only.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        PreAppendLog = 21,
     };
 
     struct Param {

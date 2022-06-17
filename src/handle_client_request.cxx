@@ -88,17 +88,29 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
     }
 
     std::vector< ptr<log_entry> >& entries = req.log_entries();
+
     size_t num_entries = entries.size();
 
     for (size_t i = 0; i < num_entries; ++i) {
-        // force the log's term to current term
-        entries.at(i)->set_term(cur_term);
 
-        ulong next_slot = store_log_entry(entries.at(i));
+        auto & entry = entries.at(i);
+
+        {
+            cb_func::Param param(id_, leader_);
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLog, &param);
+            if (rc == CbReturnCode::ReturnNull) return nullptr;
+        }
+
+        // force the log's term to current term
+        entry->set_term(cur_term);
+
+        ulong next_slot = store_log_entry(entry);
+
         p_db("append at log_idx %zu\n", next_slot);
         last_idx = next_slot;
 
-        ptr<buffer> buf = entries.at(i)->get_buf_ptr();
+        ptr<buffer> buf = entry->get_buf_ptr();
         buf->pos(0);
         ret_value = state_machine_->pre_commit_ext
                     ( state_machine::ext_op_params( last_idx, buf ) );
