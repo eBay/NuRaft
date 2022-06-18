@@ -60,6 +60,8 @@ enum msg_type {
     reconnect_response              = 27,
     custom_notification_request     = 28,
     custom_notification_response    = 29,
+    leader_status_request           = 30,
+    leader_status_response          = 31,
 };
 
 static bool ATTR_UNUSED is_valid_msg(msg_type type) {

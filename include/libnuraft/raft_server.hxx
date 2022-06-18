@@ -741,6 +741,7 @@ protected:
     ptr<resp_msg> handle_priority_change_req(req_msg& req);
     ptr<resp_msg> handle_reconnect_req(req_msg& req);
     ptr<resp_msg> handle_custom_notification_req(req_msg& req);
+    ptr<resp_msg> handle_leader_status_req(req_msg& req);
 
     void handle_join_cluster_resp(resp_msg& resp);
     void handle_log_sync_resp(resp_msg& resp);
