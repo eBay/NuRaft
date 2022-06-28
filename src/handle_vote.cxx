@@ -439,7 +439,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
     if (resp.get_term() != pre_vote_.term_) {
         // Vote response for other term. Should ignore it.
         p_in("[PRE-VOTE RESP] from peer %d, my role %s, "
-             "but different resp term %zu (pre-vote term %zu). "
+             "but different resp term %lu (pre-vote term %lu). "
              "ignore it.",
              resp.get_src(), srv_role_to_string(role_).c_str(),
              resp.get_term(), pre_vote_.term_);
@@ -462,7 +462,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
 
     int32 election_quorum_size = get_quorum_for_election() + 1;
 
-    p_in("[PRE-VOTE RESP] peer %d (%s), term %zu, resp term %zu, "
+    p_in("[PRE-VOTE RESP] peer %d (%s), term %lu, resp term %lu, "
          "my role %s, dead %d, live %d, "
          "num voting members %d, quorum %d\n",
          resp.get_src(), (resp.get_accepted())?"O":"X",

@@ -107,10 +107,10 @@ int make_group_test() {
         uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
         CHK_EQ(srv_id, pi.id_);
         CHK_EQ(last_log_idx, pi.last_log_idx_);
-        _msg("srv %d: %lu, responeded %.1f ms ago\n",
-             pi.id_,
-             pi.last_log_idx_,
-             pi.last_succ_resp_us_ / 1000.0);
+        TestSuite::Msg mm;
+        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_ << ", responded " << std::fixed
+           << std::setprecision(1) << pi.last_succ_resp_us_ / 1000.0 << " ms ago"
+           << std::endl;
     }
 
     // Sleep a while and get all info.
@@ -121,10 +121,10 @@ int make_group_test() {
     for (raft_server::peer_info& pi: v_pi) {
         uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
         CHK_EQ(last_log_idx, pi.last_log_idx_);
-        _msg("srv %d: %lu, responeded %.1f ms ago\n",
-             pi.id_,
-             pi.last_log_idx_,
-             pi.last_succ_resp_us_ / 1000.0);
+        TestSuite::Msg mm;
+        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_ << ", responded " << std::fixed
+           << std::setprecision(1) << pi.last_succ_resp_us_ / 1000.0 << " ms ago"
+           << std::endl;
     }
 
     s1.raftServer->shutdown();
@@ -2653,14 +2653,15 @@ int main(int argc, char** argv) {
 #else
     _msg("raft stats: DISABLED\n");
 #endif
-    _msg("num allocs: %zu\n"
-         "amount of allocs: %zu bytes\n"
-         "num active buffers: %zu\n"
-         "amount of active buffers: %zu bytes\n",
-         raft_server::get_stat_counter("num_buffer_allocs"),
-         raft_server::get_stat_counter("amount_buffer_allocs"),
-         raft_server::get_stat_counter("num_active_buffers"),
-         raft_server::get_stat_counter("amount_active_buffers"));
+    TestSuite::Msg mm;
+    mm << "num allocs: " << raft_server::get_stat_counter("num_buffer_allocs")
+       << std::endl
+       << "amount of allocs: " << raft_server::get_stat_counter("amount_buffer_allocs")
+       << " bytes" << std::endl
+       << "num active buffers: " << raft_server::get_stat_counter("num_active_buffers")
+       << std::endl
+       << "amount of active buffers: "
+       << raft_server::get_stat_counter("amount_active_buffers") << " bytes" << std::endl;
 
     return 0;
 }
