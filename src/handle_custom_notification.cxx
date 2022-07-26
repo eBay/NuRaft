@@ -221,6 +221,12 @@ ptr<resp_msg> raft_server::handle_leadership_takeover
 
     // Initiate force vote (ignoring priority).
     initiate_vote(true);
+
+    // restart the election timer if this is not yet a leader
+    if (role_ != srv_role::leader) {
+        restart_election_timer();
+    }
+
     return resp;
 }
 

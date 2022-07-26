@@ -167,9 +167,6 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     role_ = srv_role::follower;
     leader_ = req.get_src();
 
-    cb_func::Param follower_param(id_, leader_);
-    (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &follower_param);
-
     if (reset_commit_idx) {
         // MONSTOR-7503: We should not reset it to 0.
         sm_commit_index_.store( initial_commit_index_ );
@@ -179,6 +176,11 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     state_->set_voted_for(-1);
     state_->set_term(req.get_term());
     ctx_->state_mgr_->save_state(*state_);
+
+    cb_func::Param follower_param(id_, leader_);
+    uint64_t my_term = state_->get_term();
+    follower_param.ctx = &my_term;
+    (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &follower_param);
 
     ptr<cluster_config> c_config = cluster_config::deserialize(entries[0]->get_buf());
     // WARNING: We should make cluster config durable here. Otherwise, if

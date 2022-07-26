@@ -81,6 +81,13 @@ ptr< cmd_result< ptr<buffer> > > raft_server::remove_srv(const int srv_id)
 ptr< cmd_result< ptr<buffer> > > raft_server::append_entries
                                  ( const std::vector< ptr<buffer> >& logs )
 {
+    return append_entries_ext(logs, req_ext_params());
+}
+
+ptr< cmd_result< ptr<buffer> > > raft_server::append_entries_ext
+                                 ( const std::vector< ptr<buffer> >& logs,
+                                   const req_ext_params& ext_params )
+{
     if (logs.size() == 0) {
         ptr<buffer> result(nullptr);
         p_in("return null as log size is zero\n");
@@ -99,28 +106,28 @@ ptr< cmd_result< ptr<buffer> > > raft_server::append_entries
         req->log_entries().push_back(log);
     }
 
-    return send_msg_to_leader(req);
+    return send_msg_to_leader(req, ext_params);
 }
 
-ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& req)
+ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader
+                                 ( ptr<req_msg>& req,
+                                   const req_ext_params& ext_params )
 {
     int32 leader_id = leader_;
     ptr<buffer> result = nullptr;
     if (leader_id == -1) {
         p_in("return null as leader does not exist in the current group");
         ptr< cmd_result< ptr<buffer> > > ret =
-            cs_new< cmd_result< ptr<buffer> > >(result);
-        ret->set_result_code( cmd_result_code::NOT_LEADER );
+            cs_new< cmd_result< ptr<buffer> > >(result, cmd_result_code::NOT_LEADER);
         return ret;
     }
 
     if (leader_id == id_) {
-        ptr<resp_msg> resp = process_req(*req);
+        ptr<resp_msg> resp = process_req(*req, ext_params);
         if (!resp) {
             p_in("server returns null");
             ptr< cmd_result< ptr<buffer> > > ret =
-                cs_new< cmd_result< ptr<buffer> > >(result);
-            ret->set_result_code( cmd_result_code::BAD_REQUEST );
+                cs_new< cmd_result< ptr<buffer> > >(result, cmd_result_code::BAD_REQUEST);
             return ret;
         }
 
@@ -149,16 +156,14 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader(ptr<req_msg>& r
             // In blocking mode,
             // we already have result when we reach here.
             ret = cs_new< cmd_result< ptr<buffer> > >
-                  ( result, resp->get_accepted() );
-            ret->set_result_code( resp->get_result_code() );
+                  ( result, resp->get_accepted(), resp->get_result_code() );
         }
         return ret;
     }
     if (!ctx_->get_params()->auto_forwarding_) {
         // Auto-forwarding is disabled, return error.
         ptr< cmd_result< ptr<buffer> > > ret =
-            cs_new< cmd_result< ptr<buffer> > >(result);
-        ret->set_result_code( cmd_result_code::NOT_LEADER );
+            cs_new< cmd_result< ptr<buffer> > >(result, cmd_result_code::NOT_LEADER);
         return ret;
     }
 
