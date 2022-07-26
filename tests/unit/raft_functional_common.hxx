@@ -128,6 +128,10 @@ public:
     }
 
     bool apply_snapshot(snapshot& s) {
+        std::lock_guard<std::mutex> ll(lastSnapshotLock);
+        // NOTE: We only handle logical snapshot.
+        ptr<buffer> snp_buf = s.serialize();
+        lastSnapshot = snapshot::deserialize(*snp_buf);
         return true;
     }
 
@@ -443,6 +447,10 @@ public:
     }
 
     ptr<srv_config> get_srv_config() const { return mySrvConfig; }
+
+    void set_disk_delay(raft_server* raft, size_t delay_ms) {
+        curLogStore->set_disk_delay(raft, delay_ms);
+    }
 
 private:
     int myId;

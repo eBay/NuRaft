@@ -18,6 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "pp_util.hxx"
+#include "raft_params.hxx"
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
@@ -71,7 +73,8 @@ void raft_server::request_append_entries() {
     // We should call it here.
     if ( peers_.size() == 0 ||
          get_quorum_for_commit() == 0 ) {
-        commit(precommit_index_.load());
+        uint64_t leader_index = get_current_leader_index();
+        commit(leader_index);
         return;
     }
 
@@ -737,6 +740,24 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         // End of batch.
         log_store_->end_of_append_batch( req.get_last_log_idx() + 1,
                                          req.log_entries().size() );
+
+        ptr<raft_params> params = ctx_->get_params();
+        if (params->parallel_log_appending_) {
+            uint64_t last_durable_index = log_store_->last_durable_index();
+            while ( last_durable_index <
+                    req.get_last_log_idx() + req.log_entries().size() ) {
+                // Some logs are not durable yet, wait here and block the thread.
+                p_tr( "durable idnex %lu, sleep and wait for log appending completion",
+                      last_durable_index );
+                ea_follower_log_append_->wait_ms(params->heart_beat_interval_);
+
+                // --- `notify_log_append_completion` API will wake it up. ---
+
+                ea_follower_log_append_->reset();
+                last_durable_index = log_store_->last_durable_index();
+                p_tr( "wake up, durable index %lu", last_durable_index );
+            }
+        }
     }
 
     leader_ = req.get_src();
@@ -822,7 +843,7 @@ bool raft_server::try_update_precommit_index(ulong desired, const size_t MAX_ATT
     size_t num_attempts = 0;
     ulong prev_precommit_index = precommit_index_;
     while ( prev_precommit_index < desired &&
-            num_attempts < MAX_ATTEMPTS ) {
+            (num_attempts < MAX_ATTEMPTS || MAX_ATTEMPTS == 0) ) {
         if ( precommit_index_.compare_exchange_strong( prev_precommit_index,
                                                        desired ) ) {
             return true;
@@ -1009,15 +1030,29 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     }
 }
 
+uint64_t raft_server::get_current_leader_index() {
+    uint64_t leader_index = precommit_index_;
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->parallel_log_appending_) {
+        // For parallel appending, take the smaller one.
+        uint64_t durable_index = log_store_->last_durable_index();
+        p_tr("last durable index %lu, precommit index %lu",
+             durable_index, precommit_index_.load());
+        leader_index = std::min(precommit_index_.load(), durable_index);
+    }
+    return leader_index;
+}
+
 ulong raft_server::get_expected_committed_log_idx() {
     std::vector<ulong> matched_indexes;
     state_machine::adjust_commit_index_params aci_params;
     matched_indexes.reserve(16);
     aci_params.peer_index_map_.reserve(16);
 
-    // Leader itself.
-    matched_indexes.push_back( precommit_index_ );
-    aci_params.peer_index_map_[id_] = precommit_index_;
+    // Put the index of leader itself.
+    uint64_t leader_index = get_current_leader_index();
+    matched_indexes.push_back( leader_index );
+    aci_params.peer_index_map_[id_] = leader_index;
 
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
@@ -1064,7 +1099,7 @@ ulong raft_server::get_expected_committed_log_idx() {
         p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
     }
 
-    aci_params.current_commit_index_ = precommit_index_;
+    aci_params.current_commit_index_ = quick_commit_index_;
     aci_params.expected_commit_index_ = matched_indexes[quorum_idx];
     uint64_t adjusted_commit_index = state_machine_->adjust_commit_index(aci_params);
     if (aci_params.expected_commit_index_ != adjusted_commit_index) {
@@ -1072,6 +1107,47 @@ ulong raft_server::get_expected_committed_log_idx() {
               aci_params.expected_commit_index_, adjusted_commit_index );
     }
     return adjusted_commit_index;
+}
+
+void raft_server::notify_log_append_completion(bool ok) {
+    p_tr("got log append completion notification: %s", ok ? "OK" : "FAILED");
+
+    if (role_ == srv_role::leader) {
+        recur_lock(lock_);
+        if (!ok) {
+            // If log appending fails, leader should resign immediately.
+            p_er("log appending failed, resign immediately");
+            leader_ = -1;
+            become_follower();
+
+            // Clear this flag to avoid pre-vote rejection.
+            hb_alive_ = false;
+            return;
+        }
+
+        // Leader: commit the log and send append_entries request, if needed.
+        uint64_t prev_committed_index = quick_commit_index_.load();
+        uint64_t committed_index = get_expected_committed_log_idx();
+        commit( committed_index );
+
+        if (quick_commit_index_ > prev_committed_index) {
+            // Commit index has been changed as a result of log appending.
+            // Send replication messages.
+            request_append_entries_for_all();
+        }
+    } else {
+        if (!ok) {
+            // If log appending fails for follower, there is no way to proceed it.
+            // We should stop the server immediately.
+            recur_lock(lock_);
+            p_ft("log appending failed, stop this server");
+            ctx_->state_mgr_->system_exit(N21_log_flush_failed);
+            return;
+        }
+
+        // Follower: wake up the waiting thread.
+        ea_follower_log_append_->invoke();
+    }
 }
 
 } // namespace nuraft;

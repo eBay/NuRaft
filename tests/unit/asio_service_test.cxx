@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "buffer_serializer.hxx"
 #include "debugging_options.hxx"
 #include "raft_package_asio.hxx"
 
@@ -106,10 +107,10 @@ int make_group_test() {
         uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
         CHK_EQ(srv_id, pi.id_);
         CHK_EQ(last_log_idx, pi.last_log_idx_);
-        _msg("srv %d: %lu, responeded %.1f ms ago\n",
-             pi.id_,
-             pi.last_log_idx_,
-             pi.last_succ_resp_us_ / 1000.0);
+        TestSuite::Msg mm;
+        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_ << ", responded " << std::fixed
+           << std::setprecision(1) << pi.last_succ_resp_us_ / 1000.0 << " ms ago"
+           << std::endl;
     }
 
     // Sleep a while and get all info.
@@ -120,10 +121,10 @@ int make_group_test() {
     for (raft_server::peer_info& pi: v_pi) {
         uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
         CHK_EQ(last_log_idx, pi.last_log_idx_);
-        _msg("srv %d: %lu, responeded %.1f ms ago\n",
-             pi.id_,
-             pi.last_log_idx_,
-             pi.last_succ_resp_us_ / 1000.0);
+        TestSuite::Msg mm;
+        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_ << ", responded " << std::fixed
+           << std::setprecision(1) << pi.last_succ_resp_us_ / 1000.0 << " ms ago"
+           << std::endl;
     }
 
     s1.raftServer->shutdown();
@@ -1467,6 +1468,22 @@ int auto_forwarding_test(bool async) {
         CHK_GT(s1.getTestSm()->isCommitted(test_msg), 0);
     }
 
+    // All handlers should have the result.
+    {
+        std::set<uint64_t> commit_results;
+        std::lock_guard<std::mutex> l(handlers_lock);
+        for (auto& handler: handlers) {
+            ptr<buffer> h_result = handler->get();
+            CHK_NONNULL(h_result);
+            CHK_EQ(8, h_result->size());
+            buffer_serializer bs(h_result);
+            uint64_t val = bs.get_u64();
+            commit_results.insert(val);
+        }
+        // All messages should have delivered their results.
+        CHK_EQ(NUM_PARALLEL_MSGS, commit_results.size());
+    }
+
     // State machine should be identical.
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -2117,7 +2134,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     do_async_append();
 
     // Pause S3's state machine.
-    s3.raftServer->pause_state_machine_exeuction(100);
+    s3.raftServer->pause_state_machine_exeuction(1000);
 
     CHK_TRUE( s3.raftServer->is_state_machine_execution_paused() );
 
@@ -2140,7 +2157,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
     // Pause again.
-    s3.raftServer->pause_state_machine_exeuction(100);
+    s3.raftServer->pause_state_machine_exeuction(1000);
 
     // Do append again.
     do_async_append();
@@ -2357,6 +2374,175 @@ int custom_commit_condition_test() {
     return 0;
 }
 
+int parallel_log_append_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set disk delay (2s for S1, 10ms for S2 and S3).
+    s1.getTestMgr()->set_disk_delay(s1.raftServer.get(), 2000);
+    s2.getTestMgr()->set_disk_delay(s2.raftServer.get(), 10);
+    s3.getTestMgr()->set_disk_delay(s3.raftServer.get(), 10);
+
+    // Set async mode.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.parallel_log_appending_ = true;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    auto do_async_append = [&]() {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                s1.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append();
+
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // Still durable index is smaller than the last index.
+    CHK_SM( s1.getTestMgr()->load_log_store()->last_durable_index(),
+            s1.getTestMgr()->load_log_store()->next_slot() - 1 );
+
+    // All servers should have the same log index.
+    CHK_EQ( s1.getTestMgr()->load_log_store()->next_slot() - 1,
+            s2.getTestMgr()->load_log_store()->next_slot() - 1 );
+    CHK_EQ( s1.getTestMgr()->load_log_store()->next_slot() - 1,
+            s3.getTestMgr()->load_log_store()->next_slot() - 1 );
+
+    // Even with disk delay, logs should have been committed by S2 and S3.
+    CHK_EQ( s1.getTestMgr()->load_log_store()->next_slot() - 1,
+            s1.raftServer->get_committed_log_idx() );
+
+    TestSuite::sleep_ms(1500, "wait for disk delay");
+    CHK_EQ( s1.getTestMgr()->load_log_store()->last_durable_index(),
+            s1.getTestMgr()->load_log_store()->next_slot() - 1 );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int custom_resolver_test() {
+    reset_log_files();
+
+    std::string s1_addr = "S1:1234";
+    std::string s2_addr = "S2:1234";
+    std::string s3_addr = "S3:1234";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    // Enable custom resolver.
+    s1.useCustomResolver = s2.useCustomResolver = s3.useCustomResolver = true;
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async mode.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.parallel_log_appending_ = true;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    auto do_async_append = [&]() {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                s1.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append();
+
+    TestSuite::sleep_sec(1, "wait for replication");
+
+    // Now all async handlers should have result.
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+
 }  // namespace asio_service_test;
 using namespace asio_service_test;
 
@@ -2456,19 +2642,26 @@ int main(int argc, char** argv) {
     ts.doTest( "custom commit condition test",
                custom_commit_condition_test );
 
+    ts.doTest( "parallel log append test",
+               parallel_log_append_test );
+
+    ts.doTest( "custom resolver test",
+               custom_resolver_test );
+
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
 #else
     _msg("raft stats: DISABLED\n");
 #endif
-    _msg("num allocs: %zu\n"
-         "amount of allocs: %zu bytes\n"
-         "num active buffers: %zu\n"
-         "amount of active buffers: %zu bytes\n",
-         raft_server::get_stat_counter("num_buffer_allocs"),
-         raft_server::get_stat_counter("amount_buffer_allocs"),
-         raft_server::get_stat_counter("num_active_buffers"),
-         raft_server::get_stat_counter("amount_active_buffers"));
+    TestSuite::Msg mm;
+    mm << "num allocs: " << raft_server::get_stat_counter("num_buffer_allocs")
+       << std::endl
+       << "amount of allocs: " << raft_server::get_stat_counter("amount_buffer_allocs")
+       << " bytes" << std::endl
+       << "num active buffers: " << raft_server::get_stat_counter("num_active_buffers")
+       << std::endl
+       << "amount of active buffers: "
+       << raft_server::get_stat_counter("amount_active_buffers") << " bytes" << std::endl;
 
     return 0;
 }
