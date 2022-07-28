@@ -95,6 +95,7 @@ struct raft_params {
         , grace_period_of_lagging_state_machine_(0)
         , use_bg_thread_for_snapshot_io_(false)
         , use_full_consensus_among_healthy_members_(false)
+        , parallel_log_appending_(false)
         {}
 
     /**
