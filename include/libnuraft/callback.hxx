@@ -171,6 +171,14 @@ public:
          * ctx: pointer to the ptr<log_entry>
          */
         PreAppendLog = 21,
+
+        /**
+         * Called when appending a log fails.
+         * Happens on leader only.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        AppendLogFailed = 22,
+
     };
 
     struct Param {

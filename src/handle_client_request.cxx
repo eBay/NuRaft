@@ -108,6 +108,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
     std::vector< ptr<log_entry> >& entries = req.log_entries();
 
     size_t num_entries = entries.size();
+    p_wn("processing: %zu\n", num_entries);
 
     for (size_t i = 0; i < num_entries; ++i) {
 
@@ -123,7 +124,23 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
         // force the log's term to current term
         entry->set_term(cur_term);
 
-        ulong next_slot = store_log_entry(entry);
+        ulong next_slot = 0;
+        try
+        {
+            next_slot = store_log_entry(entry);
+        }
+        catch (const std::exception & e)
+        {
+            p_er("failed to append entry: %s\n", e.what());
+            try_update_precommit_index(last_idx);
+
+            cb_func::Param param(id_, leader_);
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::AppendLogFailed, &param);
+            if (rc == CbReturnCode::ReturnNull) return nullptr;
+
+            throw;
+        }
 
         p_db("append at log_idx %zu\n", next_slot);
         last_idx = next_slot;
