@@ -112,18 +112,32 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
     for (size_t i = 0; i < num_entries; ++i) {
 
         auto & entry = entries.at(i);
+        ulong next_slot = 0;
 
+        try
         {
             cb_func::Param param(id_, leader_);
             param.ctx = &entry;
             CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLog, &param);
             if (rc == CbReturnCode::ReturnNull) return nullptr;
+
+            // force the log's term to current term
+            entry->set_term(cur_term);
+
+            next_slot = store_log_entry(entry);
         }
+        catch (const std::exception & e)
+        {
+            p_er("failed to append entry: %s\n", e.what());
+            try_update_precommit_index(last_idx);
 
-        // force the log's term to current term
-        entry->set_term(cur_term);
+            cb_func::Param param(id_, leader_);
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::AppendLogFailed, &param);
+            if (rc == CbReturnCode::ReturnNull) return nullptr;
 
-        ulong next_slot = store_log_entry(entry);
+            throw;
+        }
 
         p_db("append at log_idx %zu\n", next_slot);
         last_idx = next_slot;
