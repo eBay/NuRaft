@@ -27,6 +27,7 @@ limitations under the License.
 #include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
+#include "internal_timer.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
 #include "snapshot_sync_ctx.hxx"
@@ -729,7 +730,8 @@ void raft_server::reset_peer_info() {
         // re-joins the cluster.
         ptr<buffer> new_conf_buf(my_next_config->serialize());
         ptr<log_entry> entry(cs_new<log_entry>(
-                state_->get_term(), new_conf_buf, log_val_type::conf));
+            state_->get_term(), new_conf_buf, log_val_type::conf,
+            timer_helper::get_timeofday_us()));
         store_log_entry(entry, log_store_->next_slot()-1);
     }
 }
@@ -989,7 +991,10 @@ void raft_server::become_leader() {
         ptr<buffer> conf_buf = last_config_cloned->serialize();
         ptr<log_entry> entry
             ( cs_new<log_entry>
-              ( state_->get_term(), conf_buf, log_val_type::conf ) );
+              ( state_->get_term(),
+                conf_buf,
+                log_val_type::conf,
+                timer_helper::get_timeofday_us() ) );
         p_in("[BECOME LEADER] appended new config at %zu\n", log_store_->next_slot());
         store_log_entry(entry);
         config_changing_ = true;
@@ -1508,7 +1513,8 @@ void raft_server::set_user_ctx(const std::string& ctx) {
     ptr<log_entry> entry = cs_new<log_entry>
                            ( state_->get_term(),
                              new_conf_buf,
-                             log_val_type::conf);
+                             log_val_type::conf,
+                             timer_helper::get_timeofday_us() );
     store_log_entry(entry);
     request_append_entries();
 }

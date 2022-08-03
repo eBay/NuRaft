@@ -804,7 +804,9 @@ protected:
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
     ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
-    ptr<resp_msg> handle_cli_req(req_msg& req, const req_ext_params& ext_params);
+    ptr<resp_msg> handle_cli_req(req_msg& req,
+                                 const req_ext_params& ext_params,
+                                 uint64_t timestamp_us);
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
     ptr< cmd_result< ptr<buffer> > >

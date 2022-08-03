@@ -452,6 +452,8 @@ public:
         curLogStore->set_disk_delay(raft, delay_ms);
     }
 
+    ptr<inmem_log_store> get_inmem_log_store() const { return curLogStore; }
+
 private:
     int myId;
     std::string myEndpoint;
