@@ -886,7 +886,7 @@ protected:
     void on_retryable_req_err(ptr<peer>& p, ptr<req_msg>& req);
     ulong term_for_log(ulong log_idx);
 
-    void commit_in_bg();
+    virtual void commit_in_bg();
     bool commit_in_bg_exec(size_t timeout_ms = 0, bool initial_commit_exec = false);
 
     void append_entries_in_bg();
