@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include <asio/ip/address.hpp>
 #define ASIO_HAS_STD_CHRONO 1
 #if defined(__EDG_VERSION__)
 #undef __EDG_VERSION__
@@ -746,11 +747,30 @@ public:
                        bool _enable_ssl,
                        ptr<logger>& l,
                        bool _enable_ipv6 = true )
+        : asio_rpc_listener(_impl, io, ssl_ctx, _enable_ssl, l, asio::ip::tcp::endpoint(_enable_ipv6 ? asio::ip::tcp::v6() : asio::ip::tcp::v4(), port))
+        {}
+
+    asio_rpc_listener( asio_service_impl* _impl,
+                       asio::io_service& io,
+                       ssl_context& ssl_ctx,
+                       const std::string & host,
+                       ushort port,
+                       bool _enable_ssl,
+                       ptr<logger>& l )
+        : asio_rpc_listener(_impl, io, ssl_ctx, _enable_ssl, l, asio::ip::tcp::endpoint(asio::ip::make_address(host), port))
+        {}
+
+    asio_rpc_listener( asio_service_impl* _impl,
+                       asio::io_service& io,
+                       ssl_context& ssl_ctx,
+                       bool _enable_ssl,
+                       ptr<logger>& l,
+                       const asio::ip::tcp::endpoint& endpoint )
         : impl_(_impl)
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
-        , acceptor_(io, asio::ip::tcp::endpoint(_enable_ipv6 ? asio::ip::tcp::v6() : asio::ip::tcp::v4(), port))
+        , acceptor_(io, endpoint)
         , session_id_cnt_(1)
         , stopped_(false)
         , ssl_enabled_(_enable_ssl)
@@ -759,8 +779,9 @@ public:
         asio::socket_base::reuse_address option(true);
         acceptor_.set_option(option);
 
-        p_in("Raft ASIO listener initiated, %s",
-             ssl_enabled_ ? "SSL enabled" : "unsecured");
+        auto endpoint_address = endpoint.address().to_string();
+        p_in("Raft ASIO listener initiated on %s:%d, %s",
+             endpoint_address.c_str(), endpoint.port(), ssl_enabled_ ? "SSL enabled" : "unsecured");
     }
 
     __nocopy__(asio_rpc_listener);
@@ -1891,6 +1912,26 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
                    port,
                    impl_->my_opt_.enable_ssl_,
                    l_ );
+}
+
+ptr<rpc_listener> asio_service::create_rpc_listener(const std::string& host,
+                                      ushort listening_port,
+                                      ptr<logger>& l)
+{
+    try {
+        return cs_new< asio_rpc_listener >
+                     ( impl_,
+                       impl_->io_svc_,
+                       impl_->ssl_server_ctx_,
+                       host,
+                       listening_port,
+                       impl_->my_opt_.enable_ssl_,
+                       l);
+    } catch (std::exception& ee) {
+        // Most likely exception happens due to wrong endpoint.
+        p_er("got exception: %s on host %s and port %u", ee.what(), host.c_str(), listening_port);
+        return nullptr;
+    }
 }
 
 ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,

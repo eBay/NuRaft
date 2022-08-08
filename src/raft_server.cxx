@@ -454,7 +454,7 @@ void raft_server::shutdown() {
     // Clear shared_ptrs that the current server is holding.
     {   std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
         ctx_->logger_.reset();
-        ctx_->rpc_listener_.reset();
+        ctx_->rpc_listeners_.clear();
         ctx_->rpc_cli_factory_.reset();
         ctx_->scheduler_.reset();
     }
