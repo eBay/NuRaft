@@ -42,7 +42,7 @@ struct context {
 public:
     context( ptr<state_mgr>& mgr,
              ptr<state_machine>& m,
-             std::vector<ptr<rpc_listener>>& listeners,
+             const std::vector<ptr<rpc_listener>>& listeners,
              ptr<logger>& l,
              ptr<rpc_client_factory>& cli_factory,
              ptr<delayed_task_scheduler>& scheduler,

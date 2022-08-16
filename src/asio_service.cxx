@@ -1929,7 +1929,7 @@ ptr<rpc_listener> asio_service::create_rpc_listener(const std::string& host,
                        l);
     } catch (std::exception& ee) {
         // Most likely exception happens due to wrong endpoint.
-        p_er("got exception: %s on host %s and port %u", ee.what(), host.c_str(), listening_port);
+        p_er("got exception on %s:%u: %s", host.c_str(), listening_port, ee.what());
         return nullptr;
     }
 }
