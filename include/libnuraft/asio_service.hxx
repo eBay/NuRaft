@@ -61,6 +61,10 @@ public:
                                           ptr<logger>& l,
                                           bool _enable_ipv6 = true);
 
+    ptr<rpc_listener> create_rpc_listener(const std::string& host,
+                                          ushort listening_port,
+                                          ptr<logger>& l);
+
     void stop();
 
     uint32_t get_active_workers();
