@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <system_error>
 
 namespace nuraft {
 
@@ -60,6 +61,12 @@ struct asio_service_meta_cb_params {
 };
 
 /**
+ * Response callback function for customer resolvers.
+ */
+using asio_service_custom_resolver_response =
+    std::function< void(const std::string&, const std::string&, std::error_code) >;
+
+/**
  * Options used for initialization of Asio service.
  */
 struct asio_service_options {
@@ -76,60 +83,106 @@ struct asio_service_options {
         , read_resp_meta_(nullptr)
         , invoke_resp_cb_on_empty_meta_(true)
         , verify_sn_(nullptr)
+        , custom_resolver_(nullptr)
         {}
 
-    // Number of ASIO worker threads.
-    // If zero, it will be automatically set to number of cores.
+    /**
+     * Number of ASIO worker threads.
+     * If zero, it will be automatically set to number of cores.
+     */
     size_t thread_pool_size_;
 
-    // Lifecycle callback function on worker thread start.
+    /**
+     * Lifecycle callback function on worker thread start.
+     */
     std::function< void(uint32_t) > worker_start_;
 
-    // Lifecycle callback function on worker thread stop.
+    /**
+     * Lifecycle callback function on worker thread stop.
+     */
     std::function< void(uint32_t) > worker_stop_;
 
-    // If `true`, enable SSL/TLS secure connection.
+    /**
+     * If `true`, enable SSL/TLS secure connection.
+     */
     bool enable_ssl_;
 
-    // If `true`, skip certificate verification.
+    /**
+     * If `true`, skip certificate verification.
+     */
     bool skip_verification_;
 
-    // Path to certification & key files.
+    /**
+     * Path to server certificate file.
+     */
     std::string server_cert_file_;
+
+    /**
+     * Path to server key file.
+     */
     std::string server_key_file_;
+
+    /**
+     * Path to root certificate file.
+     */
     std::string root_cert_file_;
 
-    // Callback function for writing Raft RPC request metadata.
+    /**
+     * Callback function for writing Raft RPC request metadata.
+     */
     std::function< std::string(const asio_service_meta_cb_params&) > write_req_meta_;
 
-    // Callback function for reading and verifying Raft RPC request metadata.
-    // If it returns false, the request will be discarded.
+    /**
+     * Callback function for reading and verifying Raft RPC request metadata.
+     * If it returns `false`, the request will be discarded.
+     */
     std::function< bool( const asio_service_meta_cb_params&,
                          const std::string& ) > read_req_meta_;
 
-    // If `true`, it will invoke `read_req_meta_` even though
-    // the received meta is empty.
+    /**
+     * If `true`, it will invoke `read_req_meta_` even though
+     * the received meta is empty.
+     */
     bool invoke_req_cb_on_empty_meta_;
 
-    // Callback function for writing Raft RPC response metadata.
+    /**
+     * Callback function for writing Raft RPC response metadata.
+     */
     std::function< std::string(const asio_service_meta_cb_params&) > write_resp_meta_;
 
-    // Callback function for reading and verifying Raft RPC response metadata.
-    // If it returns false, the response will be ignored.
+    /**
+     * Callback function for reading and verifying Raft RPC response metadata.
+     * If it returns false, the response will be ignored.
+     */
     std::function< bool( const asio_service_meta_cb_params&,
                          const std::string& ) > read_resp_meta_;
 
-    // If `true`, it will invoke `read_resp_meta_` even though
-    // the received meta is empty.
+    /**
+     * If `true`, it will invoke `read_resp_meta_` even though
+     * the received meta is empty.
+     */
     bool invoke_resp_cb_on_empty_meta_;
 
-    // Callback function for verifying certificate subject name.
-    // If not given, subject name will not be verified.
+    /**
+     * Callback function for verifying certificate subject name.
+     * If not given, subject name will not be verified.
+     */
     std::function< bool(const std::string&) > verify_sn_;
 
     // If true will try to load CA from default path
     // call (SSL_CTX_set_default_verify_paths)
     bool load_default_ca_file_;
+
+    /**
+     * Custom IP address resolver. If given, it will be invoked
+     * before the connection is established.
+     *
+     * If you want to selectively bypass some hosts, just pass the given
+     * host and port to the response function as they are.
+     */
+    std::function< void( const std::string&,
+                         const std::string&,
+                         asio_service_custom_resolver_response ) > custom_resolver_;
 };
 
 }

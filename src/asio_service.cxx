@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include <asio/ip/address.hpp>
 #define ASIO_HAS_STD_CHRONO 1
 #if defined(__EDG_VERSION__)
 #undef __EDG_VERSION__
@@ -34,6 +35,7 @@ limitations under the License.
 #include "internal_timer.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
+#include "raft_server_handler.hxx"
 #include "strfmt.hxx"
 #include "tracer.hxx"
 
@@ -201,7 +203,10 @@ private:
 class rpc_session;
 typedef std::function<void(const ptr<rpc_session>&)> session_closed_callback;
 
-class rpc_session : public std::enable_shared_from_this<rpc_session> {
+class rpc_session
+    : public std::enable_shared_from_this<rpc_session>
+    , public raft_server_handler
+     {
 public:
     rpc_session( uint64_t id,
                  asio_service_impl* _impl,
@@ -244,7 +249,7 @@ public:
 
         cached_address_ = socket_.remote_endpoint().address().to_string();
         cached_port_ = socket_.remote_endpoint().port();
-        p_in( "session %zu got connection from %s:%u (as a server)",
+        p_in( "session %lu got connection from %s:%u (as a server)",
               session_id_,
               cached_address_.c_str(),
               cached_port_ );
@@ -268,18 +273,19 @@ public:
     void handle_handshake(ptr<rpc_session> self,
                           const ERROR_CODE& err) {
         if (!err) {
-            p_in( "session %zu handshake with %s:%u succeeded (as a server)",
+            p_in( "session %lu handshake with %s:%u succeeded (as a server)",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_ );
             this->start(self);
 
         } else {
-            p_er( "session %zu handshake with %s:%u failed: error %d",
+            p_er( "session %lu handshake with %s:%u failed: error %d, %s",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_,
-                  err.value() );
+                  err.value(),
+                  err.message().c_str() );
 
             // Lazy stop.
             ptr<asio::steady_timer> timer =
@@ -291,10 +297,11 @@ public:
                                (const ERROR_CODE& err) -> void
             {
                 if (err) {
-                    p_er("session %zu error happend during "
-                         "async wait: %d",
+                    p_er("session %lu error happend during "
+                         "async wait: %d, %s",
                          session_id_,
-                         err.value());
+                         err.value(),
+                         err.message().c_str());
                 }
                 this->stop();
             });
@@ -309,12 +316,14 @@ public:
                   (const ERROR_CODE& err, size_t) -> void
         {
             if (err) {
-                p_er( "session %zu failed to read rpc header from socket %s:%u "
-                      "due to error %d",
+                p_er( "session %lu failed to read rpc header from socket %s:%u "
+                      "due to error %d, %s, ref count %u",
                       session_id_,
                       cached_address_.c_str(),
                       cached_port_,
-                      err.value() );
+                      err.value(),
+                      err.message().c_str(),
+                      self.use_count() );
                 this->stop();
                 return;
             }
@@ -441,10 +450,11 @@ private:
         if (!err) {
             this->read_complete(header_, log_ctx);
         } else {
-            p_er( "session %zu failed to read rpc log data from socket due "
-                  "to error %d",
+            p_er( "session %lu failed to read rpc log data from socket due "
+                  "to error %d, %s",
                   session_id_,
-                  err.value() );
+                  err.value(),
+                  err.message().c_str() );
             this->stop();
         }
     }
@@ -554,18 +564,53 @@ private:
         }
 
         // === RAFT server processes the request here. ===
-        ptr<resp_msg> resp = handler_->process_req(*req);
+        ptr<resp_msg> resp = raft_server_handler::process_req(handler_.get(), *req);
         if (!resp) {
             p_wn("no response is returned from raft message handler");
             this->stop();
             return;
         }
 
-        if (resp->has_cb()) {
-            // If callback function exists, get new response message.
-            resp = resp->call_cb(resp);
+        if (resp->has_async_cb()) {
+            // Response will be ready later, setup a callback function
+            // (only for auto-forwarding with `client_request` type
+            //  in async handling mode).
+            ptr< cmd_result< ptr<buffer> > > ret = resp->call_async_cb();
+
+            // WARNING: `self` should be captured to avoid releasing this `rpc_session`.
+            ret->when_ready(
+                [this, self, req, resp]
+                ( cmd_result<ptr<buffer>, ptr<std::exception>>& res,
+                  ptr<std::exception>& exp ) {
+                    resp->set_ctx(res.get());
+                    on_resp_ready(req, resp);
+                    // This is needed to avoid circular reference.
+                    res.reset();
+                }
+            );
+
+        } else {
+            // Response should already be ready when we reach here.
+            if (resp->has_cb()) {
+                // If callback function exists, get new response message.
+                resp = resp->call_cb(resp);
+            }
+            on_resp_ready(req, resp);
         }
 
+       } catch (std::exception& ex) {
+        p_er( "session %lu failed to process request message "
+              "due to error: %s",
+              this->session_id_,
+              ex.what() );
+        this->stop();
+       }
+    }
+
+    void on_resp_ready(ptr<req_msg> req, ptr<resp_msg> resp) {
+        ptr<rpc_session> self = this->shared_from_this();
+
+       try {
         ptr<buffer> resp_ctx = resp->get_ctx();
         int32 resp_ctx_size = (resp_ctx) ? resp_ctx->size() : 0;
 
@@ -641,7 +686,7 @@ private:
             if (!err_code) {
                 this->start(self);
             } else {
-                p_er( "session %zu failed to send response to peer due "
+                p_er( "session %lu failed to send response to peer due "
                       "to error %d",
                       session_id_,
                       err_code.value() );
@@ -650,7 +695,7 @@ private:
         } );
 
        } catch (std::exception& ex) {
-        p_er( "session %zu failed to process request message "
+        p_er( "session %lu failed to process request message "
               "due to error: %s",
               this->session_id_,
               ex.what() );
@@ -702,11 +747,30 @@ public:
                        bool _enable_ssl,
                        ptr<logger>& l,
                        bool _enable_ipv6 = true )
+        : asio_rpc_listener(_impl, io, ssl_ctx, _enable_ssl, l, asio::ip::tcp::endpoint(_enable_ipv6 ? asio::ip::tcp::v6() : asio::ip::tcp::v4(), port))
+        {}
+
+    asio_rpc_listener( asio_service_impl* _impl,
+                       asio::io_service& io,
+                       ssl_context& ssl_ctx,
+                       const std::string & host,
+                       ushort port,
+                       bool _enable_ssl,
+                       ptr<logger>& l )
+        : asio_rpc_listener(_impl, io, ssl_ctx, _enable_ssl, l, asio::ip::tcp::endpoint(asio::ip::make_address(host), port))
+        {}
+
+    asio_rpc_listener( asio_service_impl* _impl,
+                       asio::io_service& io,
+                       ssl_context& ssl_ctx,
+                       bool _enable_ssl,
+                       ptr<logger>& l,
+                       const asio::ip::tcp::endpoint& endpoint )
         : impl_(_impl)
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
-        , acceptor_(io, asio::ip::tcp::endpoint(_enable_ipv6 ? asio::ip::tcp::v6() : asio::ip::tcp::v4(), port))
+        , acceptor_(io, endpoint)
         , session_id_cnt_(1)
         , stopped_(false)
         , ssl_enabled_(_enable_ssl)
@@ -715,8 +779,9 @@ public:
         asio::socket_base::reuse_address option(true);
         acceptor_.set_option(option);
 
-        p_in("Raft ASIO listener initiated, %s",
-             ssl_enabled_ ? "SSL enabled" : "unsecured");
+        auto endpoint_address = endpoint.address().to_string();
+        p_in("Raft ASIO listener initiated on %s:%d, %s",
+             endpoint_address.c_str(), endpoint.port(), ssl_enabled_ ? "SSL enabled" : "unsecured");
     }
 
     __nocopy__(asio_rpc_listener);
@@ -779,8 +844,8 @@ private:
             session->prepare_handshake();
 
         } else {
-            p_er( "failed to accept a rpc connection due to error %d",
-                  err.value() );
+            p_er( "failed to accept a rpc connection due to error %d, %s",
+                  err.value(), err.message().c_str() );
         }
 
         if (!stopped_) {
@@ -986,37 +1051,37 @@ public:
                 break;
             }
 
-            asio::ip::tcp::resolver::query q
-                ( host_, port_, asio::ip::tcp::resolver::query::all_matching );
-
-            resolver_.async_resolve
-            ( q,
-              [self, this, req, when_done, send_timeout_ms]
-              ( std::error_code err,
-                asio::ip::tcp::resolver::iterator itor ) -> void
-            {
-                if (!err) {
-                    asio::async_connect
-                        ( socket(),
-                          itor,
-                          std::bind( &asio_rpc_client::connected,
-                                     self,
-                                     req,
-                                     when_done,
-                                     send_timeout_ms,
-                                     std::placeholders::_1,
-                                     std::placeholders::_2 ) );
-                } else {
-                    ptr<resp_msg> rsp;
-                    ptr<rpc_exception> except
-                       ( cs_new<rpc_exception>
-                               ( lstrfmt("failed to resolve host %s "
-                                         "due to error %d")
-                                        .fmt( host_.c_str(), err.value() ),
-                                 req ) );
-                    when_done(rsp, except);
-                }
-            } );
+            if (impl_->get_options().custom_resolver_) {
+                impl_->get_options().custom_resolver_(
+                    host_,
+                    port_,
+                    [this, self, req, when_done, send_timeout_ms]
+                    ( const std::string& resolved_host,
+                      const std::string& resolved_port,
+                      std::error_code err ) {
+                        if (!err) {
+                            p_in( "custom resolver: %s:%s to %s:%s",
+                                  host_.c_str(), port_.c_str(),
+                                  resolved_host.c_str(), resolved_port.c_str() );
+                            execute_resolver(self, req, resolved_host, resolved_port,
+                                             when_done, send_timeout_ms);
+                        } else {
+                            ptr<resp_msg> rsp;
+                            ptr<rpc_exception> except
+                               ( cs_new<rpc_exception>
+                                       ( lstrfmt("failed to resolve host %s by given "
+                                                 "custom resolver "
+                                                 "due to error %d, %s")
+                                                .fmt( host_.c_str(),
+                                                      err.value(),
+                                                      err.message().c_str() ),
+                                         req ) );
+                            when_done(rsp, except);
+                        }
+                    } );
+            } else {
+                execute_resolver(self, req, host_, port_, when_done, send_timeout_ms);
+            }
             return;
         }
 
@@ -1141,6 +1206,47 @@ public:
                               std::placeholders::_2 ) );
     }
 private:
+    void execute_resolver(ptr<asio_rpc_client> self,
+                          ptr<req_msg> req,
+                          const std::string& host,
+                          const std::string& port,
+                          rpc_handler when_done,
+                          uint64_t send_timeout_ms) {
+        asio::ip::tcp::resolver::query q
+            ( host, port, asio::ip::tcp::resolver::query::all_matching );
+
+        resolver_.async_resolve
+        ( q,
+          [self, this, req, when_done, host, port, send_timeout_ms]
+          ( std::error_code err,
+            asio::ip::tcp::resolver::iterator itor ) -> void
+        {
+            if (!err) {
+                asio::async_connect
+                    ( socket(),
+                      itor,
+                      std::bind( &asio_rpc_client::connected,
+                                 self,
+                                 req,
+                                 when_done,
+                                 send_timeout_ms,
+                                 std::placeholders::_1,
+                                 std::placeholders::_2 ) );
+            } else {
+                ptr<resp_msg> rsp;
+                ptr<rpc_exception> except
+                   ( cs_new<rpc_exception>
+                           ( lstrfmt("failed to resolve host %s "
+                                     "due to error %d, %s")
+                                    .fmt( host.c_str(),
+                                          err.value(),
+                                          err.message().c_str() ),
+                             req ) );
+                when_done(rsp, except);
+            }
+        } );
+    }
+
     void set_busy_flag(bool to) {
         if (to == true) {
             bool exp = false;
@@ -1221,9 +1327,9 @@ private:
             ptr<resp_msg> rsp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
-                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d")
+                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(rsp, except);
         }
@@ -1244,17 +1350,18 @@ private:
 
         } else {
             abandoned_ = true;
-            p_er( "failed SSL handshake with peer %d, %s:%s, error %d",
-                  req->get_dst(), host_.c_str(), port_.c_str(), err.value() );
+            p_er( "failed SSL handshake with peer %d, %s:%s, error %d, %s",
+                  req->get_dst(), host_.c_str(), port_.c_str(), err.value(),
+                  err.message().c_str() );
 
             // Immediately stop.
             ptr<resp_msg> resp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt("failed SSL handshake with peer %d, %s:%s, "
-                            "error %d")
+                            "error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(resp, except);
         }
@@ -1289,9 +1396,9 @@ private:
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to send request to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
@@ -1311,9 +1418,9 @@ private:
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to read response to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
@@ -1805,6 +1912,26 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
                    port,
                    impl_->my_opt_.enable_ssl_,
                    l_ );
+}
+
+ptr<rpc_listener> asio_service::create_rpc_listener(const std::string& host,
+                                      ushort listening_port,
+                                      ptr<logger>& l)
+{
+    try {
+        return cs_new< asio_rpc_listener >
+                     ( impl_,
+                       impl_->io_svc_,
+                       impl_->ssl_server_ctx_,
+                       host,
+                       listening_port,
+                       impl_->my_opt_.enable_ssl_,
+                       l);
+    } catch (std::exception& ee) {
+        // Most likely exception happens due to wrong endpoint.
+        p_er("got exception on %s:%u: %s", host.c_str(), listening_port, ee.what());
+        return nullptr;
+    }
 }
 
 ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,

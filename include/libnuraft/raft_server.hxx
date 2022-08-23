@@ -50,6 +50,7 @@ class delayed_task_scheduler;
 class logger;
 class peer;
 class rpc_client;
+class raft_server_handler;
 class req_msg;
 class resp_msg;
 class rpc_exception;
@@ -60,6 +61,7 @@ struct context;
 struct raft_params;
 class raft_server : public std::enable_shared_from_this<raft_server> {
     friend class nuraft_global_mgr;
+    friend class raft_server_handler;
     friend class snapshot_io_mgr;
 public:
     struct init_options {
@@ -169,14 +171,6 @@ public:
 
 public:
     /**
-     * Process Raft request.
-     *
-     * @param req Request.
-     * @return Response.
-     */
-    virtual ptr<resp_msg> process_req(req_msg& req);
-
-    /**
      * Check if this server is ready to serve operation.
      *
      * @return `true` if it is ready.
@@ -236,6 +230,65 @@ public:
      */
     ptr< cmd_result< ptr<buffer> > >
         append_entries(const std::vector< ptr<buffer> >& logs);
+
+    /**
+     * Parameters for `req_ext_cb` callback function.
+     */
+    struct req_ext_cb_params {
+        req_ext_cb_params() : log_idx(0), log_term(0) {}
+
+        /**
+         * Raft log index number.
+         */
+        uint64_t log_idx;
+
+        /**
+         * Raft log term number.
+         */
+        uint64_t log_term;
+    };
+
+    /**
+     * Callback function type to be called inside extended APIs.
+     */
+    using req_ext_cb = std::function< void(const req_ext_cb_params&) >;
+
+    /**
+     * Extended parameters for advanced features.
+     */
+    struct req_ext_params {
+        req_ext_params() : expected_term_(0) {}
+
+        /**
+         * If given, this function will be invokced right after the pre-commit
+         * call for each log.
+         */
+        req_ext_cb after_precommit_;
+
+        /**
+         * If given (non-zero), the operation will return failure if the current
+         * server's term does not match the given term.
+         */
+        uint64_t expected_term_;
+    };
+
+    /**
+     * An extended version of `append_entries`.
+     * Append and replicate the given logs.
+     * Only leader will accept this operation.
+     *
+     * @param logs Set of logs to replicate.
+     * @param ext_params Extended parameters.
+     * @return
+     *     In blocking mode, it will be blocked during replication, and
+     *     return `cmd_result` instance which contains the commit results from
+     *     the state machine.
+     *     In async mode, this function will return immediately, and the
+     *     commit results will be set to returned `cmd_result` instance later.
+     */
+    ptr< cmd_result< ptr<buffer> > >
+        append_entries_ext(const std::vector< ptr<buffer> >& logs,
+                           const req_ext_params& ext_params);
 
     /**
      * Update the priority of given server.
@@ -664,6 +717,26 @@ public:
      */
     bool is_state_machine_execution_paused() const;
 
+    /**
+     * (Experimental)
+     * This API is used when `raft_params::parallel_log_appending_` is set.
+     * Everytime an asynchronous log appending job is done, users should call
+     * this API to notify Raft server to handle the log.
+     * Note that calling this API once for multiple logs is acceptable
+     * and recommended.
+     *
+     * @param ok `true` if appending succeeded.
+     */
+    void notify_log_append_completion(bool ok);
+
+    /**
+     * Manually create a snapshot based on the latest committed
+     * log index of the state machine.
+     *
+     * @return `true` on success.
+     */
+    bool create_snapshot();
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 
@@ -702,6 +775,14 @@ protected:
     struct auto_fwd_pkg;
 
 protected:
+    /**
+     * Process Raft request.
+     *
+     * @param req Request.
+     * @return Response.
+     */
+    virtual ptr<resp_msg> process_req(req_msg& req, const req_ext_params& ext_params);
+
     void apply_and_log_current_params();
     void cancel_schedulers();
     void schedule_task(ptr<delayed_task>& task, int32 milliseconds);
@@ -722,8 +803,8 @@ protected:
     ptr<resp_msg> handle_append_entries(req_msg& req);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
-    ptr<resp_msg> handle_cli_req_prelock(req_msg& req);
-    ptr<resp_msg> handle_cli_req(req_msg& req);
+    ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
+    ptr<resp_msg> handle_cli_req(req_msg& req, const req_ext_params& ext_params);
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
     ptr< cmd_result< ptr<buffer> > >
@@ -782,7 +863,7 @@ protected:
     void destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx);
     void clear_snapshot_sync_ctx(peer& pp);
     void commit(ulong target_idx);
-    void snapshot_and_compact(ulong committed_idx);
+    bool snapshot_and_compact(ulong committed_idx, bool forced_creation = false);
     bool update_term(ulong term);
     void reconfigure(const ptr<cluster_config>& new_config);
     void update_target_priority();
@@ -806,7 +887,7 @@ protected:
     void on_retryable_req_err(ptr<peer>& p, ptr<req_msg>& req);
     ulong term_for_log(ulong log_idx);
 
-    void commit_in_bg();
+    virtual void commit_in_bg();
     bool commit_in_bg_exec(size_t timeout_ms = 0, bool initial_commit_exec = false);
 
     void append_entries_in_bg();
@@ -818,7 +899,9 @@ protected:
                         bool initial_commit_exec);
     void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
 
-    ptr< cmd_result< ptr<buffer> > > send_msg_to_leader(ptr<req_msg>& req);
+    ptr< cmd_result< ptr<buffer> > >
+        send_msg_to_leader(ptr<req_msg>& req,
+                           const req_ext_params& ext_params = req_ext_params());
 
     void auto_fwd_release_rpc_cli(ptr<auto_fwd_pkg> cur_pkg,
                                   ptr<rpc_client> rpc_cli);
@@ -852,6 +935,10 @@ protected:
     void remove_peer_from_peers(const ptr<peer>& pp);
 
     void check_overall_status();
+
+    void request_append_entries_for_all();
+
+    uint64_t get_current_leader_index();
 
 protected:
     static const int default_snapshot_sync_block_size;
@@ -1067,6 +1154,7 @@ protected:
 
     /**
      * `true` if this server is creating a snapshot.
+     * Only one snapshot creation is allowed at a time.
      */
     std::atomic<bool> snp_in_progress_;
 
@@ -1339,6 +1427,17 @@ protected:
      * server startup.
      */
     std::atomic<bool> initial_commit_exec_{true};
+
+    /**
+     * (Experimental)
+     * Used when `raft_params::parallel_log_appending_` is set.
+     * Follower will wait for the asynchronous log appending using
+     * this event awaiter.
+     *
+     * WARNING: We are assuming that only one thraed is using this
+     *          awaiter at a time, by the help of `lock_`.
+     */
+    EventAwaiter* ea_follower_log_append_;
 };
 
 } // namespace nuraft;

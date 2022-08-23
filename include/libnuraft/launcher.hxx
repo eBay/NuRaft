@@ -72,7 +72,7 @@ public:
      *
      * @return ASIO listener.
      */
-    ptr<rpc_listener> get_rpc_listener() const { return asio_listener_; }
+    const std::vector<ptr<rpc_listener>> & get_rpc_listeners() const { return asio_listeners_; }
 
     /**
      * Get Raft server instance.
@@ -83,7 +83,7 @@ public:
 
 private:
     ptr<asio_service> asio_svc_;
-    ptr<rpc_listener> asio_listener_;
+    std::vector<ptr<rpc_listener>> asio_listeners_;
     ptr<raft_server> raft_instance_;
 };
 

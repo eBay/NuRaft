@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "asio_service_options.hxx"
 #include "raft_functional_common.hxx"
 #include "internal_timer.hxx"
 
@@ -51,6 +52,7 @@ public:
         , readReqMeta(nullptr)
         , writeReqMeta(nullptr)
         , alwaysInvokeCb(true)
+        , useCustomResolver(false)
         , myLogWrapper(nullptr)
         , myLog(nullptr)
         {}
@@ -100,6 +102,21 @@ public:
             asio_opt.server_key_file_   = "./key.pem";
         }
 
+        if (useCustomResolver) {
+            asio_opt.custom_resolver_ =
+                []( const std::string& host,
+                    const std::string& port,
+                    asio_service_custom_resolver_response when_done ) {
+                    if (host.substr(0, 2) == "S1") {
+                        when_done("127.0.0.1", "20010", std::error_code());
+                    } else if (host.substr(0, 2) == "S2") {
+                        when_done("127.0.0.1", "20020", std::error_code());
+                    } else {
+                        when_done("127.0.0.1", "20030", std::error_code());
+                    }
+                };
+        }
+
         if (readReqMeta) asio_opt.read_req_meta_ = readReqMeta;
         if (writeReqMeta) asio_opt.write_req_meta_ = writeReqMeta;
 
@@ -127,7 +144,7 @@ public:
         params.with_snapshot_enabled(5);
         params.with_client_req_timeout(10000);
         params.use_bg_thread_for_snapshot_io_ = use_bg_snapshot_io;
-        context* ctx( new context( sMgr, sm, listener, myLog,
+        context* ctx( new context( sMgr, sm, {listener}, myLog,
                                    rpc_cli_factory, scheduler, params ) );
         raftServer = cs_new<raft_server>(ctx, opt);
 
@@ -175,7 +192,7 @@ public:
             params.with_snapshot_enabled(5);
             params.with_client_req_timeout(10000);
         }
-        context* ctx( new context( sMgr, sm, listener, myLog,
+        context* ctx( new context( sMgr, sm, {listener}, myLog,
                                    rpc_cli_factory, scheduler, params ) );
         raftServer = cs_new<raft_server>(ctx, opt);
 
@@ -232,6 +249,8 @@ public:
     WRITE_META_FUNC writeRespMeta;
 
     bool alwaysInvokeCb;
+
+    bool useCustomResolver;
 
     ptr<logger_wrapper> myLogWrapper;
     ptr<logger> myLog;

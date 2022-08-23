@@ -23,6 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "context.hxx"
 #include "error_code.hxx"
+#include "event_awaiter.h"
 #include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
@@ -102,6 +103,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                                                 std::placeholders::_1,
                                                 std::placeholders::_2 ) )
     , last_snapshot_(ctx->state_machine_->last_snapshot())
+    , ea_follower_log_append_(new EventAwaiter())
 {
     char temp_buf[4096];
     std::string print_msg;
@@ -309,6 +311,7 @@ raft_server::~raft_server() {
     ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10));
     cancel_schedulers();
     delete bg_append_ea_;
+    delete ea_follower_log_append_;
 }
 
 void raft_server::update_rand_timeout() {
@@ -358,7 +361,8 @@ void raft_server::apply_and_log_current_params() {
           "snapshot receiver %s, "
           "leadership transfer wait time %d, "
           "grace period of lagging state machine %d, "
-          "snapshot IO: %s",
+          "snapshot IO: %s, "
+          "parallel log appending: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -377,7 +381,8 @@ void raft_server::apply_and_log_current_params() {
           params->exclude_snp_receiver_from_quorum_ ? "excluded" : "included",
           params->leadership_transfer_min_wait_time_,
           params->grace_period_of_lagging_state_machine_,
-          params->use_bg_thread_for_snapshot_io_ ? "async" : "blocking" );
+          params->use_bg_thread_for_snapshot_io_ ? "async" : "blocking",
+          params->parallel_log_appending_ ? "on" : "off" );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();
@@ -449,7 +454,7 @@ void raft_server::shutdown() {
     // Clear shared_ptrs that the current server is holding.
     {   std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
         ctx_->logger_.reset();
-        ctx_->rpc_listener_.reset();
+        ctx_->rpc_listeners_.clear();
         ctx_->rpc_cli_factory_.reset();
         ctx_->scheduler_.reset();
     }
@@ -602,7 +607,8 @@ size_t raft_server::get_num_stale_peers() {
     return count;
 }
 
-ptr<resp_msg> raft_server::process_req(req_msg& req) {
+ptr<resp_msg> raft_server::process_req(req_msg& req,
+                                       const req_ext_params& ext_params) {
     cb_func::Param param(id_, leader_);
     param.ctx = &req;
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::ProcessReq, &param);
@@ -629,7 +635,7 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
 
     if ( req.get_type() == msg_type::client_request ) {
         // Client request doesn't need to go through below process.
-        return handle_cli_req_prelock(req);
+        return handle_cli_req_prelock(req, ext_params);
     }
 
     if ( req.get_type() == msg_type::leader_status_request ) {
@@ -996,7 +1002,7 @@ void raft_server::become_leader() {
         ptr<log_entry> entry
             ( cs_new<log_entry>
               ( state_->get_term(), conf_buf, log_val_type::conf ) );
-        p_in("[BECOME LEADER] appended new config at %d\n", log_store_->next_slot());
+        p_in("[BECOME LEADER] appended new config at %zu\n", log_store_->next_slot());
         store_log_entry(entry);
         config_changing_ = true;
     }
@@ -1027,6 +1033,9 @@ void raft_server::become_leader() {
 bool raft_server::check_leadership_validity() {
     recur_lock(lock_);
 
+    if (role_ != leader)
+        return false;
+
     // Check if quorum is not responding.
     int32 num_voting_members = get_num_voting_members();
 
@@ -1038,9 +1047,9 @@ bool raft_server::check_leadership_validity() {
     }
     int32 min_quorum_size = get_quorum_for_commit() + 1;
     if ( (num_voting_members - nr_peers) < min_quorum_size ) {
-        p_er("%zu nodes (out of %zu, %zu including learners) are not "
-             "responding longer than %zu ms, "
-             "at least %zu nodes (including leader) should be alive "
+        p_er("%d nodes (out of %d, %zu including learners) are not "
+             "responding longer than %d ms, "
+             "at least %d nodes (including leader) should be alive "
              "to proceed commit",
              nr_peers,
              num_voting_members,
@@ -1266,7 +1275,7 @@ bool raft_server::request_leadership() {
 
 void raft_server::become_follower() {
     // stop hb for all peers
-    p_tr("  FOLLOWER\n");
+    p_in("[BECOME FOLLOWER] term %lu", state_->get_term());
     {   std::lock_guard<std::mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
@@ -1276,6 +1285,8 @@ void raft_server::become_follower() {
         role_ = srv_role::follower;
 
         cb_func::Param param(id_, leader_);
+        uint64_t my_term = state_->get_term();
+        param.ctx = &my_term;
         (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
 
         write_paused_ = false;
@@ -1294,7 +1305,25 @@ void raft_server::become_follower() {
 
 bool raft_server::update_term(ulong term) {
     if (term > state_->get_term()) {
-        state_->set_term(term);
+        {
+            // NOTE:
+            //   There could be a race between `update_term` (let's say T1) and
+            //   `handle_cli_req` (let's say T2) as follows:
+            //
+            //     * The server was a leader at term X
+            //     [T1] call `state_->set_term(Y)`
+            //     [T2] call `state_->get_term()`
+            //     [T2] write a log with term Y (which should be X).
+            //     [T1] call `become_follower()`
+            //          => now this server becomes a follower at term Y,
+            //             but it still has the incorrect log with term Y.
+            //
+            //   To avoid this issue, we acquire `cli_lock_`,
+            //   and change `role_` first before setting the term.
+            std::lock_guard<std::mutex> ll(cli_lock_);
+            role_ = srv_role::follower;
+            state_->set_term(term);
+        }
         state_->set_voted_for(-1);
         state_->allow_election_timer(true);
         election_completed_ = false;

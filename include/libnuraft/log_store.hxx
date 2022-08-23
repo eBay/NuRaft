@@ -173,6 +173,15 @@ public:
      * @return `true` on success.
      */
     virtual bool flush() = 0;
+
+    /**
+     * (Experimental)
+     * This API is used only when `raft_params::parallel_log_appending_` flag is set.
+     * Please refer to the comment of the flag.
+     *
+     * @return The last durable log index.
+     */
+    virtual ulong last_durable_index() { return next_slot() - 1; }
 };
 
 }

@@ -305,7 +305,7 @@ void raft_server::handle_election_timeout() {
 
         // `term` changed, cannot use previous pre-vote result.
         if (pre_vote_.term_ != state_term) {
-            p_in("pre-vote term (%zu) is different, reset it to %zu",
+            p_in("pre-vote term (%lu) is different, reset it to %lu",
                  pre_vote_.term_, state_term);
             pre_vote_.reset(state_term);
         }

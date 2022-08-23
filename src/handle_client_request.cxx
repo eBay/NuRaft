@@ -72,25 +72,34 @@ ptr<resp_msg> raft_server::handle_leader_status_req(req_msg& req) {
     }
 }
 
-ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req) {
+ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
+                                                  const req_ext_params& ext_params)
+{
     ptr<resp_msg> resp = nullptr;
     ptr<raft_params> params = ctx_->get_params();
     switch (params->locking_method_type_) {
         case raft_params::single_mutex: {
             recur_lock(lock_);
-            resp = handle_cli_req(req);
+            resp = handle_cli_req(req, ext_params);
             break;
         }
         case raft_params::dual_mutex:
         default: {
             // TODO: Use RW lock here.
             auto_lock(cli_lock_);
-            resp = handle_cli_req(req);
+            resp = handle_cli_req(req, ext_params);
             break;
         }
     }
 
     // Urgent commit, so that the commit will not depend on hb.
+    request_append_entries_for_all();
+
+    return resp;
+}
+
+void raft_server::request_append_entries_for_all() {
+    ptr<raft_params> params = ctx_->get_params();
     if (params->use_bg_thread_for_urgent_commit_) {
         // Let background generate request (some delay may happen).
         nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
@@ -106,10 +115,11 @@ ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req) {
         recur_lock(lock_);
         request_append_entries();
     }
-    return resp;
 }
 
-ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
+ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
+                                          const req_ext_params& ext_params)
+{
     ptr<resp_msg> resp = nullptr;
     ulong last_idx = 0;
     ptr<buffer> ret_value = nullptr;
@@ -125,6 +135,14 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         return resp;
     }
 
+    if (ext_params.expected_term_) {
+        // If expected term is given, check the current term.
+        if (ext_params.expected_term_ != cur_term) {
+            resp->set_result_code( cmd_result_code::TERM_MISMATCH );
+            return resp;
+        }
+    }
+
     std::vector< ptr<log_entry> >& entries = req.log_entries();
 
     size_t num_entries = entries.size();
@@ -132,18 +150,32 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
     for (size_t i = 0; i < num_entries; ++i) {
 
         auto & entry = entries.at(i);
+        ulong next_slot = 0;
 
+        try
         {
             cb_func::Param param(id_, leader_);
             param.ctx = &entry;
             CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLog, &param);
             if (rc == CbReturnCode::ReturnNull) return nullptr;
+
+            // force the log's term to current term
+            entry->set_term(cur_term);
+
+            next_slot = store_log_entry(entry);
         }
+        catch (const std::exception & e)
+        {
+            p_er("failed to append entry: %s\n", e.what());
+            try_update_precommit_index(last_idx);
 
-        // force the log's term to current term
-        entry->set_term(cur_term);
+            cb_func::Param param(id_, leader_);
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::AppendLogFailed, &param);
+            if (rc == CbReturnCode::ReturnNull) return nullptr;
 
-        ulong next_slot = store_log_entry(entry);
+            throw;
+        }
 
         p_db("append at log_idx %zu\n", next_slot);
         last_idx = next_slot;
@@ -152,6 +184,13 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req) {
         buf->pos(0);
         ret_value = state_machine_->pre_commit_ext
                     ( state_machine::ext_op_params( last_idx, buf ) );
+
+        if (ext_params.after_precommit_) {
+            req_ext_cb_params cb_params;
+            cb_params.log_idx = last_idx;
+            cb_params.log_term = cur_term;
+            ext_params.after_precommit_(cb_params);
+        }
     }
     if (num_entries) {
         log_store_->end_of_append_batch(last_idx - num_entries, num_entries);
@@ -238,7 +277,12 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
         idx = elem->idx_;
         elapsed_us = elem->timer_.get_us();
         ret_value = elem->ret_value_;
-        commit_ret_elems_.erase(elem->idx_);
+        elem->callback_invoked_ = true;
+        if (elem->result_code_ != cmd_result_code::TIMEOUT) {
+            commit_ret_elems_.erase(elem->idx_);
+        } else {
+            p_dv("Client timeout leave commit thread to remove commit_ret_elem %zu", idx);
+        }
         p_dv("remaining elems in waiting queue: %zu\n", commit_ret_elems_.size());
     }
 
@@ -319,8 +363,7 @@ void raft_server::drop_all_pending_commit_elems() {
         ptr<buffer> result = nullptr;
         ptr<std::exception> err =
             cs_new<std::runtime_error>("Request cancelled.");
-        ee->async_result_->set_result_code(cmd_result_code::CANCELLED);
-        ee->async_result_->set_result(result, err);
+        ee->async_result_->set_result(result, err, cmd_result_code::CANCELLED);
     }
 }
 

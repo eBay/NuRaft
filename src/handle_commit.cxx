@@ -327,7 +327,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
         /// condition) we have to add it here. Otherwise we don't need to add
         /// anything into commit_ret_elems_, because nobody will wait for the
         /// responses of the intermediate requests from requests batch.
-        bool need_to_wait_commit_ret = sm_idx == pc_idx;
+        bool need_to_check_commit_ret = sm_idx == pc_idx;
 
         auto entry = commit_ret_elems_.find(sm_idx);
         if (entry != commit_ret_elems_.end()) {
@@ -335,14 +335,20 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             if (elem->idx_ == sm_idx) {
                 elem->result_code_ = cmd_result_code::OK;
                 elem->ret_value_ = ret_value;
-                need_to_wait_commit_ret = false;
+                need_to_check_commit_ret = false;
                 p_dv("notify cb %ld %p", sm_idx, &elem->awaiter_);
 
                 switch (ctx_->get_params()->return_method_) {
                 case raft_params::blocking:
                 default:
-                    // Blocking mode: invoke waiting function.
-                    elem->awaiter_.invoke();
+                    // Blocking mode:
+                    if (elem->callback_invoked_) {
+                        // If elem callback invoked, remove it
+                        commit_ret_elems_.erase(entry);
+                    } else {
+                        // or notify client that request done
+                        elem->awaiter_.invoke();
+                    }
                     break;
 
                 case raft_params::async_handler:
@@ -354,7 +360,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             }
         }
 
-        if (need_to_wait_commit_ret && !initial_commit_exec) {
+        if (need_to_check_commit_ret && !initial_commit_exec) {
             // If not found, commit thread is invoked earlier than user thread.
             // Create one here.
             ptr<commit_ret_elem> elem = cs_new<commit_ret_elem>();
@@ -387,8 +393,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
         ptr<commit_ret_elem>& elem = entry;
         if (elem->async_result_) {
             ptr<std::exception> err = nullptr;
-            elem->async_result_->set_result_code(cmd_result_code::OK);
-            elem->async_result_->set_result( elem->ret_value_, err );
+            elem->async_result_->set_result( elem->ret_value_, err, cmd_result_code::OK );
             elem->ret_value_.reset();
             elem->async_result_.reset();
         }
@@ -460,30 +465,43 @@ bool raft_server::apply_config_log_entry(ptr<log_entry>& le,
     return true;
 }
 
-void raft_server::snapshot_and_compact(ulong committed_idx) {
+bool raft_server::create_snapshot() {
+    uint64_t committed_idx = sm_commit_index_;
+    p_in("manually create a snapshot on %lu", committed_idx);
+    return snapshot_and_compact(committed_idx, true);
+}
+
+bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation) {
     ptr<raft_params> params = ctx_->get_params();
-    if ( params->snapshot_distance_ == 0 ||
-         ( committed_idx - log_store_->start_index() + 1 ) <
-               (ulong)params->snapshot_distance_ ) {
-        // snapshot is disabled or the log store is not long enough
-        return;
-    }
+
     // get the latest configuration info
     ptr<cluster_config> conf = get_config();
     if ( conf->get_prev_log_idx() >= log_store_->next_slot() ) {
-        // The latest config and previous config is not in log_store, so skip the snapshot creation
-        return;
+        // The latest config and previous config is not in log_store,
+        // so skip the snapshot creation.
+        return false;
     }
-    if ( !state_machine_->chk_create_snapshot() ) {
-        // User-defined state machine doesn't want to create a snapshot.
-        return;
+
+    if (!forced_creation) {
+        // If `forced_creation == true`, ignore below conditions.
+        if ( params->snapshot_distance_ == 0 ||
+             ( committed_idx - log_store_->start_index() + 1 ) <
+                   (ulong)params->snapshot_distance_ ) {
+            // snapshot is disabled or the log store is not long enough
+            return false;
+        }
+        if ( !state_machine_->chk_create_snapshot() ) {
+            // User-defined state machine doesn't want to create a snapshot.
+            return false;
+        }
     }
 
     bool snapshot_in_action = false;
  try {
     bool f = false;
     ptr<snapshot> local_snp = get_last_snapshot();
-    if ( ( !local_snp ||
+    if ( ( forced_creation ||
+           !local_snp ||
            ( committed_idx - local_snp->get_last_log_idx() ) >=
                  (ulong)params->snapshot_distance_ ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
@@ -508,7 +526,7 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
                      "this is a system error, exiting");
                 ctx_->state_mgr_->system_exit(raft_err::N6_no_snapshot_found);
                 ::exit(-1);
-                return;
+                return false;
                 // LCOV_EXCL_STOP
             }
             conf = local_snp->get_last_config();
@@ -545,7 +563,9 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
               committed_idx, log_term_to_compact, tt.get_us() );
 
         snapshot_in_action = false;
+        return true;
     }
+    return false;
 
  } catch (...) {
     p_er( "failed to compact logs at index %llu due to errors",
@@ -554,6 +574,7 @@ void raft_server::snapshot_and_compact(ulong committed_idx) {
         bool val = true;
         snp_in_progress_.compare_exchange_strong(val, false);
     }
+    return false;
  }
 }
 
@@ -574,7 +595,9 @@ void raft_server::on_snapshot_completed
 
     {
         recur_lock(lock_);
-        p_db("snapshot created, compact the log store");
+        p_in("snapshot idx %lu log_term %lu created, "
+             "compact the log store if needed",
+             s->get_last_log_idx(), s->get_last_log_term());
 
         ptr<snapshot> new_snp = state_machine_->last_snapshot();
         set_last_snapshot(new_snp);
@@ -583,7 +606,7 @@ void raft_server::on_snapshot_completed
                  (ulong)params->reserved_log_items_ ) {
             ulong compact_upto = new_snp->get_last_log_idx() -
                                      (ulong)params->reserved_log_items_;
-            p_db("log_store_ compact upto %ld", compact_upto);
+            p_in("log_store_ compact upto %lu", compact_upto);
             log_store_->compact(compact_upto);
         }
     }

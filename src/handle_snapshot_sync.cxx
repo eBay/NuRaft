@@ -460,7 +460,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
     bool is_last_obj = req.is_done();
     if (is_first_obj || is_last_obj) {
         // INFO level: log only first and last object.
-        p_in("save snapshot (idx %zu, term %zu) offset 0x%zx, %s %s\n",
+        p_in("save snapshot (idx %lu, term %lu) offset 0x%lx, %s %s\n",
              req.get_snapshot().get_last_log_idx(),
              req.get_snapshot().get_last_log_term(),
              req.get_offset(),
@@ -468,7 +468,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
              (is_last_obj)  ? "last obj"  : "" );
     } else {
         // above DEBUG: log all.
-        p_db("save snapshot (idx %zu, term %zu) offset 0x%zx, %s %s\n",
+        p_db("save snapshot (idx %lu, term %lu) offset 0x%lx, %s %s\n",
              req.get_snapshot().get_last_log_idx(),
              req.get_snapshot().get_last_log_term(),
              req.get_offset(),
