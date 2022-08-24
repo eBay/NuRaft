@@ -121,11 +121,9 @@ struct timer_helper {
 
     static uint64_t get_timeofday_us() {
         namespace sc = std::chrono;
-        sc::system_clock::duration d = sc::system_clock::now().time_since_epoch();
-        sc::seconds s = sc::duration_cast<sc::seconds>(d);
-        uint64_t ret = s.count() * 1000000UL;
-        ret += sc::duration_cast<sc::microseconds>(d - s).count();
-        return ret;
+        sc::system_clock::duration const d = sc::system_clock::now().time_since_epoch();
+        uint64_t const s = sc::duration_cast<sc::microseconds>(d).count();
+        return s;
     }
 
     std::chrono::time_point<std::chrono::system_clock> t_created_;
