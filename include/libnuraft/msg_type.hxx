@@ -105,6 +105,8 @@ static std::string ATTR_UNUSED msg_type_to_string(msg_type type)
     case reconnect_response:            return "reconnect_response";
     case custom_notification_request:   return "custom_notification_request";
     case custom_notification_response:  return "custom_notification_response";
+    case leader_status_request:   return "leader_status_request";
+    case leader_status_response:  return "leader_status_response";
     default:
         return "unknown (" + std::to_string(static_cast<int>(type)) + ")";
     }
