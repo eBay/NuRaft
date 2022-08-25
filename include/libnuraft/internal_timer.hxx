@@ -21,8 +21,6 @@ limitations under the License.
 #include <mutex>
 #include <thread>
 
-#include <sys/time.h>
-
 namespace nuraft {
 
 struct timer_helper {
@@ -122,11 +120,10 @@ struct timer_helper {
     }
 
     static uint64_t get_timeofday_us() {
-        struct timeval tv;
-        gettimeofday(&tv, nullptr);
-        uint64_t ret = tv.tv_sec * 1000000UL;
-        ret += tv.tv_usec;
-        return ret;
+        namespace sc = std::chrono;
+        sc::system_clock::duration const d = sc::system_clock::now().time_since_epoch();
+        uint64_t const s = sc::duration_cast<sc::microseconds>(d).count();
+        return s;
     }
 
     std::chrono::time_point<std::chrono::system_clock> t_created_;
