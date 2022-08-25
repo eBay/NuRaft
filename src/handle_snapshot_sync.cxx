@@ -513,6 +513,19 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
     }
 
     if (is_last_obj) {
+        // let's pause committing in backgroud so it doesn't access logs
+        // while they are being compacted
+        pause_state_machine_exeuction();
+        while (sm_commit_exec_in_progress_)
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+        struct ExecAutoResume {
+            explicit ExecAutoResume(std::function<void()> func) : clean_func_(func) {}
+            ~ExecAutoResume() { clean_func_(); }
+            std::function<void()> clean_func_;
+        } exec_auto_resume([this](){ resume_state_machine_execution(); });
+
+
         receiving_snapshot_ = false;
 
         // Only follower will run this piece of code, but let's check it again
