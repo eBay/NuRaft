@@ -74,6 +74,7 @@ struct raft_params {
         , log_sync_stop_gap_(99999)
         , snapshot_distance_(0)
         , snapshot_block_size_(0)
+        , enable_randomized_snapshot_creation_(false)
         , max_append_size_(100)
         , reserved_log_items_(100000)
         , client_req_timeout_(3000)
@@ -191,6 +192,18 @@ struct raft_params {
      */
     raft_params& with_snapshot_enabled(int32 commit_distance) {
         snapshot_distance_ = commit_distance;
+        return *this;
+    }
+
+    /**
+     * Enable randomized snapshot creation which will avoid cluster members
+     * snapshot creation simultaneously.
+     *
+     * @param enabled
+     * @return self
+     */
+    raft_params& with_randomized_snapshot_creation_enabled(bool enabled) {
+        enable_randomized_snapshot_creation_ = enabled;
         return *this;
     }
 
@@ -388,6 +401,13 @@ public:
      * (Deprecated).
      */
     int32 snapshot_block_size_;
+
+    /**
+     * Enable randomized snapshot creation which will avoid cluster members
+     * snapshot creation simultaneously. This is achieved by randomized first
+     * snapshot creation log distance.
+     */
+    bool enable_randomized_snapshot_creation_;
 
     /**
      * Max number of logs that can be packed in a RPC

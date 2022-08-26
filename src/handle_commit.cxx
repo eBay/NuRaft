@@ -34,6 +34,7 @@ limitations under the License.
 #include <cassert>
 #include <list>
 #include <sstream>
+#include <random>
 
 namespace nuraft {
 
@@ -469,12 +470,30 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
 
     if (!forced_creation) {
         // If `forced_creation == true`, ignore below conditions.
+        auto snapshot_distance = (ulong)params->snapshot_distance_;
+
+        // Randomized snapshot distance for the first creation.
+        if ( params->snapshot_distance_ == 0
+            && !last_snapshot_
+            && params->enable_randomized_snapshot_creation_ ) {
+            uint seed = (uint)( std::chrono::system_clock::now()
+                                   .time_since_epoch().count() * id_ );
+            std::default_random_engine engine(seed);
+            std::uniform_int_distribution<int32>
+                distribution( 0, params->snapshot_distance_ / 2 );
+
+            snapshot_distance = params->snapshot_distance_ / 2
+                                + distribution(engine);
+
+            p_in("First snapshot creation log distance %llu", snapshot_distance);
+        }
+
         if ( params->snapshot_distance_ == 0 ||
-             ( committed_idx - log_store_->start_index() + 1 ) <
-                   (ulong)params->snapshot_distance_ ) {
+             ( committed_idx - log_store_->start_index() + 1 ) < snapshot_distance ) {
             // snapshot is disabled or the log store is not long enough
             return false;
         }
+
         if ( !state_machine_->chk_create_snapshot() ) {
             // User-defined state machine doesn't want to create a snapshot.
             return false;

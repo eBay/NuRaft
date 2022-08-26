@@ -354,6 +354,7 @@ void raft_server::apply_and_log_current_params() {
           "timeout %d - %d, heartbeat %d, "
           "leadership expiry %d, "
           "max batch %d, backoff %d, snapshot distance %d, "
+          "enable randomized snapshot creation %s, "
           "log sync stop gap %d, "
           "reserved logs %d, client timeout %d, "
           "auto forwarding %s, API call type %s, "
@@ -371,6 +372,7 @@ void raft_server::apply_and_log_current_params() {
           params->max_append_size_,
           params->rpc_failure_backoff_,
           params->snapshot_distance_,
+          params->enable_randomized_snapshot_creation_ ? "YES" : "NO",
           params->log_sync_stop_gap_,
           params->reserved_log_items_,
           params->client_req_timeout_,
