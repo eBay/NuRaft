@@ -873,7 +873,7 @@ void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
 }
 
 void raft_server::resume_state_machine_execution() {
-    p_in( "pause state machine execution, previously %s, state machine %s",
+    p_in( "resume state machine execution, previously %s, state machine %s",
           sm_commit_paused_ ? "PAUSED" : "ACTIVE",
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
     sm_commit_paused_ = false;
