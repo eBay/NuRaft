@@ -473,7 +473,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         auto snapshot_distance = (ulong)params->snapshot_distance_;
 
         // Randomized snapshot distance for the first creation.
-        if ( params->snapshot_distance_ == 0
+        if ( params->snapshot_distance_ != 0
             && !last_snapshot_
             && params->enable_randomized_snapshot_creation_ ) {
             uint seed = (uint)( std::chrono::system_clock::now()
