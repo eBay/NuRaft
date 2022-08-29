@@ -86,6 +86,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , state_machine_(ctx->state_machine_)
     , receiving_snapshot_(false)
     , et_cnt_receiving_snapshot_(0)
+    , first_snapshot_distance_(0)
     , l_(ctx->logger_)
     , stale_config_(nullptr)
     , config_(ctx->state_mgr_->load_config())
@@ -116,6 +117,21 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     ptr<raft_params> params = ctx_->get_params();
     if (params->stale_log_gap_ < params->fresh_log_gap_) {
         params->stale_log_gap_ = params->fresh_log_gap_;
+    }
+    if (params->enable_randomized_snapshot_creation_ && !get_last_snapshot()) {
+        uint64_t seed = timer_helper::get_timeofday_us() * id_;
+
+        // Flip the integer.
+        auto* first = reinterpret_cast<uint8_t*>(&seed);
+        auto* last = reinterpret_cast<uint8_t*>(&seed) + sizeof(seed);
+        while ((first != last) && (first != -- last)) std::swap(*first++, *last);
+
+        std::default_random_engine engine(seed);
+        std::uniform_int_distribution<int32>
+            distribution( params->snapshot_distance_ / 2, params->snapshot_distance_ );
+
+        first_snapshot_distance_ = distribution(engine);
+        p_in("First snapshot creation log distance %llu", first_snapshot_distance_);
     }
 
     apply_and_log_current_params();

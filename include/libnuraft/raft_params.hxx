@@ -196,8 +196,8 @@ struct raft_params {
     }
 
     /**
-     * Enable randomized snapshot creation which will avoid cluster members
-     * snapshot creation simultaneously.
+     * Enable randomized snapshot creation which will avoid simultaneous
+     * snapshot creation among cluster members.
      *
      * @param enabled
      * @return self
@@ -403,9 +403,11 @@ public:
     int32 snapshot_block_size_;
 
     /**
-     * Enable randomized snapshot creation which will avoid cluster members
-     * snapshot creation simultaneously. This is achieved by randomized first
-     * snapshot creation log distance.
+     * Enable randomized snapshot creation which will avoid
+     * simultaneous snapshot creation among cluster members.
+     * It is achieved by randomizing the distance of the
+     * first snapshot. From the second snapshot, the fixed
+     * distance given by snapshot_distance_ will be used.
      */
     bool enable_randomized_snapshot_creation_;
 
