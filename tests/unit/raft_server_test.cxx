@@ -2027,6 +2027,92 @@ int snapshot_manual_creation_test() {
     return 0;
 }
 
+int snapshot_randomized_creation_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    const size_t NUM = 50;
+
+    raft_params params;
+    params.with_randomized_snapshot_creation_enabled(true);
+    params.with_election_timeout_lower(0);
+    params.with_election_timeout_upper(10000);
+    params.with_hb_interval(5000);
+    params.with_client_req_timeout(1000000);
+    params.with_reserved_log_items(0);
+    params.with_snapshot_enabled(NUM);
+    params.with_log_sync_stopping_gap(1);
+
+    CHK_Z( launch_servers( pkgs, &params ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Append a message using separate thread.
+    ExecArgs exec_args(&s1);
+    TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    // NOTE: Send it to S2, S3
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // Remember the current commit index.
+
+    uint64_t snp_last_log_idx1 = s1.getTestSm()->last_snapshot()->get_last_log_idx();
+    uint64_t snp_last_log_idx2 = s2.getTestSm()->last_snapshot()->get_last_log_idx();
+    uint64_t snp_last_log_idx3 = s3.getTestSm()->last_snapshot()->get_last_log_idx();
+
+    CHK_TRUE( !(snp_last_log_idx1 == snp_last_log_idx2 && snp_last_log_idx1 == snp_last_log_idx3));
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    fake_executer_killer(&exec_args);
+    hh.join();
+    CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int join_empty_node_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -3011,6 +3097,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "snapshot manual creation test",
                snapshot_manual_creation_test );
+
+    ts.doTest( "snapshot randomized creation test",
+               snapshot_randomized_creation_test );
 
     ts.doTest( "join empty node test",
                join_empty_node_test );
