@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "internal_timer.hxx"
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
@@ -88,7 +89,8 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
     ptr<log_entry> entry( cs_new<log_entry>
                           ( state_->get_term(),
                             new_conf_buf,
-                            log_val_type::conf ) );
+                            log_val_type::conf,
+                            timer_helper::get_timeofday_us() ) );
 
     config_changing_ = true;
     uncommitted_config_ = cloned_config;

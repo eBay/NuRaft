@@ -47,10 +47,14 @@ inmem_log_store::~inmem_log_store() {
 }
 
 ptr<log_entry> inmem_log_store::make_clone(const ptr<log_entry>& entry) {
+    // NOTE:
+    //   Timestamp is used only when `replicate_log_timestamp_` option is on.
+    //   Otherwise, log store does not need to store or load it.
     ptr<log_entry> clone = cs_new<log_entry>
                            ( entry->get_term(),
                              buffer::clone( entry->get_buf() ),
-                             entry->get_val_type() );
+                             entry->get_val_type(),
+                             entry->get_timestamp() );
     return clone;
 }
 
