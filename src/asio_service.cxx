@@ -376,7 +376,7 @@ public:
                 return;
             }
 
-            if (data_size > 0x20000000) {
+            if (data_size > 0x40000000) {
                 p_wn("large data size in the header %d", data_size);
             }
 
