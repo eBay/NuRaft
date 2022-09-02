@@ -2090,13 +2090,9 @@ int snapshot_randomized_creation_test() {
     s1.fNet->execReqResp(); // commit.
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
 
-    // Remember the current commit index.
-
-    uint64_t snp_last_log_idx1 = s1.getTestSm()->last_snapshot()->get_last_log_idx();
-    uint64_t snp_last_log_idx2 = s2.getTestSm()->last_snapshot()->get_last_log_idx();
-    uint64_t snp_last_log_idx3 = s3.getTestSm()->last_snapshot()->get_last_log_idx();
-
-    CHK_TRUE( !(snp_last_log_idx1 == snp_last_log_idx2 && snp_last_log_idx1 == snp_last_log_idx3));
+    CHK_NEQ(NUM, s1.getTestSm()->last_snapshot()->get_last_log_idx())
+    CHK_NEQ(NUM, s2.getTestSm()->last_snapshot()->get_last_log_idx())
+    CHK_NEQ(NUM, s3.getTestSm()->last_snapshot()->get_last_log_idx())
 
     print_stats(pkgs);
 
