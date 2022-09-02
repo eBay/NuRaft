@@ -34,6 +34,7 @@ limitations under the License.
 #include <cassert>
 #include <list>
 #include <sstream>
+#include <random>
 
 namespace nuraft {
 
@@ -467,14 +468,24 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         return false;
     }
 
+    auto snapshot_distance = (ulong)params->snapshot_distance_;
+    // Randomized snapshot distance for the first creation.
+    if ( params->enable_randomized_snapshot_creation_ &&
+        !snp_in_progress_.load(std::memory_order_relaxed) &&
+        !get_last_snapshot() &&
+        params->snapshot_distance_ != 0 ) {
+
+        snapshot_distance = first_snapshot_distance_;
+    }
+
     if (!forced_creation) {
         // If `forced_creation == true`, ignore below conditions.
         if ( params->snapshot_distance_ == 0 ||
-             ( committed_idx - log_store_->start_index() + 1 ) <
-                   (ulong)params->snapshot_distance_ ) {
+             ( committed_idx - log_store_->start_index() + 1 ) < snapshot_distance ) {
             // snapshot is disabled or the log store is not long enough
             return false;
         }
+
         if ( !state_machine_->chk_create_snapshot() ) {
             // User-defined state machine doesn't want to create a snapshot.
             return false;
@@ -487,8 +498,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     ptr<snapshot> local_snp = get_last_snapshot();
     if ( ( forced_creation ||
            !local_snp ||
-           ( committed_idx - local_snp->get_last_log_idx() ) >=
-                 (ulong)params->snapshot_distance_ ) &&
+           ( committed_idx - local_snp->get_last_log_idx() ) >= snapshot_distance ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
     {
         snapshot_in_action = true;

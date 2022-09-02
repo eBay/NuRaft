@@ -1263,6 +1263,12 @@ protected:
 
     /**
      * (Read-only)
+     * The first snapshot distance.
+     */
+    uint32_t first_snapshot_distance_;
+
+    /**
+     * (Read-only)
      * Logger instance.
      */
     ptr<logger> l_;
