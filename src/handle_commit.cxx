@@ -480,10 +480,9 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     auto snapshot_distance = (ulong)params->snapshot_distance_;
     // Randomized snapshot distance for the first creation.
     if ( params->enable_randomized_snapshot_creation_ &&
-        !snp_in_progress_.load(std::memory_order_relaxed) &&
-        !get_last_snapshot() &&
-        params->snapshot_distance_ != 0 ) {
-
+         !snp_in_progress_.load(std::memory_order_relaxed) &&
+         !get_last_snapshot() &&
+         params->snapshot_distance_ != 0 ) {
         snapshot_distance = first_snapshot_distance_;
     }
 
