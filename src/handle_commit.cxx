@@ -216,9 +216,18 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         }
 
         ulong index_to_commit = sm_commit_index_ + 1;
-        ptr<log_entry> le = log_store_->entry_at(index_to_commit);
-        p_tr( "commit upto %llu, curruent idx %llu\n",
+        p_tr( "commit upto %llu, current idx %llu\n",
               quick_commit_index_.load(), index_to_commit );
+
+        ptr<log_entry> le = log_store_->entry_at(index_to_commit);
+        if (!le)
+        {
+            // LCOV_EXCL_START
+            p_ft( "failed to get log entry with idx %llu", index_to_commit );
+            ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
+            ::exit(-1);
+            // LCOV_EXCL_STOP
+        }
 
         if (le->get_term() == 0) {
             // LCOV_EXCL_START
@@ -868,7 +877,7 @@ void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
 }
 
 void raft_server::resume_state_machine_execution() {
-    p_in( "pause state machine execution, previously %s, state machine %s",
+    p_in( "resume state machine execution, previously %s, state machine %s",
           sm_commit_paused_ ? "PAUSED" : "ACTIVE",
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
     sm_commit_paused_ = false;
