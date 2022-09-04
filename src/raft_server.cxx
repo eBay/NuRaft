@@ -131,8 +131,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
         std::default_random_engine engine(seed);
         std::uniform_int_distribution<int32>
             distribution( params->snapshot_distance_ / 2,
-                         std::max( params->snapshot_distance_ / 2,
-                                  params->snapshot_distance_ - 1 ));
+                          std::max( params->snapshot_distance_ / 2,
+                                    params->snapshot_distance_ - 1 ) );
 
         first_snapshot_distance_ = distribution(engine);
         p_in("First snapshot creation log distance %llu", first_snapshot_distance_);
