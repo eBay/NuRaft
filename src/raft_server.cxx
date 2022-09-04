@@ -71,6 +71,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , write_paused_(false)
     , sm_commit_paused_(false)
     , sm_commit_exec_in_progress_(false)
+    , ea_sm_commit_exec_in_progress_(new EventAwaiter())
     , next_leader_candidate_(-1)
     , im_learner_(false)
     , serving_req_(false)
@@ -332,6 +333,7 @@ raft_server::~raft_server() {
     ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10));
     cancel_schedulers();
     delete bg_append_ea_;
+    delete ea_sm_commit_exec_in_progress_;
     delete ea_follower_log_append_;
 }
 

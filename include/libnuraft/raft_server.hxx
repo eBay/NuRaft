@@ -718,6 +718,16 @@ public:
     bool is_state_machine_execution_paused() const;
 
     /**
+     * Block the current thread and wake it up when the state machine
+     * execution is paused.
+     *
+     * @param timeout_ms If non-zero, wake up after the given amount of time
+     *                   even though the state machine is not paused yet.
+     * @return `true` if the state machine is paused.
+     */
+    bool wait_for_state_machine_pause(size_t timeout_ms);
+
+    /**
      * (Experimental)
      * This API is used when `raft_params::parallel_log_appending_` is set.
      * Everytime an asynchronous log appending job is done, users should call
@@ -1120,6 +1130,11 @@ protected:
      * If `true`, the background thread is doing state machine execution.
      */
     std::atomic<bool> sm_commit_exec_in_progress_;
+
+    /**
+     * Event awaiter notified when `sm_commit_exec_in_progress_` becomes `false`.
+     */
+    EventAwaiter* ea_sm_commit_exec_in_progress_;
 
     /**
      * Server ID indicates the candidate for the next leader,

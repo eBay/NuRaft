@@ -176,7 +176,10 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         ExecCommitAutoCleaner(std::function<void()> func) : clean_func_(func) {}
         ~ExecCommitAutoCleaner() { clean_func_(); }
         std::function<void()> clean_func_;
-    } exec_auto_cleaner([this](){ sm_commit_exec_in_progress_ = false; });
+    } exec_auto_cleaner([this](){
+        sm_commit_exec_in_progress_ = false;
+        ea_sm_commit_exec_in_progress_->invoke();
+    });
 
     p_db( "commit upto %ld, curruent idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
@@ -866,10 +869,9 @@ void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
     if (!timeout_ms) {
         return;
     }
-    timer_helper timer(timeout_ms * 1000);
-    while (sm_commit_exec_in_progress_ && !timer.timeout()) {
-        timer_helper::sleep_ms(10);
-    }
+
+    timer_helper timer;
+    wait_for_state_machine_pause(timeout_ms);
     p_in( "waited %zu ms, state machine %s",
           timer.get_ms(),
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
@@ -894,6 +896,18 @@ void raft_server::resume_state_machine_execution() {
 
 bool raft_server::is_state_machine_execution_paused() const {
     if (sm_commit_paused_ && !sm_commit_exec_in_progress_) {
+        return true;
+    }
+    return false;
+}
+
+bool raft_server::wait_for_state_machine_pause(size_t timeout_ms) {
+    ea_sm_commit_exec_in_progress_->reset();
+    if (!sm_commit_exec_in_progress_) {
+        return true;
+    }
+    ea_sm_commit_exec_in_progress_->wait_ms(timeout_ms);
+    if (!sm_commit_exec_in_progress_) {
         return true;
     }
     return false;
