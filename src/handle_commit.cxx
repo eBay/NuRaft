@@ -146,6 +146,13 @@ void raft_server::commit_in_bg() {
             //     2) log store's latest log index.
         }
 
+        if (stopping_) {
+            { std::unique_lock<std::mutex> lock2(ready_to_stop_cv_lock_);
+              ready_to_stop_cv_.notify_all(); }
+            commit_bg_stopped_ = true;
+            return;
+        }
+
         commit_in_bg_exec(0, is_log_store_commit_exec);
 
      } catch (std::exception& err) {
@@ -215,6 +222,9 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms, bool initial_commit_exec)
             break;
         }
         first_loop_exec = false;
+
+        if (stopping_)
+            return false;
 
         // Break the loop if state machine commit is paused.
         if (sm_commit_paused_) {

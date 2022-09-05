@@ -367,13 +367,17 @@ public:
 
             header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
             int32 data_size = header_->get_int();
-            // Up to 1GB.
-            if (data_size < 0 || data_size > 0x40000000) {
+            
+            if (data_size < 0) {
                 p_er("bad log data size in the header %d, stop "
                      "this session to protect further corruption",
                      data_size);
                 this->stop();
                 return;
+            }
+            // Warning for 1GB+
+            if (data_size > 0x40000000) {
+                p_wn("large data size in the header %d", data_size);
             }
 
             if (data_size == 0) {
