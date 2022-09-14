@@ -38,7 +38,11 @@ limitations under the License.
 #include "strfmt.hxx"
 #include "tracer.hxx"
 
-#include "asio.hpp"
+#ifdef USE_BOOST_ASIO
+#include <boost/asio.hpp>
+#else
+#include <asio.hpp>
+#endif
 
 #include <atomic>
 #include <ctime>
@@ -62,7 +66,11 @@ limitations under the License.
     using ssl_socket = mock_ssl_socket;
     using ssl_context = mock_ssl_context;
 #else
-    #include "asio/ssl.hpp"
+#ifdef USE_BOOST_ASIO
+    #include <boost/asio/ssl.hpp>
+#else
+    #include <asio/ssl.hpp>
+#endif
     using ssl_socket = asio::ssl::stream<asio::ip::tcp::socket&>;
     using ssl_context = asio::ssl::context;
 #endif
