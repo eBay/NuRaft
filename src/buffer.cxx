@@ -261,7 +261,7 @@ void buffer::put(int32 val) {
 
 void buffer::put(ulong val) {
     if (size() - pos() < sz_ulong) {
-        throw std::overflow_error("insufficient buffer to store int32");
+        throw std::overflow_error("insufficient buffer to store uint64");
     }
 
     byte* d = data();
