@@ -573,9 +573,9 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     }
     return false;
 
- } catch (...) {
-    p_er( "failed to compact logs at index %llu due to errors",
-          committed_idx );
+ } catch (std::exception &e) {
+    p_er( "failed to compact logs at index %llu due to errors %s",
+          committed_idx, e.what());
     if (snapshot_in_action) {
         bool val = true;
         snp_in_progress_.compare_exchange_strong(val, false);
