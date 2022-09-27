@@ -463,10 +463,14 @@ bool raft_server::apply_config_log_entry(ptr<log_entry>& le,
     return true;
 }
 
-bool raft_server::create_snapshot() {
+ulong raft_server::create_snapshot() {
     uint64_t committed_idx = sm_commit_index_;
     p_in("manually create a snapshot on %lu", committed_idx);
-    return snapshot_and_compact(committed_idx, true);
+    return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
+}
+
+bool raft_server::snapshot_created(ulong committed_idx) {
+    return get_last_snapshot()->get_last_log_idx() >= committed_idx;
 }
 
 bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation) {

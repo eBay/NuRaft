@@ -743,9 +743,16 @@ public:
      * Manually create a snapshot based on the latest committed
      * log index of the state machine.
      *
-     * @return `true` on success.
+     * @return `true` on success or on scheduled for asynchronously creation.
      */
-    bool create_snapshot();
+    ulong create_snapshot();
+
+    /**
+     * Check whether a snapshot is created
+     * @param log_idx
+     * @return true if last_log_idx_ of last snapshot or equal with or bigger than log_idx
+     */
+    bool snapshot_created(ulong log_idx);
 
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
