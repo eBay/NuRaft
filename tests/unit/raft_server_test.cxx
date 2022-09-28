@@ -1990,8 +1990,7 @@ int snapshot_manual_creation_test() {
     // Create a manual snapshot.
     ulong log_idx = s1.raftServer->create_snapshot();
     CHK_EQ( committed_index, log_idx );
-    CHK_EQ( committed_index, s1.getTestSm()->last_snapshot()->get_last_log_idx() );
-    CHK_OK( s1.raftServer->snapshot_created(log_idx) )
+    CHK_EQ( log_idx, s1.raftServer->get_last_snapshot_idx() );
 
     // Make req to S3 failed.
     s1.fNet->makeReqFail("S3");

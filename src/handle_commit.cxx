@@ -469,8 +469,9 @@ ulong raft_server::create_snapshot() {
     return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
 }
 
-bool raft_server::snapshot_created(ulong committed_idx) {
-    return get_last_snapshot()->get_last_log_idx() >= committed_idx;
+ulong raft_server::get_last_snapshot_idx() const {
+    std::lock_guard<std::mutex> l(last_snapshot_lock_);
+    return last_snapshot_ ? last_snapshot_->get_last_log_idx(): 0;
 }
 
 bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation) {
