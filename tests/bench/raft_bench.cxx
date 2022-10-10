@@ -202,7 +202,7 @@ int init_raft(server_stuff& stuff) {
     params.return_method_ = raft_params::blocking;
     context* ctx = new context( stuff.smgr_,
                                 stuff.sm_,
-                                stuff.asio_listener_,
+                                {stuff.asio_listener_},
                                 stuff.raft_logger_,
                                 rpc_cli_factory,
                                 scheduler,

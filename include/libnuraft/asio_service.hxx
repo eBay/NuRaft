@@ -58,6 +58,11 @@ public:
                             __override__;
 
     ptr<rpc_listener> create_rpc_listener(ushort listening_port,
+                                          ptr<logger>& l,
+                                          bool _enable_ipv6 = true);
+
+    ptr<rpc_listener> create_rpc_listener(const std::string& host,
+                                          ushort listening_port,
                                           ptr<logger>& l);
 
     void stop();

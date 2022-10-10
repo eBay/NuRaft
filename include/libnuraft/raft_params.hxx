@@ -224,7 +224,7 @@ struct raft_params {
      * @param number_of_logs Number of log items.
      * @return self
      */
-    raft_params& with_reserved_log_items(int number_of_logs) {
+    raft_params& with_reserved_log_items(int32 number_of_logs) {
         reserved_log_items_ = number_of_logs;
         return *this;
     }

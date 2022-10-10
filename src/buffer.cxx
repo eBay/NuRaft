@@ -24,52 +24,20 @@ limitations under the License.
 #include <cstring>
 #include <iostream>
 
-#define __is_big_block(p)       ( 0x80000000 & *( (uint*)(p) ) )
+#define __init_block(ptr, len)  ( (ulong*)(ptr) )[0] = (ulong)len;    \
+                                ( (ulong*)(ptr) )[1] = 0
 
-#define __init_block(ptr, len, type)                                \
-                                ( (type*)(ptr) )[0] = (type)len;    \
-                                ( (type*)(ptr) )[1] = 0
+#define __size_of_block(p)      ( *( (ulong*)(p) ))
 
-#define __init_s_block(p, l)    __init_block(p, l, ushort)
+#define __pos_of_block(p)       ( (ulong*)(p) )[1]
 
-#define __init_b_block(p, l)    __init_block(p, l, uint);   \
-                                *( (uint*)(p) ) |= 0x80000000
+#define __mv_fw_block(ptr, delta)  ( (ulong*)(ptr) )[1] += (delta)
 
-#define __pos_of_s_block(p)     ( (ushort*)(p) )[1]
+#define __set_block_pos(ptr, pos)  ( (ulong*)(ptr) )[1] = (pos)
 
-#define __pos_of_b_block(p)     ( (uint*)(p) )[1]
+#define __data_of_block(p)   (byte*)( ( (byte*)( ((ulong*)(p)) + 2 ) ) + __pos_of_block(p) )
 
-#define __size_of_block(p)      ( __is_big_block(p) )               \
-                                ? ( *( (uint*)(p) ) ^ 0x80000000 )  \
-                                : *( (ushort*)(p) )
-
-#define __pos_of_block(p)       ( __is_big_block(p) )   \
-                                ? __pos_of_b_block(p)   \
-                                : __pos_of_s_block(p)
-
-#define __mv_fw_block(ptr, delta)                   \
-    if ( __is_big_block(ptr) ) {                    \
-        ( (uint*)(ptr) )[1] += (delta);             \
-    } else {                                        \
-        ( (ushort*)(ptr) )[1] += (ushort)(delta);   \
-    }
-
-#define __set_block_pos(ptr, pos)               \
-    if( __is_big_block(ptr) ){                  \
-        ( (uint*)(ptr) )[1] = (pos);            \
-    } else {                                    \
-        ( (ushort*)(ptr) )[1] = (ushort)(pos);  \
-    }
-
-#define __data_of_block(p)                                                  \
-    ( __is_big_block(p) )                                                   \
-    ? (byte*)( ( (byte*)( ((uint*)(p))   + 2 ) ) + __pos_of_b_block(p) )    \
-    : (byte*)( ( (byte*)( ((ushort*)(p)) + 2 ) ) + __pos_of_s_block(p) )
-
-#define __entire_data_of_block(p)               \
-    ( __is_big_block(p) )                       \
-    ? (byte*)( (byte*)( ((uint*)(p))   + 2 ) )  \
-    : (byte*)( (byte*)( ((ushort*)(p)) + 2 ) )
+#define __entire_data_of_block(p)  (byte*)( (byte*)( ((ulong*)(p))   + 2 ) )
 
 namespace nuraft {
 
@@ -95,34 +63,17 @@ ptr<buffer> buffer::alloc(const size_t size) {
     static stat_elem& amount_active = *stat_mgr::get_instance()->create_stat
         (stat_elem::COUNTER, "amount_active_buffers");
 
-    if (size >= 0x80000000) {
-        throw std::out_of_range( "size exceed the max size that "
-                                 "cornrestone::buffer could support" );
-    }
     num_allocs++;
     num_active++;
 
-    if (size >= 0x8000) {
-        size_t len = size + sizeof(uint) * 2;
-        ptr<buffer> buf( reinterpret_cast<buffer*>(new char[len]),
-                         &free_buffer );
-        amount_allocs += len;
-        amount_active += len;
-
-        any_ptr ptr = reinterpret_cast<any_ptr>( buf.get() );
-        __init_b_block(ptr, size);
-        return buf;
-    }
-
-    size_t len = size + sizeof(ushort) * 2;
+    size_t len = size + sizeof(ulong) * 2;
     ptr<buffer> buf( reinterpret_cast<buffer*>(new char[len]),
                      &free_buffer );
     amount_allocs += len;
     amount_active += len;
 
     any_ptr ptr = reinterpret_cast<any_ptr>( buf.get() );
-    __init_s_block(ptr, size);
-
+    __init_block(ptr, size);
     return buf;
 }
 
@@ -145,10 +96,7 @@ ptr<buffer> buffer::clone(const buffer& buf) {
 }
 
 size_t buffer::container_size() const {
-    return (size_t)( __size_of_block(this) +
-                     ( ( __is_big_block(this) )
-                       ? sizeof(uint) * 2
-                       : sizeof(ushort) * 2 ) );
+    return (size_t)( __size_of_block(this) + sizeof(ulong) * 2);
 }
 
 size_t buffer::size() const {

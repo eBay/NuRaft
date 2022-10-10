@@ -346,7 +346,7 @@ void raft_server::update_rand_timeout() {
         distribution( params->election_timeout_lower_bound_,
                       params->election_timeout_upper_bound_ );
     rand_timeout_ = std::bind(distribution, engine);
-    p_in("new timeout range: %d -- %d",
+    p_in("new election timeout range: %d - %d",
          params->election_timeout_lower_bound_,
          params->election_timeout_upper_bound_);
 }
@@ -373,7 +373,7 @@ void raft_server::update_params(const raft_params& new_params) {
 void raft_server::apply_and_log_current_params() {
     ptr<raft_params> params = ctx_->get_params();
     p_in( "parameters: "
-          "timeout %d - %d, heartbeat %d, "
+          "election timeout range %d - %d, heartbeat %d, "
           "leadership expiry %d, "
           "max batch %d, backoff %d, snapshot distance %d, "
           "enable randomized snapshot creation %s, "
@@ -398,16 +398,16 @@ void raft_server::apply_and_log_current_params() {
           params->log_sync_stop_gap_,
           params->reserved_log_items_,
           params->client_req_timeout_,
-          ( params->auto_forwarding_ ? "ON" : "OFF" ),
+          ( params->auto_forwarding_ ? "on" : "off" ),
           ( params->return_method_ == raft_params::blocking
-            ? "BLOCKING" : "ASYNC" ),
+            ? "blocking" : "async" ),
           params->custom_commit_quorum_size_,
           params->custom_election_quorum_size_,
-          params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
+          params->exclude_snp_receiver_from_quorum_ ? "excluded" : "included",
           params->leadership_transfer_min_wait_time_,
           params->grace_period_of_lagging_state_machine_,
-          params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING",
-          params->parallel_log_appending_ ? "ON" : "OFF" );
+          params->use_bg_thread_for_snapshot_io_ ? "async" : "blocking",
+          params->parallel_log_appending_ ? "on" : "off" );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();
@@ -479,7 +479,7 @@ void raft_server::shutdown() {
     // Clear shared_ptrs that the current server is holding.
     {   std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
         ctx_->logger_.reset();
-        ctx_->rpc_listener_.reset();
+        ctx_->rpc_listeners_.clear();
         ctx_->rpc_cli_factory_.reset();
         ctx_->scheduler_.reset();
     }
@@ -1002,6 +1002,14 @@ void raft_server::become_leader() {
         for (ulong ii = s_idx; ii < e_idx; ++ii) {
             ptr<log_entry> le = log_store_->entry_at(ii);
             if (le->get_val_type() != log_val_type::conf) continue;
+
+            if (last_config->get_log_idx() > ii)
+            {
+                p_wn("Currently assigned config is newer than some "
+                     "uncomitted config. This can only happen during startup or "
+                     "force recovery. If that is not the case, this is a bug.");
+                break;
+            }
 
             p_in("found uncommitted config at %zu, size %zu",
                  ii, le->get_buf().size());

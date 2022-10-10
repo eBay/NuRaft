@@ -87,22 +87,27 @@ public:
 
 public:
     int32 get_id() const {
+        std::lock_guard<std::mutex> lock(config_mutex_);
         return config_->get_id();
     }
 
     const std::string& get_endpoint() const {
+        std::lock_guard<std::mutex> lock(config_mutex_);
         return config_->get_endpoint();
     }
 
     bool is_learner() const {
+        std::lock_guard<std::mutex> lock(config_mutex_);
         return config_->is_learner();
     }
 
     const srv_config& get_config() {
+        std::lock_guard<std::mutex> lock(config_mutex_);
         return *config_;
     }
 
     void set_config(ptr<srv_config> new_config) {
+        std::lock_guard<std::mutex> lock(config_mutex_);
         config_ = new_config;
     }
 
@@ -314,6 +319,8 @@ private:
      * Information (config) of this server.
      */
     ptr<srv_config> config_;
+
+    mutable std::mutex config_mutex_;
 
     /**
      * Heartbeat scheduler for this server.

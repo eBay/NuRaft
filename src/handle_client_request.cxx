@@ -111,18 +111,48 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
     }
 
     std::vector< ptr<log_entry> >& entries = req.log_entries();
+
     size_t num_entries = entries.size();
 
     for (size_t i = 0; i < num_entries; ++i) {
-        // force the log's term to current term
-        entries.at(i)->set_term(cur_term);
-        entries.at(i)->set_timestamp(timestamp_us);
+        auto & entry = entries.at(i);
 
-        ulong next_slot = store_log_entry(entries.at(i));
+        // force the log's term to current term
+        entry->set_term(cur_term);
+        entry->set_timestamp(timestamp_us);
+        ulong next_slot = 0;
+
         p_db("append at log_idx %lu, timestamp %lu\n", next_slot, timestamp_us);
+
+        try
+        {
+            cb_func::Param param(id_, leader_);
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLog, &param);
+            if (rc == CbReturnCode::ReturnNull) return nullptr;
+
+            // force the log's term to current term
+            entry->set_term(cur_term);
+
+            next_slot = store_log_entry(entry);
+        }
+        catch (const std::exception & e)
+        {
+            p_er("failed to append entry: %s\n", e.what());
+            try_update_precommit_index(last_idx);
+
+            cb_func::Param param(id_, leader_);
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::AppendLogFailed, &param);
+            if (rc == CbReturnCode::ReturnNull) return nullptr;
+
+            throw;
+        }
+
+        p_db("append at log_idx %zu\n", next_slot);
         last_idx = next_slot;
 
-        ptr<buffer> buf = entries.at(i)->get_buf_ptr();
+        ptr<buffer> buf = entry->get_buf_ptr();
         buf->pos(0);
         ret_value = state_machine_->pre_commit_ext
                     ( state_machine::ext_op_params( last_idx, buf ) );

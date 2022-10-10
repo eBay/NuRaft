@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <memory>
 #include <mutex>
+#include <vector>
 
 namespace nuraft {
 
@@ -41,14 +42,14 @@ struct context {
 public:
     context( ptr<state_mgr>& mgr,
              ptr<state_machine>& m,
-             ptr<rpc_listener>& listener,
+             const std::vector<ptr<rpc_listener>>& listeners,
              ptr<logger>& l,
              ptr<rpc_client_factory>& cli_factory,
              ptr<delayed_task_scheduler>& scheduler,
              const raft_params& params )
         : state_mgr_(mgr)
         , state_machine_(m)
-        , rpc_listener_(listener)
+        , rpc_listeners_(listeners)
         , logger_(l)
         , rpc_cli_factory_(cli_factory)
         , scheduler_(scheduler)
@@ -104,7 +105,7 @@ public:
     /**
      * RPC listener instance.
      */
-    ptr<rpc_listener> rpc_listener_;
+    std::vector<ptr<rpc_listener>> rpc_listeners_;
 
     /**
      * System logger instance.

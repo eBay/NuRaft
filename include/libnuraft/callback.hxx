@@ -156,6 +156,29 @@ public:
          * ctx: pointer to the log index.
          */
         StateMachineExecution = 19,
+
+        /**
+         * Initial batch of entries commited.
+         * Useful on server init when server startup from
+         * huge log storage.
+         * ctx: null
+         */
+        InitialBatchCommited = 20,
+
+        /**
+         * Called before log is appended to the entries.
+         * Happens on leader only.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        PreAppendLog = 21,
+
+        /**
+         * Called when appending a log fails.
+         * Happens on leader only.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        AppendLogFailed = 22,
+
     };
 
     struct Param {
