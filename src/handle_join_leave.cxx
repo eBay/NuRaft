@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "internal_timer.hxx"
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
@@ -254,7 +255,8 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
         ptr<buffer> new_conf_buf(new_conf->serialize());
         ptr<log_entry> entry( cs_new<log_entry>( state_->get_term(),
                                                  new_conf_buf,
-                                                 log_val_type::conf ) );
+                                                 log_val_type::conf,
+                                                 timer_helper::get_timeofday_us() ) );
         store_log_entry(entry);
         config_changing_ = true;
         uncommitted_config_ = new_conf;
@@ -509,7 +511,8 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     ptr<buffer> new_conf_buf( new_conf->serialize() );
     ptr<log_entry> entry( cs_new<log_entry>( state_->get_term(),
                                              new_conf_buf,
-                                             log_val_type::conf ) );
+                                             log_val_type::conf,
+                                             timer_helper::get_timeofday_us() ) );
     store_log_entry(entry);
 
     auto p_entry = peers_.find(srv_id);

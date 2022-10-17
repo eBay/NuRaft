@@ -691,7 +691,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 cnt < req.log_entries().size() )
         {
             ptr<log_entry> entry = req.log_entries().at(cnt);
-            p_in("overwrite at %zu, term %zu\n", log_idx, entry->get_term());
+            p_in("overwrite at %lu, term %lu, timestamp %lu\n",
+                 log_idx, entry->get_term(), entry->get_timestamp());
             store_log_entry(entry, log_idx);
 
             if (entry->get_val_type() == log_val_type::app_log) {
@@ -719,8 +720,9 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
         // Append new log entries
         while (cnt < req.log_entries().size()) {
-            p_tr("append at %zu\n", log_store_->next_slot());
             ptr<log_entry> entry = req.log_entries().at( cnt++ );
+            p_tr("append at %lu, term %lu, timestamp %lu\n",
+                 log_store_->next_slot(), entry->get_term(), entry->get_timestamp());
             ulong idx_for_entry = store_log_entry(entry);
             if (entry->get_val_type() == log_val_type::conf) {
                 p_in( "receive a config change from leader at %llu",

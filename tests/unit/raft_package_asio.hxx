@@ -53,6 +53,7 @@ public:
         , writeReqMeta(nullptr)
         , alwaysInvokeCb(true)
         , useCustomResolver(false)
+        , useLogTimestamp(false)
         , myLogWrapper(nullptr)
         , myLog(nullptr)
         {}
@@ -116,6 +117,8 @@ public:
                     }
                 };
         }
+
+        asio_opt.replicate_log_timestamp_ = useLogTimestamp;
 
         if (readReqMeta) asio_opt.read_req_meta_ = readReqMeta;
         if (writeReqMeta) asio_opt.write_req_meta_ = writeReqMeta;
@@ -251,6 +254,8 @@ public:
     bool alwaysInvokeCb;
 
     bool useCustomResolver;
+
+    bool useLogTimestamp;
 
     ptr<logger_wrapper> myLogWrapper;
     ptr<logger> myLog;

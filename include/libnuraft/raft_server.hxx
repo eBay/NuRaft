@@ -718,6 +718,16 @@ public:
     bool is_state_machine_execution_paused() const;
 
     /**
+     * Block the current thread and wake it up when the state machine
+     * execution is paused.
+     *
+     * @param timeout_ms If non-zero, wake up after the given amount of time
+     *                   even though the state machine is not paused yet.
+     * @return `true` if the state machine is paused.
+     */
+    bool wait_for_state_machine_pause(size_t timeout_ms);
+
+    /**
      * (Experimental)
      * This API is used when `raft_params::parallel_log_appending_` is set.
      * Everytime an asynchronous log appending job is done, users should call
@@ -733,9 +743,17 @@ public:
      * Manually create a snapshot based on the latest committed
      * log index of the state machine.
      *
-     * @return `true` on success.
+     * @return Log index number of the created snapshot or`0` if failed.
      */
-    bool create_snapshot();
+    ulong create_snapshot();
+
+    /**
+     * Get the log index number of the last snapshot.
+     *
+     * @return Log index number of the last snapshot.
+     *         `0` if snapshot does not exist.
+     */
+    ulong get_last_snapshot_idx() const;
 
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
@@ -804,7 +822,9 @@ protected:
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
     ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
-    ptr<resp_msg> handle_cli_req(req_msg& req, const req_ext_params& ext_params);
+    ptr<resp_msg> handle_cli_req(req_msg& req,
+                                 const req_ext_params& ext_params,
+                                 uint64_t timestamp_us);
     ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                           ptr<resp_msg> resp);
     ptr< cmd_result< ptr<buffer> > >
@@ -1122,6 +1142,11 @@ protected:
     std::atomic<bool> sm_commit_exec_in_progress_;
 
     /**
+     * Event awaiter notified when `sm_commit_exec_in_progress_` becomes `false`.
+     */
+    EventAwaiter* ea_sm_commit_exec_in_progress_;
+
+    /**
      * Server ID indicates the candidate for the next leader,
      * as a part of leadership takeover task.
      */
@@ -1260,6 +1285,12 @@ protected:
      * so that cannot send message before election timeout.
      */
     std::atomic<ulong> et_cnt_receiving_snapshot_;
+
+    /**
+     * (Read-only)
+     * The first snapshot distance.
+     */
+    uint32_t first_snapshot_distance_;
 
     /**
      * (Read-only)

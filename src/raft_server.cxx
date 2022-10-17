@@ -27,6 +27,7 @@ limitations under the License.
 #include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
+#include "internal_timer.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
 #include "snapshot_sync_ctx.hxx"
@@ -70,6 +71,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , write_paused_(false)
     , sm_commit_paused_(false)
     , sm_commit_exec_in_progress_(false)
+    , ea_sm_commit_exec_in_progress_(new EventAwaiter())
     , next_leader_candidate_(-1)
     , im_learner_(false)
     , serving_req_(false)
@@ -85,6 +87,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , state_machine_(ctx->state_machine_)
     , receiving_snapshot_(false)
     , et_cnt_receiving_snapshot_(0)
+    , first_snapshot_distance_(0)
     , l_(ctx->logger_)
     , stale_config_(nullptr)
     , config_(ctx->state_mgr_->load_config())
@@ -115,6 +118,25 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     ptr<raft_params> params = ctx_->get_params();
     if (params->stale_log_gap_ < params->fresh_log_gap_) {
         params->stale_log_gap_ = params->fresh_log_gap_;
+    }
+    if (params->enable_randomized_snapshot_creation_ &&
+        !get_last_snapshot() &&
+        params->snapshot_distance_ > 1) {
+        uint64_t seed = timer_helper::get_timeofday_us() * id_;
+
+        // Flip the integer.
+        auto* first = reinterpret_cast<uint8_t*>(&seed);
+        auto* last = reinterpret_cast<uint8_t*>(&seed) + sizeof(seed);
+        while ((first != last) && (first != -- last)) std::swap(*first++, *last);
+
+        std::default_random_engine engine(seed);
+        std::uniform_int_distribution<int32>
+            distribution( params->snapshot_distance_ / 2,
+                          std::max( params->snapshot_distance_ / 2,
+                                    params->snapshot_distance_ - 1 ) );
+
+        first_snapshot_distance_ = distribution(engine);
+        p_in("First snapshot creation log distance %llu", first_snapshot_distance_);
     }
 
     apply_and_log_current_params();
@@ -311,6 +333,7 @@ raft_server::~raft_server() {
     ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10));
     cancel_schedulers();
     delete bg_append_ea_;
+    delete ea_sm_commit_exec_in_progress_;
     delete ea_follower_log_append_;
 }
 
@@ -353,6 +376,7 @@ void raft_server::apply_and_log_current_params() {
           "election timeout range %d - %d, heartbeat %d, "
           "leadership expiry %d, "
           "max batch %d, backoff %d, snapshot distance %d, "
+          "enable randomized snapshot creation %s, "
           "log sync stop gap %d, "
           "reserved logs %d, client timeout %d, "
           "auto forwarding %s, API call type %s, "
@@ -370,6 +394,7 @@ void raft_server::apply_and_log_current_params() {
           params->max_append_size_,
           params->rpc_failure_backoff_,
           params->snapshot_distance_,
+          params->enable_randomized_snapshot_creation_ ? "YES" : "NO",
           params->log_sync_stop_gap_,
           params->reserved_log_items_,
           params->client_req_timeout_,
@@ -733,7 +758,8 @@ void raft_server::reset_peer_info() {
         // re-joins the cluster.
         ptr<buffer> new_conf_buf(my_next_config->serialize());
         ptr<log_entry> entry(cs_new<log_entry>(
-                state_->get_term(), new_conf_buf, log_val_type::conf));
+            state_->get_term(), new_conf_buf, log_val_type::conf,
+            timer_helper::get_timeofday_us()));
         store_log_entry(entry, log_store_->next_slot()-1);
     }
 }
@@ -1001,7 +1027,10 @@ void raft_server::become_leader() {
         ptr<buffer> conf_buf = last_config_cloned->serialize();
         ptr<log_entry> entry
             ( cs_new<log_entry>
-              ( state_->get_term(), conf_buf, log_val_type::conf ) );
+              ( state_->get_term(),
+                conf_buf,
+                log_val_type::conf,
+                timer_helper::get_timeofday_us() ) );
         p_in("[BECOME LEADER] appended new config at %zu\n", log_store_->next_slot());
         store_log_entry(entry);
         config_changing_ = true;
@@ -1520,7 +1549,8 @@ void raft_server::set_user_ctx(const std::string& ctx) {
     ptr<log_entry> entry = cs_new<log_entry>
                            ( state_->get_term(),
                              new_conf_buf,
-                             log_val_type::conf);
+                             log_val_type::conf,
+                             timer_helper::get_timeofday_us() );
     store_log_entry(entry);
     request_append_entries();
 }

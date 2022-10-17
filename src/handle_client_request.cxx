@@ -30,6 +30,7 @@ limitations under the License.
 #include "tracer.hxx"
 
 #include <cassert>
+#include <chrono>
 #include <sstream>
 
 namespace nuraft {
@@ -77,17 +78,19 @@ ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
 {
     ptr<resp_msg> resp = nullptr;
     ptr<raft_params> params = ctx_->get_params();
+    uint64_t timestamp_us = timer_helper::get_timeofday_us();
+
     switch (params->locking_method_type_) {
         case raft_params::single_mutex: {
             recur_lock(lock_);
-            resp = handle_cli_req(req, ext_params);
+            resp = handle_cli_req(req, ext_params, timestamp_us);
             break;
         }
         case raft_params::dual_mutex:
         default: {
             // TODO: Use RW lock here.
             auto_lock(cli_lock_);
-            resp = handle_cli_req(req, ext_params);
+            resp = handle_cli_req(req, ext_params, timestamp_us);
             break;
         }
     }
@@ -118,13 +121,15 @@ void raft_server::request_append_entries_for_all() {
 }
 
 ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
-                                          const req_ext_params& ext_params)
+                                          const req_ext_params& ext_params,
+                                          uint64_t timestamp_us)
 {
     ptr<resp_msg> resp = nullptr;
     ulong last_idx = 0;
     ptr<buffer> ret_value = nullptr;
     ulong resp_idx = 1;
     ulong cur_term = state_->get_term();
+    ptr<raft_params> params = ctx_->get_params();
 
     resp = cs_new<resp_msg>( cur_term,
                              msg_type::append_entries_response,
@@ -148,9 +153,14 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
     size_t num_entries = entries.size();
 
     for (size_t i = 0; i < num_entries; ++i) {
-
         auto & entry = entries.at(i);
+
+        // force the log's term to current term
+        entry->set_term(cur_term);
+        entry->set_timestamp(timestamp_us);
         ulong next_slot = 0;
+
+        p_db("append at log_idx %lu, timestamp %lu\n", next_slot, timestamp_us);
 
         try
         {
