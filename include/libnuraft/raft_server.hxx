@@ -395,6 +395,22 @@ public:
     { return log_store_->term_at(log_idx); }
 
     /**
+     * Get the term of the first log.
+     *
+     * @return Term of the first log.
+     */
+    ulong get_first_log_term() const
+    { return log_store_->term_at(get_first_log_idx()); }
+
+    /**
+     * Get the first log index number.
+     *
+     * @return First log index number.
+     */
+    ulong get_first_log_idx() const
+    { return log_store_->start_index(); }
+
+    /**
      * Get the term of the last log.
      *
      * @return Term of the last log.
