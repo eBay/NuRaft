@@ -1,5 +1,5 @@
 Parallel Log Appending
-======================
+----------------------
 
 This is an experimental option, can be enabled by setting `parallel_log_appending_` in [`raft_params`](../include/libnuraft/raft_params.hxx) to `true`, and its value is `false` by default. Once this option is enabled, the leader will do log replication and appending to its local log store in parallel. In many environments where disk write is slower than network round-trip time, this option will reduce the replication latency compared to the original sequential execution.
 

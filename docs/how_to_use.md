@@ -47,3 +47,4 @@ Contents
 * [Asynchronous Replication](async_replication.md)
 * [Replication Log Timestamp](log_timestamp.md)
 * [Parellel Log Appending](parallel_log_appending.md)
+* [Custom Commit Policy](custom_commit_policy.md)
