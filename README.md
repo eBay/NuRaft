@@ -30,6 +30,7 @@ Features
 * [Custom/separate quorum size for commit & leader election](docs/custom_quorum_size.md)
 * [Asynchronous replication](docs/async_replication.md)
 * [SSL/TLS support](docs/enabling_ssl.md)
+* [Parallel Log Appending](docs/parallel_log_appending.md)
 
 
 How to Build

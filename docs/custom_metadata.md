@@ -1,4 +1,4 @@
-Custom Metadata For Each Message
+Custom Metadata for Each Message
 --------------------------------
 
 NuRaft provides an ability to ship custom metadata for each message and response that can be used for your own verification. When you set [`asio_options`](../include/libnuraft/asio_service_options.hxx), there are a few options for it:
