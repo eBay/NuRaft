@@ -30,7 +30,8 @@ Features
 * [Custom/separate quorum size for commit & leader election](docs/custom_quorum_size.md)
 * [Asynchronous replication](docs/async_replication.md)
 * [SSL/TLS support](docs/enabling_ssl.md)
-
+* [Parallel Log Appending](docs/parallel_log_appending.md)
+* [Custom Commit Policy](docs/custom_commit_policy.md)
 
 How to Build
 ------------
@@ -111,9 +112,9 @@ Please refer to [tests/bench](./tests/bench).
 
 Supported Platforms
 -------------------
-* Ubuntu (tested on 14.04, 16.04, and 18.04)
+* Ubuntu (tested on 14.04 -- 20.04)
 * Centos (tested on 7)
-* OSX (tested on 10.13 and 10.14)
+* OSX (tested on 10.13 -- 12.3)
 * Windows (built using MSVC 2019, not thoroughly tested)
 
 
@@ -130,7 +131,7 @@ Contact
 
 License Information
 --------------------
-Copyright 2017-2019 eBay Inc.
+Copyright 2017-present eBay Inc.
 
 Author/Developer: Jung-Sang Ahn
 

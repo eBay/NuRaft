@@ -11,11 +11,11 @@ asio_opt.root_cert_file_    = "./root_ca.pem";
 asio_opt.server_key_file_   = "./key.pem";
 ```
 
-Then Raft server will use SSL/TLS when it establishes connection between them. Note that Raft is a peer-to-peer protocol, thus each node can be both client and server at the same time.
+Then Raft server will use SSL/TLS when it establishes connections between them. Note that Raft is a peer-to-peer protocol, thus each node can be both client and server at the same time.
 
-Server certificate, root certificate, and key file should be in [PEM format](https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail).
+The server certificate, root certificate, and key file should be in [PEM format](https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail).
 
-`verify_sn_` callback function is for client (i.e., mostly when the node is leader) to verify the server certificate, by using common name or others. Your callback function should be defined as follows:
+`verify_sn_` callback function is for the client (i.e., mostly when the node is the leader) to verify the server certificate by using a common name or others. Your callback function should be defined as follows:
 ```C++
 bool my_verification_function(const std::string& sn) {
     // Verify given string `sn`, return `true` if it is valid.
@@ -27,4 +27,4 @@ bool my_verification_function(const std::string& sn) {
 "/C=AB/ST=CD/L=EFG/O=ORG/CN=localhost"
 ```
 
-If the given ceritifcate is invalid, this function can return `false`, then the node will not accept the connection. Otherwise, just return `true`.
+If the given certificate is invalid, this function can return `false`, then the node will not accept the connection. Otherwise, just return `true`.
