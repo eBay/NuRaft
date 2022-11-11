@@ -14,3 +14,10 @@ nbproject/
 *.exe
 *.ilk
 *.lib
+.cache
+cmake-build-debug
+compile_commands.json
+bazel-bin
+bazel-out
+bazel-testlogs
+bazel-NuRaft

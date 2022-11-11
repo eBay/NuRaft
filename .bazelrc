@@ -1,0 +1,161 @@
+# Bazel doesn't need more than 200MB of memory for local build based on memory profiling:
+# https://docs.bazel.build/versions/master/skylark/performance.html#memory-profiling
+# The default JVM max heapsize is 1/4 of physical memory up to 32GB which could be large
+# enough to consume all memory constrained by cgroup in large host.
+# Limiting JVM heapsize here to let it do GC more when approaching the limit to
+# leave room for compiler/linker.
+# The number 2G is chosen heuristically to both support large VM and small VM with RBE.
+# Startup options cannot be selected via config.
+startup --host_jvm_args=-Xmx2g
+
+run --color=yes
+
+build --color=yes
+build --workspace_status_command="bash bazel/get_workspace_status"
+build --incompatible_strict_action_env
+build --host_force_python=PY3
+build --java_runtime_version=remotejdk_11
+build --tool_java_runtime_version=remotejdk_11
+
+build --enable_platform_specific_config
+
+# Allow tags to influence execution requirements
+common --experimental_allow_tags_propagation
+
+# Enable position independent code (this is the default on macOS and Windows)
+# (Workaround for https://github.com/bazelbuild/rules_foreign_cc/issues/421)
+build:linux --copt=-fPIC
+build:linux --copt=-Wno-deprecated-declarations
+build:linux --cxxopt=-std=c++17
+build:linux --conlyopt=-fexceptions
+build:linux --fission=dbg,opt
+build:linux --features=per_object_debug_info
+build:linux --action_env=BAZEL_LINKLIBS=-l%:libstdc++.a
+build:linux --action_env=BAZEL_LINKOPTS=-lm
+
+# We already have absl in the build, define absl=1 to tell googletest to use absl for backtrace.
+build --define absl=1
+
+# Pass PATH, CC, CXX and LLVM_CONFIG variables from the environment.
+build --action_env=CC
+build --action_env=CXX
+build --action_env=LLVM_CONFIG
+build --action_env=PATH
+
+# Common flags for sanitizers
+build:sanitizer --define tcmalloc=disabled
+build:sanitizer --linkopt -ldl
+build:sanitizer --build_tag_filters=-no_san
+build:sanitizer --test_tag_filters=-no_san
+
+# Common flags for Clang
+build:clang --action_env=BAZEL_COMPILER=clang
+build:clang --action_env=CC=clang --action_env=CXX=clang++
+build:clang --linkopt=-fuse-ld=lld
+
+# Flags for Clang + PCH
+build:clang-pch --spawn_strategy=local
+
+# Basic ASAN/UBSAN that works for gcc
+build:asan --config=sanitizer
+# ASAN install its signal handler, disable ours so the stacktrace will be printed by ASAN
+build:asan --define signal_trace=disabled
+build:asan --copt -fsanitize=address,undefined
+build:asan --linkopt -fsanitize=address,undefined
+# vptr and function sanitizer are enabled in clang-asan if it is set up via bazel/setup_clang.sh.
+build:asan --copt -fno-sanitize=vptr,function
+build:asan --linkopt -fno-sanitize=vptr,function
+build:asan --copt -DADDRESS_SANITIZER=1
+build:asan --copt -D__SANITIZE_ADDRESS__
+build:asan --test_env=ASAN_OPTIONS=handle_abort=1:allow_addr2line=true:check_initialization_order=true:strict_init_order=true:detect_odr_violation=1
+build:asan --test_env=UBSAN_OPTIONS=halt_on_error=true:print_stacktrace=1
+build:asan --test_env=ASAN_SYMBOLIZER_PATH
+# ASAN needs -O1 to get reasonable performance.
+build:asan --copt -O1
+build:asan --copt -fno-optimize-sibling-calls
+
+# Clang ASAN/UBSAN
+build:clang-asan --config=clang
+build:clang-asan --config=asan
+build:clang-asan --linkopt -fuse-ld=lld
+build:clang-asan --linkopt --rtlib=compiler-rt
+build:clang-asan --linkopt --unwindlib=libgcc
+
+# macOS
+build:macos --cxxopt=-std=c++17
+build:macos --action_env=PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin:/opt/local/bin
+build:macos --host_action_env=PATH=/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin:/opt/local/bin
+build:macos --define tcmalloc=disabled
+
+# macOS ASAN/UBSAN
+build:macos-asan --config=asan
+# Workaround, see https://github.com/bazelbuild/bazel/issues/6932
+build:macos-asan --copt -Wno-macro-redefined
+build:macos-asan --copt -D_FORTIFY_SOURCE=0
+# Workaround, see https://github.com/bazelbuild/bazel/issues/4341
+build:macos-asan --copt -DGRPC_BAZEL_BUILD
+# Dynamic link cause issues like: `dyld: malformed mach-o: load commands size (59272) > 32768`
+build:macos-asan --dynamic_mode=off
+
+# Clang TSAN
+build:clang-tsan --config=sanitizer
+build:clang-tsan --copt -fsanitize=thread
+build:clang-tsan --linkopt -fsanitize=thread
+build:clang-tsan --linkopt -fuse-ld=lld
+build:clang-tsan --build_tag_filters=-no_san,-no_tsan
+build:clang-tsan --test_tag_filters=-no_san,-no_tsan
+# Needed due to https://github.com/libevent/libevent/issues/777
+build:clang-tsan --copt -DEVENT__DISABLE_DEBUG_MODE
+# https://github.com/abseil/abseil-cpp/issues/760
+# https://github.com/google/sanitizers/issues/953
+build:clang-tsan --test_env="TSAN_OPTIONS=report_atomic_races=0"
+
+# Clang MSAN - this is the base config for remote-msan and docker-msan. To run this config without
+# our build image, follow https://github.com/google/sanitizers/wiki/MemorySanitizerLibcxxHowTo
+# with libc++ instruction and provide corresponding `--copt` and `--linkopt` as well.
+build:clang-msan --config=sanitizer
+build:clang-msan --copt -fsanitize=memory
+build:clang-msan --linkopt -fsanitize=memory
+build:clang-msan --linkopt -fuse-ld=lld
+build:clang-msan --copt -fsanitize-memory-track-origins=2
+build:clang-msan --test_env=MSAN_SYMBOLIZER_PATH
+# MSAN needs -O1 to get reasonable performance.
+build:clang-msan --copt -O1
+build:clang-msan --copt -fno-optimize-sibling-calls
+
+# Clang with libc++
+build:libc++ --config=clang
+build:libc++ --action_env=CXXFLAGS=-stdlib=libc++
+build:libc++ --action_env=LDFLAGS=-stdlib=libc++
+build:libc++ --action_env=BAZEL_CXXOPTS=-stdlib=libc++
+build:libc++ --action_env=BAZEL_LINKLIBS=-l%:libc++.a:-l%:libc++abi.a
+build:libc++ --action_env=BAZEL_LINKOPTS=-lm:-pthread
+build:libc++ --define force_libcpp=enabled
+
+# Optimize build for binary size reduction.
+build:sizeopt -c opt --copt -Os
+
+# Test options
+build --test_env=HEAPCHECK=normal --test_env=PPROF_PATH
+
+# Coverage options
+coverage --config=coverage
+coverage --build_tests_only
+build:coverage --action_env=BAZEL_USE_LLVM_NATIVE_COVERAGE=1
+build:coverage --action_env=GCOV=llvm-profdata
+build:coverage --copt=-DNDEBUG
+# 1.5x original timeout + 300s for trace merger in all categories
+build:coverage --test_timeout=390,750,1500,5700
+build:coverage --define=dynamic_link_tests=true
+build:coverage --test_env=HEAPCHECK=
+build:coverage --combined_report=lcov
+build:coverage --strategy=TestRunner=sandboxed,local
+build:coverage --strategy=CoverageReport=sandboxed,local
+build:coverage --experimental_use_llvm_covmap
+build:coverage --collect_code_coverage
+build:coverage --test_tag_filters=-nocoverage
+build:coverage --instrumentation_filter="//src[/:],//include[/:]"
+build:test-coverage --test_arg="-l trace"
+build:fuzz-coverage --config=plain-fuzzer
+
+test --enable_runfiles=True

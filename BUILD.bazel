@@ -1,0 +1,26 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "api",
+    hdrs = glob(["include/**/*.hxx"]),
+    visibility = ["//visibility:public"],
+    strip_include_prefix = "//include/libnuraft",
+)
+
+cc_library(
+    name = "nuraft",
+    hdrs = glob(["src/*.hxx"]) + glob(["src/*.h"]),
+    srcs = glob(["src/*.cxx"]),
+    strip_include_prefix = "//src",
+    deps = [
+        ":api",
+        "@asio//:asio",
+        "@boringssl//:ssl",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+exports_files([
+    "key.pem",
+    "cert.pem",
+])
