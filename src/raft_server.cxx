@@ -372,41 +372,42 @@ void raft_server::update_params(const raft_params& new_params) {
 
 void raft_server::apply_and_log_current_params() {
     ptr<raft_params> params = ctx_->get_params();
-    p_in("parameters: "
-         "timeout %d - %d, heartbeat %d, "
-         "leadership expiry %d, "
-         "max batch %d, backoff %d, snapshot distance %d, "
-         "enable randomized snapshot creation %s, "
-         "log sync stop gap %d, "
-         "reserved logs %d, client timeout %d, "
-         "auto forwarding %s, API call type %s, "
-         "custom commit quorum size %d, "
-         "custom election quorum size %d, "
-         "snapshot receiver %s, "
-         "leadership transfer wait time %d, "
-         "grace period of lagging state machine %d, "
-         "snapshot IO: %s, "
-         "parallel log appending: %s",
-         params->election_timeout_lower_bound_,
-         params->election_timeout_upper_bound_,
-         params->heart_beat_interval_,
-         get_leadership_expiry(),
-         params->max_append_size_,
-         params->rpc_failure_backoff_,
-         params->snapshot_distance_,
-         params->enable_randomized_snapshot_creation_ ? "YES" : "NO",
-         params->log_sync_stop_gap_,
-         params->reserved_log_items_,
-         params->client_req_timeout_,
-         (params->auto_forwarding_ ? "ON" : "OFF"),
-         (params->return_method_ == raft_params::blocking ? "BLOCKING" : "ASYNC"),
-         params->custom_commit_quorum_size_,
-         params->custom_election_quorum_size_,
-         params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
-         params->leadership_transfer_min_wait_time_,
-         params->grace_period_of_lagging_state_machine_,
-         params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING",
-         params->parallel_log_appending_ ? "ON" : "OFF");
+    p_in( "parameters: "
+          "timeout %d - %d, heartbeat %d, "
+          "leadership expiry %d, "
+          "max batch %d, backoff %d, snapshot distance %d, "
+          "enable randomized snapshot creation %s, "
+          "log sync stop gap %d, "
+          "reserved logs %d, client timeout %d, "
+          "auto forwarding %s, API call type %s, "
+          "custom commit quorum size %d, "
+          "custom election quorum size %d, "
+          "snapshot receiver %s, "
+          "leadership transfer wait time %d, "
+          "grace period of lagging state machine %d, "
+          "snapshot IO: %s, "
+          "parallel log appending: %s",
+          params->election_timeout_lower_bound_,
+          params->election_timeout_upper_bound_,
+          params->heart_beat_interval_,
+          get_leadership_expiry(),
+          params->max_append_size_,
+          params->rpc_failure_backoff_,
+          params->snapshot_distance_,
+          params->enable_randomized_snapshot_creation_ ? "YES" : "NO",
+          params->log_sync_stop_gap_,
+          params->reserved_log_items_,
+          params->client_req_timeout_,
+          ( params->auto_forwarding_ ? "ON" : "OFF" ),
+          ( params->return_method_ == raft_params::blocking
+            ? "BLOCKING" : "ASYNC" ),
+          params->custom_commit_quorum_size_,
+          params->custom_election_quorum_size_,
+          params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
+          params->leadership_transfer_min_wait_time_,
+          params->grace_period_of_lagging_state_machine_,
+          params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING",
+          params->parallel_log_appending_ ? "ON" : "OFF" );
 
     if (params->election_timeout_lower_bound_ >= params->election_timeout_upper_bound_) {
         p_ft("Params election_timeout_upper_bound_ should larger than "
