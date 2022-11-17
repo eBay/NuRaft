@@ -30,7 +30,7 @@ using namespace raft_functional_common;
 
 class RaftAsioPkg {
 public:
-    static const int HEARTBEAT_MS = 100;
+    static const int HEARTBEAT_MS = 125;
 
     using READ_META_FUNC = std::function
                                < bool( const asio_service::meta_cb_params&,

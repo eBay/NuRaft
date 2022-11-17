@@ -154,7 +154,8 @@ bool FakeNetwork::delieverReqTo(const std::string& endpoint,
     ptr<FakeClient> conn = findClient(endpoint);
 
     // If destination is offline, make failure.
-    if (!conn->isDstOnline()) return makeReqFail(endpoint, random_order);
+    if (!conn->isDstOnline())
+        return makeReqFail(endpoint, random_order);
 
     auto pkg_entry = conn->pendingReqs.begin();
     if (pkg_entry == conn->pendingReqs.end()) return false;

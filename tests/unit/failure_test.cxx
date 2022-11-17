@@ -43,9 +43,9 @@ int simple_conflict_test() {
     std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     raft_params custom_params;
-    custom_params.election_timeout_lower_bound_ = 0;
-    custom_params.election_timeout_upper_bound_ = 1000;
-    custom_params.heart_beat_interval_ = 500;
+    custom_params.election_timeout_lower_bound_ = 250;
+    custom_params.election_timeout_upper_bound_ = 500;
+    custom_params.heart_beat_interval_ = 125;
     custom_params.snapshot_distance_ = 100;
     CHK_Z( launch_servers( pkgs, &custom_params ) );
     CHK_Z( make_group( pkgs ) );
@@ -99,8 +99,8 @@ int simple_conflict_test() {
     // Without replication of above messages,
     // initiate leader election.
     s2.dbgLog(" --- S2 will start leader election ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
+    invoke_election_timer({&s3});
     // Send it to S3 only.
     s2.fNet->execReqResp( s3_addr );
     s2.fNet->execReqResp( s3_addr );
@@ -305,8 +305,8 @@ int force_log_compaction_test() {
             ff->initServer(nullptr, opt);
         }
         ff->fNet->listen(ff->raftServer);
-        ff->fTimer->invoke( timer_task_type::election_timer );
     }
+    invoke_election_timer(pkgs);
     CHK_Z( make_group( pkgs ) );
 
     for (auto& entry: pkgs) {
@@ -435,13 +435,13 @@ int uncommitted_conf_new_leader_test() {
     s1.fNet->execReqResp(s3_addr);
 
     // Invoke election timer of S4 and S5 (to make pre-vote of S3 succeed).
-    s4.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s4});
     s4.fNet->execReqResp();
-    s5.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s5});
     s5.fNet->execReqResp();
 
     // Now S3's vote should succeed.
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
     for (size_t ii = 0; ii < 10; ++ii) {
         s3.fNet->execReqResp();
     }
@@ -535,8 +535,8 @@ int removed_server_late_step_down_test() {
     }
 
     // Invoke election timer for S3, to make it step down.
-    s3.fTimer->invoke( timer_task_type::election_timer );
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
+    invoke_election_timer({&s3});
     // Pending timer task should be zero in S3.
     CHK_Z( s3.fTimer->getNumPendingTasks() );
 
