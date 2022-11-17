@@ -72,9 +72,9 @@ public:
         scheduler = fTimer;
 
         if (!given_params) {
-            params.with_election_timeout_lower(0);
-            params.with_election_timeout_upper(10000);
-            params.with_hb_interval(5000);
+            params.with_election_timeout_lower(250);
+            params.with_election_timeout_upper(500);
+            params.with_hb_interval(125);
             params.with_client_req_timeout(1000000);
             params.with_reserved_log_items(0);
             params.with_snapshot_enabled(5);
@@ -98,9 +98,9 @@ public:
                            raft_server::init_options())
     {
         if (!given_params) {
-            params.with_election_timeout_lower(0);
-            params.with_election_timeout_upper(10000);
-            params.with_hb_interval(5000);
+            params.with_election_timeout_lower(250);
+            params.with_election_timeout_upper(500);
+            params.with_hb_interval(125);
             params.with_client_req_timeout(1000000);
             params.with_reserved_log_items(0);
             params.with_snapshot_enabled(5);
@@ -227,6 +227,21 @@ static cb_func::ReturnCode ATTR_UNUSED cb_default(
 }
 // ==============
 
+static void invoke_election_timer(const std::vector<RaftPkg*>& pkgs) {
+    int32 election_timeout = 0;
+    for (auto * pkg : pkgs) {
+        auto params = pkg->raftServer->get_current_params();
+        election_timeout =
+            std::max(params.election_timeout_lower_bound_, election_timeout);
+    }
+
+    // Wait election_timeout_lower_bound_ to trigger leader election.
+    TestSuite::sleep_ms(election_timeout, "wait election timeout");
+
+    for (auto * pkg : pkgs) {
+        pkg->fTimer->invoke(timer_task_type::election_timer);
+    }
+}
 
 static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
                                  raft_params* custom_params = nullptr,
@@ -245,8 +260,9 @@ static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
             ff->initServer(custom_params, opt);
         }
         ff->fNet->listen(ff->raftServer);
-        ff->fTimer->invoke( timer_task_type::election_timer );
     }
+
+    invoke_election_timer(pkgs);
     return 0;
 }
 

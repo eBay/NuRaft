@@ -198,8 +198,9 @@ int init_options_test() {
         opt.raft_callback_ = cb_default;
         ff->initServer(nullptr, opt);
         ff->fNet->listen(ff->raftServer);
-        ff->fTimer->invoke( timer_task_type::election_timer );
     }
+
+    invoke_election_timer(pkgs);
 
     // s2 and s3 should never be a leader.
     for (size_t ii = 0; ii < num_srvs; ++ii) {
@@ -213,9 +214,7 @@ int init_options_test() {
 
     // Make group should succeed as long as s1 is the current leader.
     CHK_Z( make_group( pkgs ) );
-    for (RaftPkg* ff: pkgs) {
-        CHK_EQ(1, ff->raftServer->get_leader());
-    }
+    CHK_EQ(1, pkgs[0]->raftServer->get_leader());
 
     print_stats(pkgs);
 
@@ -485,8 +484,8 @@ int remove_node_test() {
     }
 
     // Invoke election timer for S3, to make it step down.
-    s3.fTimer->invoke( timer_task_type::election_timer );
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
+    invoke_election_timer({&s3});
     // Pending timer task should be zero in S3.
     CHK_Z( s3.fTimer->getNumPendingTasks() );
 
@@ -837,13 +836,13 @@ int leader_election_basic_test() {
 
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
     // Send pre-vote requests, and probably rejected by S1 and S3.
     s2.fNet->execReqResp();
 
     // Trigger election timer of S3.
     s3.dbgLog(" --- invoke election timer of S3 ---");
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
 
     // Send pre-vote requests, it will be rejected by S1, accepted by S2.
     // As a part of resp handling, it will initiate vote request.
@@ -909,19 +908,19 @@ int leader_election_priority_test() {
 
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
     // Send pre-vote requests, and probably rejected by S1 and S3.
     s2.fNet->execReqResp();
 
     // Trigger election timer of S3.
     s3.dbgLog(" --- invoke election timer of S3 ---");
     // It will not initiate vote due to priority.
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
 
     // Trigger election timer of S3 again.
     s3.dbgLog(" --- invoke election timer of S3 ---");
     // Now it will initiate vote by help of priority decay.
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
 
     // Send pre-vote requests, it will be rejected by S1, accepted by S2.
     // As a part of resp handling, it will initiate vote request.
@@ -931,7 +930,7 @@ int leader_election_priority_test() {
 
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
     // Send pre-vote requests, and accepted by S3.
     // As a result of response, it will initiate actual vote.
     s2.fNet->execReqResp();
@@ -1001,7 +1000,7 @@ int leader_election_with_aggressive_node_test() {
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
     // It will not initiate vote due to priority.
-    s2.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
 
     // Keep triggering election timer of S3, until it becomes leader.
     const size_t MAX_ATTEMPTS = 1000;
@@ -1009,7 +1008,7 @@ int leader_election_with_aggressive_node_test() {
     TestSuite::UnknownProgress pp("leader election attempts: ");
     do {
         s3.dbgLog(" --- invoke election timer of S3 ---");
-        s3.fTimer->invoke( timer_task_type::election_timer );
+        invoke_election_timer({&s3});
         // Drop all packets to S1.
         s3.fNet->makeReqFailAll(s1_addr);
         // Send pre-vote requests.
@@ -1116,7 +1115,7 @@ int leader_election_with_catching_up_server_test() {
 
     // Invoke election timer of S1.
     s1.dbgLog(" --- invoke election timer of S1 ---");
-    s1.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s1});
     // Send pre-vote request, S2 should accept it as it is in catch-up mode.
     s1.fNet->execReqResp();
     // Send vote request, S2 should accept it as it is in catch-up mode.
@@ -1603,12 +1602,12 @@ int temporary_leader_test() {
     size_t attempts = 0;
     do {
         // Vote, S2 should be rejected all the time.
-        s2.fTimer->invoke( timer_task_type::election_timer );
+        invoke_election_timer({&s2});
         // Pre-vote and vote.
         s2.fNet->execReqResp();
         s2.fNet->execReqResp();
 
-        s3.fTimer->invoke( timer_task_type::election_timer );
+        invoke_election_timer({&s3});
         // Pre-vote and vote.
         s3.fNet->execReqResp();
         s3.fNet->execReqResp();
@@ -1689,19 +1688,19 @@ int priority_broadcast_test() {
 
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
     // Send pre-vote requests, and probably rejected by S1 and S3.
     s2.fNet->execReqResp();
 
     // Trigger election timer of S3.
     s3.dbgLog(" --- invoke election timer of S3 ---");
     // It will not initiate vote due to priority.
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
 
     // Trigger election timer of S3 again.
     s3.dbgLog(" --- invoke election timer of S3 ---");
     // Now it will initiate vote by help of priority decay.
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
 
     // Send pre-vote requests, it will be rejected by S1, accepted by S2.
     // As a part of resp handling, it will initiate vote request.
@@ -1805,7 +1804,7 @@ int follower_reconnect_test() {
     s2.raftServer->send_reconnect_request();
     s2.fNet->execReqResp();
     // Wait for reconnect timer.
-    TestSuite::sleep_ms(3500, "wait for reconnect");
+    TestSuite::sleep_ms(50, "wait for reconnect");
 
     // Now leader send heartbeat.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );
@@ -2045,9 +2044,9 @@ int snapshot_randomized_creation_test() {
 
     raft_params params;
     params.with_randomized_snapshot_creation_enabled(true);
-    params.with_election_timeout_lower(0);
-    params.with_election_timeout_upper(10000);
-    params.with_hb_interval(5000);
+    params.with_election_timeout_lower(250);
+    params.with_election_timeout_upper(500);
+    params.with_hb_interval(125);
     params.with_client_req_timeout(1000000);
     params.with_reserved_log_items(0);
     params.with_snapshot_enabled(NUM);
@@ -2351,13 +2350,13 @@ int async_append_handler_cancel_test() {
     // S2 initiates leader election.
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
     // Send pre-vote requests, and probably rejected by S1 and S3.
     s2.fNet->execReqResp();
 
     // Trigger election timer of S3.
     s3.dbgLog(" --- invoke election timer of S3 ---");
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
 
     // Send pre-vote requests, it will be rejected by S1, accepted by S2.
     // As a part of resp handling, it will initiate vote request.
@@ -2611,13 +2610,13 @@ int custom_term_counter_test() {
 
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s2});
     // Send pre-vote requests, and probably rejected by S1 and S3.
     s2.fNet->execReqResp();
 
     // Trigger election timer of S3.
     s3.dbgLog(" --- invoke election timer of S3 ---");
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    invoke_election_timer({&s3});
 
     // Send pre-vote requests, it will be rejected by S1, accepted by S2.
     // As a part of resp handling, it will initiate vote request.
