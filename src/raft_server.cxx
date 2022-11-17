@@ -372,6 +372,19 @@ void raft_server::update_params(const raft_params& new_params) {
 
 void raft_server::apply_and_log_current_params() {
     ptr<raft_params> params = ctx_->get_params();
+
+    if (params->heart_beat_interval_ >= params->election_timeout_lower_bound_) {
+        params->election_timeout_lower_bound_ = params->heart_beat_interval_ * 2;
+        p_wn("invalid election timeout lower bound detected, adjusted to %d",
+             params->election_timeout_lower_bound_);
+    }
+
+    if (params->election_timeout_lower_bound_ >= params->election_timeout_upper_bound_) {
+        params->election_timeout_upper_bound_ = params->election_timeout_lower_bound_ * 2;
+        p_wn("invalid election timeout upper bound detected, adjusted to %d",
+             params->election_timeout_upper_bound_);
+    }
+
     p_in( "parameters: "
           "timeout %d - %d, heartbeat %d, "
           "leadership expiry %d, "
@@ -408,12 +421,6 @@ void raft_server::apply_and_log_current_params() {
           params->grace_period_of_lagging_state_machine_,
           params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING",
           params->parallel_log_appending_ ? "ON" : "OFF" );
-
-    if (params->election_timeout_lower_bound_ >= params->election_timeout_upper_bound_) {
-        p_ft("Params election_timeout_upper_bound_ should larger than "
-             "election_timeout_lower_bound_");
-        ::exit(-1);
-    }
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();
