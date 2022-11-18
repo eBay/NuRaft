@@ -208,6 +208,9 @@ int rmv_not_resp_srv_wq_test(bool explicit_failure) {
     // Remove s3 from leader.
     s1.dbgLog(" --- remove ---");
     s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+    for (size_t ii = 0; ii < 10; ++ii) {
+        s1.fNet->execReqResp(s3_addr);
+    }
 
     s1.fNet->execReqResp(s2_addr);
     // Fail to send it to S3.
