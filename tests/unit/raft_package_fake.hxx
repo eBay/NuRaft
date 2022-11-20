@@ -234,7 +234,7 @@ static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
-    raft_server::init_options opt;
+    raft_server::init_options opt(false, true, true);
     opt.raft_callback_ = cb_default;
 
     for (size_t ii = 0; ii < num_srvs; ++ii) {
