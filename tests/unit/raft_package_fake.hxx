@@ -54,7 +54,7 @@ public:
 
     void initServer(raft_params* given_params = nullptr,
                     const raft_server::init_options& opt =
-                        raft_server::init_options())
+                        raft_server::init_options(false, true, true))
     {
         fNet = cs_new<FakeNetwork>( myEndpoint, fBase );
         fBase->addNetwork(fNet);
@@ -95,7 +95,7 @@ public:
      */
     void restartServer(raft_params* given_params = nullptr,
                        const raft_server::init_options& opt =
-                           raft_server::init_options())
+                           raft_server::init_options(false, true, true))
     {
         if (!given_params) {
             params.with_election_timeout_lower(0);
