@@ -187,7 +187,7 @@ int init_options_test() {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
-    raft_server::init_options opt;
+    raft_server::init_options opt(false, true, true);
 
     for (size_t ii = 0; ii < num_srvs; ++ii) {
         RaftPkg* ff = pkgs[ii];
