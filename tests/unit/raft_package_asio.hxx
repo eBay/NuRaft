@@ -53,6 +53,7 @@ public:
         , writeReqMeta(nullptr)
         , alwaysInvokeCb(true)
         , useCustomResolver(false)
+        , useLogTimestamp(false)
         , myLogWrapper(nullptr)
         , myLog(nullptr)
         {}
@@ -117,6 +118,8 @@ public:
                 };
         }
 
+        asio_opt.replicate_log_timestamp_ = useLogTimestamp;
+
         if (readReqMeta) asio_opt.read_req_meta_ = readReqMeta;
         if (writeReqMeta) asio_opt.write_req_meta_ = writeReqMeta;
 
@@ -144,7 +147,7 @@ public:
         params.with_snapshot_enabled(5);
         params.with_client_req_timeout(10000);
         params.use_bg_thread_for_snapshot_io_ = use_bg_snapshot_io;
-        context* ctx( new context( sMgr, sm, listener, myLog,
+        context* ctx( new context( sMgr, sm, {listener}, myLog,
                                    rpc_cli_factory, scheduler, params ) );
         raftServer = cs_new<raft_server>(ctx, opt);
 
@@ -192,7 +195,7 @@ public:
             params.with_snapshot_enabled(5);
             params.with_client_req_timeout(10000);
         }
-        context* ctx( new context( sMgr, sm, listener, myLog,
+        context* ctx( new context( sMgr, sm, {listener}, myLog,
                                    rpc_cli_factory, scheduler, params ) );
         raftServer = cs_new<raft_server>(ctx, opt);
 
@@ -251,6 +254,8 @@ public:
     bool alwaysInvokeCb;
 
     bool useCustomResolver;
+
+    bool useLogTimestamp;
 
     ptr<logger_wrapper> myLogWrapper;
     ptr<logger> myLog;

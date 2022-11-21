@@ -23,7 +23,6 @@ namespace nuraft {
 
 raft_launcher::raft_launcher()
     : asio_svc_(nullptr)
-    , asio_listener_(nullptr)
     , raft_instance_(nullptr)
     {}
 
@@ -36,21 +35,29 @@ ptr<raft_server> raft_launcher::init(ptr<state_machine> sm,
                                      const raft_server::init_options& opt)
 {
     asio_svc_ = cs_new<asio_service>(asio_options, lg);
-    asio_listener_ = asio_svc_->create_rpc_listener(port_number, lg);
-    if (!asio_listener_) return nullptr;
+
+    auto asio_listener = asio_svc_->create_rpc_listener(port_number, lg);
+    if (!asio_listener) return nullptr;
+
+    asio_listeners_.emplace_back(std::move(asio_listener));
 
     ptr<delayed_task_scheduler> scheduler = asio_svc_;
     ptr<rpc_client_factory> rpc_cli_factory = asio_svc_;
 
     context* ctx = new context( smgr,
                                 sm,
-                                asio_listener_,
+                                asio_listeners_,
                                 lg,
                                 rpc_cli_factory,
                                 scheduler,
                                 params_given );
     raft_instance_ = cs_new<raft_server>(ctx, opt);
-    asio_listener_->listen( raft_instance_ );
+
+    for (const auto & asio_listener : asio_listeners_)
+    {
+        asio_listener->listen( raft_instance_ );
+    }
+
     return raft_instance_;
 }
 
@@ -60,10 +67,15 @@ bool raft_launcher::shutdown(size_t time_limit_sec) {
     raft_instance_->shutdown();
     raft_instance_.reset();
 
-    if (asio_listener_) {
-        asio_listener_->stop();
-        asio_listener_->shutdown();
+
+    for (const auto & asio_listener : asio_listeners_)
+    {
+        if (asio_listener) {
+            asio_listener->stop();
+            asio_listener->shutdown();
+        }
     }
+
     if (asio_svc_) {
         asio_svc_->stop();
         size_t count = 0;

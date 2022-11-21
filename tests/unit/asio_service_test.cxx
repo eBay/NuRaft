@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "buffer_serializer.hxx"
 #include "debugging_options.hxx"
+#include "in_memory_log_store.hxx"
 #include "raft_package_asio.hxx"
 
 #include "event_awaiter.h"
@@ -2489,7 +2490,6 @@ int custom_resolver_test() {
         RaftAsioPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
-        param.parallel_log_appending_ = true;
         pp->raftServer->update_params(param);
     }
 
@@ -2542,6 +2542,154 @@ int custom_resolver_test() {
     return 0;
 }
 
+int log_timestamp_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    // Enable log entry timestamp replication.
+    s1.useLogTimestamp = s2.useLogTimestamp = s3.useLogTimestamp = true;
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async mode.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.reserved_log_items_ = 100;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    const size_t NUM = 5;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    auto do_async_append = [&](RaftAsioPkg& target_srv) {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                target_srv.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append(s1);
+
+    TestSuite::sleep_sec(1, "wait for replication");
+    // Now all async handlers should have result.
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
+
+    // Make S2 leader and append logs.
+    s2.raftServer->request_leadership();
+    TestSuite::sleep_sec(1, "make S2 leader");
+    do_async_append(s2);
+    TestSuite::sleep_sec(1, "wait for replication");
+    // Now all async handlers should have result.
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
+
+    // Make S3 leader and append logs.
+    s3.raftServer->request_leadership();
+    TestSuite::sleep_sec(1, "make S3 leader");
+    do_async_append(s3);
+    TestSuite::sleep_sec(1, "wait for replication");
+    // Now all async handlers should have result.
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
+
+    // Remove S2, and shut it down.
+    s3.raftServer->remove_srv(2);
+    TestSuite::sleep_sec(1, "removing S2");
+
+    // Shutdown S2
+    s2.raftServer->shutdown();
+    s2.stopAsio();
+    TestSuite::sleep_sec(1, "shutting down S2");
+
+    // Add S4
+    std::string s4_addr = "tcp://127.0.0.1:20040";
+    RaftAsioPkg s4(4, s4_addr);
+    s4.useLogTimestamp = true;
+    s4.initServer();
+    {
+        raft_params param = s4.raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.reserved_log_items_ = 100;
+        s4.raftServer->update_params(param);
+    }
+    TestSuite::sleep_sec(1, "starting S4");
+
+    s3.raftServer->add_srv( *(s4.getTestMgr()->get_srv_config()) );
+    TestSuite::sleep_sec(1, "adding S4");
+
+    // State machine should be identical.
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s4.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // All log entries should have their timestamp,
+    // and they should be identical across all members.
+    for (auto& ss: {s3, s4}) {
+        ptr<inmem_log_store> src_log_store = s1.getTestMgr()->get_inmem_log_store();
+        ptr<inmem_log_store> dst_log_store = ss.getTestMgr()->get_inmem_log_store();
+
+        size_t start_idx = src_log_store->start_index();
+        size_t end_idx = src_log_store->next_slot() - 1;
+        for (size_t ii = start_idx; ii <= end_idx; ++ii) {
+            if (ii == 1) {
+                // Log index 1 is a special log: electing itself as a leader.
+                // We don't need to compare it.
+                continue;
+            }
+            ptr<log_entry> src_le = src_log_store->entry_at(ii);
+            ptr<log_entry> dst_le = dst_log_store->entry_at(ii);
+            TestSuite::_msg("index %2lu, type %d, %lu %lu\n",
+                            ii, src_le->get_val_type(),
+                            src_le->get_timestamp(), dst_le->get_timestamp());
+            CHK_NEQ(0, src_le->get_timestamp());
+            CHK_EQ(src_le->get_timestamp(), dst_le->get_timestamp());
+        }
+    }
+
+    s1.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    s4.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
 
 }  // namespace asio_service_test;
 using namespace asio_service_test;
@@ -2647,6 +2795,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "custom resolver test",
                custom_resolver_test );
+
+    ts.doTest( "log timestamp test",
+               log_timestamp_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

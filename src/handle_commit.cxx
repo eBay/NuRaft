@@ -34,6 +34,7 @@ limitations under the License.
 #include <cassert>
 #include <list>
 #include <sstream>
+#include <random>
 
 namespace nuraft {
 
@@ -146,6 +147,13 @@ void raft_server::commit_in_bg() {
             //     2) log store's latest log index.
         }
 
+        if (stopping_) {
+            { std::unique_lock<std::mutex> lock2(ready_to_stop_cv_lock_);
+              ready_to_stop_cv_.notify_all(); }
+            commit_bg_stopped_ = true;
+            return;
+        }
+
         commit_in_bg_exec(0, is_log_store_commit_exec);
 
      } catch (std::exception& err) {
@@ -181,7 +189,10 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms, bool initial_commit_exec)
         ExecCommitAutoCleaner(std::function<void()> func) : clean_func_(func) {}
         ~ExecCommitAutoCleaner() { clean_func_(); }
         std::function<void()> clean_func_;
-    } exec_auto_cleaner([this](){ sm_commit_exec_in_progress_ = false; });
+    } exec_auto_cleaner([this](){
+        sm_commit_exec_in_progress_ = false;
+        ea_sm_commit_exec_in_progress_->invoke();
+    });
 
     p_db( "commit upto %ld, current idx %ld\n",
           quick_commit_index_.load(), sm_commit_index_.load() );
@@ -216,15 +227,27 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms, bool initial_commit_exec)
         }
         first_loop_exec = false;
 
+        if (stopping_)
+            return false;
+
         // Break the loop if state machine commit is paused.
         if (sm_commit_paused_) {
             break;
         }
 
         ulong index_to_commit = sm_commit_index_ + 1;
-        ptr<log_entry> le = log_store_->entry_at(index_to_commit);
         p_tr( "commit upto %llu, current idx %llu\n",
               quick_commit_index_.load(), index_to_commit );
+
+        ptr<log_entry> le = log_store_->entry_at(index_to_commit);
+        if (!le)
+        {
+            // LCOV_EXCL_START
+            p_ft( "failed to get log entry with idx %llu", index_to_commit );
+            ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
+            ::exit(-1);
+            // LCOV_EXCL_STOP
+        }
 
         if (le->get_term() == 0) {
             // LCOV_EXCL_START
@@ -309,7 +332,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
         ::exit(-1);
     }
     ret_value = state_machine_->commit_ext
-                ( state_machine::ext_op_params( sm_idx, buf ) );
+                ( state_machine::ext_op_params( sm_idx, buf, le->get_term() ) );
     if (ret_value) ret_value->pos(0);
 
     std::list< ptr<commit_ret_elem> > async_elems;
@@ -465,10 +488,15 @@ bool raft_server::apply_config_log_entry(ptr<log_entry>& le,
     return true;
 }
 
-bool raft_server::create_snapshot() {
+ulong raft_server::create_snapshot() {
     uint64_t committed_idx = sm_commit_index_;
     p_in("manually create a snapshot on %lu", committed_idx);
-    return snapshot_and_compact(committed_idx, true);
+    return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
+}
+
+ulong raft_server::get_last_snapshot_idx() const {
+    std::lock_guard<std::mutex> l(last_snapshot_lock_);
+    return last_snapshot_ ? last_snapshot_->get_last_log_idx(): 0;
 }
 
 bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation) {
@@ -482,14 +510,23 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         return false;
     }
 
+    auto snapshot_distance = (ulong)params->snapshot_distance_;
+    // Randomized snapshot distance for the first creation.
+    if ( params->enable_randomized_snapshot_creation_ &&
+         !snp_in_progress_.load(std::memory_order_relaxed) &&
+         !get_last_snapshot() &&
+         params->snapshot_distance_ != 0 ) {
+        snapshot_distance = first_snapshot_distance_;
+    }
+
     if (!forced_creation) {
         // If `forced_creation == true`, ignore below conditions.
         if ( params->snapshot_distance_ == 0 ||
-             ( committed_idx - log_store_->start_index() + 1 ) <
-                   (ulong)params->snapshot_distance_ ) {
+             ( committed_idx - log_store_->start_index() + 1 ) < snapshot_distance ) {
             // snapshot is disabled or the log store is not long enough
             return false;
         }
+
         if ( !state_machine_->chk_create_snapshot() ) {
             // User-defined state machine doesn't want to create a snapshot.
             return false;
@@ -502,8 +539,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     ptr<snapshot> local_snp = get_last_snapshot();
     if ( ( forced_creation ||
            !local_snp ||
-           ( committed_idx - local_snp->get_last_log_idx() ) >=
-                 (ulong)params->snapshot_distance_ ) &&
+           ( committed_idx - local_snp->get_last_log_idx() ) >= snapshot_distance ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
     {
         snapshot_in_action = true;
@@ -567,9 +603,9 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     }
     return false;
 
- } catch (...) {
-    p_er( "failed to compact logs at index %llu due to errors",
-          committed_idx );
+ } catch (std::exception &e) {
+    p_er( "failed to compact logs at index %llu due to errors %s",
+          committed_idx, e.what());
     if (snapshot_in_action) {
         bool val = true;
         snp_in_progress_.compare_exchange_strong(val, false);
@@ -863,17 +899,16 @@ void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
     if (!timeout_ms) {
         return;
     }
-    timer_helper timer(timeout_ms * 1000);
-    while (sm_commit_exec_in_progress_ && !timer.timeout()) {
-        timer_helper::sleep_ms(10);
-    }
+
+    timer_helper timer;
+    wait_for_state_machine_pause(timeout_ms);
     p_in( "waited %zu ms, state machine %s",
           timer.get_ms(),
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
 }
 
 void raft_server::resume_state_machine_execution() {
-    p_in( "pause state machine execution, previously %s, state machine %s",
+    p_in( "resume state machine execution, previously %s, state machine %s",
           sm_commit_paused_ ? "PAUSED" : "ACTIVE",
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
     sm_commit_paused_ = false;
@@ -891,6 +926,18 @@ void raft_server::resume_state_machine_execution() {
 
 bool raft_server::is_state_machine_execution_paused() const {
     if (sm_commit_paused_ && !sm_commit_exec_in_progress_) {
+        return true;
+    }
+    return false;
+}
+
+bool raft_server::wait_for_state_machine_pause(size_t timeout_ms) {
+    ea_sm_commit_exec_in_progress_->reset();
+    if (!sm_commit_exec_in_progress_) {
+        return true;
+    }
+    ea_sm_commit_exec_in_progress_->wait_ms(timeout_ms);
+    if (!sm_commit_exec_in_progress_) {
         return true;
     }
     return false;

@@ -84,6 +84,7 @@ struct asio_service_options {
         , invoke_resp_cb_on_empty_meta_(true)
         , verify_sn_(nullptr)
         , custom_resolver_(nullptr)
+        , replicate_log_timestamp_(false)
         {}
 
     /**
@@ -183,6 +184,20 @@ struct asio_service_options {
     std::function< void( const std::string&,
                          const std::string&,
                          asio_service_custom_resolver_response ) > custom_resolver_;
+
+    /**
+     * If `true`, each log entry will contain timestamp when it was generated
+     * by the leader, and those timestamps will be replicated to all followers
+     * so that they will see the same timestamp for the same log entry.
+     *
+     * To support this feature, the log store implementation should be able to
+     * restore the timestamp when it reads log entries.
+     *
+     * This feature is not backward compatible. To enable this feature, there
+     * should not be any member running with old version before supprting
+     * this flag.
+     */
+    bool replicate_log_timestamp_;
 };
 
 }

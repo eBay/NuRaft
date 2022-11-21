@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include <asio/ip/address.hpp>
 #define ASIO_HAS_STD_CHRONO 1
 #if defined(__EDG_VERSION__)
 #undef __EDG_VERSION__
@@ -38,7 +39,11 @@ limitations under the License.
 #include "strfmt.hxx"
 #include "tracer.hxx"
 
-#include "asio.hpp"
+#ifdef USE_BOOST_ASIO
+#include <boost/asio.hpp>
+#else
+#include <asio.hpp>
+#endif
 
 #include <atomic>
 #include <ctime>
@@ -65,7 +70,11 @@ limitations under the License.
     using ssl_socket = mock_ssl_socket;
     using ssl_context = mock_ssl_context;
 #else
-    #include "asio/ssl.hpp"
+#ifdef USE_BOOST_ASIO
+    #include <boost/asio/ssl.hpp>
+#else
+    #include <asio/ssl.hpp>
+#endif
     using ssl_socket = asio::ssl::stream<asio::ip::tcp::socket&>;
     using ssl_context = asio::ssl::context;
 #endif
@@ -112,6 +121,9 @@ limitations under the License.
 
 // If set, RPC message (response) includes additional hints.
 #define INCLUDE_HINT (0x2)
+
+// If set, each log entry will contain timestamp.
+#define INCLUDE_LOG_TIMESTAMP (0x4)
 
 // =======================
 
@@ -366,13 +378,17 @@ public:
 
             header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
             int32 data_size = header_->get_int();
-            // Up to 1GB.
-            if (data_size < 0 || data_size > 0x40000000) {
+            
+            if (data_size < 0) {
                 p_er("bad log data size in the header %d, stop "
                      "this session to protect further corruption",
                      data_size);
                 this->stop();
                 return;
+            }
+            // Warning for 1GB+
+            if (data_size > 0x40000000) {
+                p_wn("large data size in the header %d", data_size);
             }
 
             if (data_size == 0) {
@@ -513,39 +529,49 @@ private:
         ptr<req_msg> req = cs_new<req_msg>
                            ( term, t, src, dst, last_term, last_idx, commit_idx );
         if (hdr->get_int() > 0 && log_ctx) {
-            log_ctx->pos(0);
+            buffer_serializer ss(log_ctx);
+            size_t log_ctx_size = log_ctx->size();
+
             // If flag is set, read meta first.
             if (flags_ & INCLUDE_META) {
                 size_t meta_len = 0;
-                const byte* meta_raw = log_ctx->get_bytes(meta_len);
+                const byte* meta_raw = (const byte*)ss.get_bytes(meta_len);
                 if (meta_len) {
                     meta_str = std::string((const char*)meta_raw, meta_len);
                 }
             }
 
-            while (log_ctx->size() > log_ctx->pos()) {
-                if (log_ctx->size() - log_ctx->pos() < sz_ulong + sz_byte + sz_int) {
+            size_t LOG_ENTRY_SIZE = 8 + 1 + 4;
+            if (flags_ & INCLUDE_LOG_TIMESTAMP) {
+                LOG_ENTRY_SIZE += 8;
+            }
+
+            while (log_ctx_size > ss.pos()) {
+                if (log_ctx_size - ss.pos() < LOG_ENTRY_SIZE) {
                     // Possibly corrupted packet. Stop here.
                     p_wn("wrong log ctx size %zu pos %zu, stop this session",
-                         log_ctx->size(), log_ctx->pos());
+                         log_ctx_size, ss.pos());
                     this->stop();
                     return;
                 }
-                ulong term = log_ctx->get_ulong();
-                log_val_type val_type = (log_val_type)log_ctx->get_byte();
-                size_t val_size = log_ctx->get_int();
-                if (log_ctx->size() - log_ctx->pos() < val_size) {
+                ulong term = ss.get_u64();
+                log_val_type val_type = (log_val_type)ss.get_u8();
+                uint64_t timestamp = (flags_ & INCLUDE_LOG_TIMESTAMP) ? ss.get_u64() : 0;
+
+                size_t val_size = ss.get_i32();
+                if (log_ctx_size - ss.pos() < val_size) {
                     // Out-of-bound size.
                     p_wn("wrong value size %zu log ctx %zu %zu, "
                          "stop this session",
-                         val_size, log_ctx->size(), log_ctx->pos());
+                         val_size, log_ctx_size, ss.pos());
                     this->stop();
                     return;
                 }
 
                 ptr<buffer> buf( buffer::alloc(val_size) );
-                log_ctx->get(buf);
-                ptr<log_entry> entry( cs_new<log_entry>(term, buf, val_type) );
+                ss.get_buffer(buf);
+                ptr<log_entry> entry(
+                    cs_new<log_entry>(term, buf, val_type, timestamp) );
                 req->log_entries().push_back(entry);
             }
         }
@@ -746,11 +772,30 @@ public:
                        bool _enable_ssl,
                        ptr<logger>& l,
                        bool _enable_ipv6 = true )
+        : asio_rpc_listener(_impl, io, ssl_ctx, _enable_ssl, l, asio::ip::tcp::endpoint(_enable_ipv6 ? asio::ip::tcp::v6() : asio::ip::tcp::v4(), port))
+        {}
+
+    asio_rpc_listener( asio_service_impl* _impl,
+                       asio::io_service& io,
+                       ssl_context& ssl_ctx,
+                       const std::string & host,
+                       ushort port,
+                       bool _enable_ssl,
+                       ptr<logger>& l )
+        : asio_rpc_listener(_impl, io, ssl_ctx, _enable_ssl, l, asio::ip::tcp::endpoint(asio::ip::make_address(host), port))
+        {}
+
+    asio_rpc_listener( asio_service_impl* _impl,
+                       asio::io_service& io,
+                       ssl_context& ssl_ctx,
+                       bool _enable_ssl,
+                       ptr<logger>& l,
+                       const asio::ip::tcp::endpoint& endpoint )
         : impl_(_impl)
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
-        , acceptor_(io, asio::ip::tcp::endpoint(_enable_ipv6 ? asio::ip::tcp::v6() : asio::ip::tcp::v4(), port))
+        , acceptor_(io, endpoint)
         , session_id_cnt_(1)
         , stopped_(false)
         , ssl_enabled_(_enable_ssl)
@@ -759,8 +804,9 @@ public:
         asio::socket_base::reuse_address option(true);
         acceptor_.set_option(option);
 
-        p_in("Raft ASIO listener initiated, %s",
-             ssl_enabled_ ? "SSL enabled" : "unsecured");
+        auto endpoint_address = endpoint.address().to_string();
+        p_in("Raft ASIO listener initiated on %s:%d, %s",
+             endpoint_address.c_str(), endpoint.port(), ssl_enabled_ ? "SSL enabled" : "unsecured");
     }
 
     __nocopy__(asio_rpc_listener);
@@ -1098,22 +1144,38 @@ public:
         std::vector<ptr<buffer>> log_entry_bufs;
         int32 log_data_size(0);
 
+        uint32_t flags = 0x0;
+        size_t LOG_ENTRY_SIZE = 8 + 1 + 4;
+        if (impl_->get_options().replicate_log_timestamp_) {
+            LOG_ENTRY_SIZE += 8;
+            flags |= INCLUDE_LOG_TIMESTAMP;
+        }
+
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
             auto& le_buf = le->get_buf();
             ptr<buffer> entry_buf = buffer::alloc
-                                    ( 8 + 1 + 4 + le_buf.size() );
+                                    ( LOG_ENTRY_SIZE + le->get_buf().size() );
+#if 0
             entry_buf->put( le->get_term() );
             entry_buf->put( (byte)le->get_val_type() );
             entry_buf->put( (int32)le_buf.size() );
             entry_buf->put_raw( le_buf.data_begin(), le_buf.size() );
             entry_buf->pos( 0 );
-
+#else
+            buffer_serializer ss(entry_buf);
+            ss.put_u64( le->get_term() );
+            ss.put_u8( le->get_val_type() );
+            if (impl_->get_options().replicate_log_timestamp_) {
+                ss.put_u64( le->get_timestamp() );
+            }
+            ss.put_i32( le->get_buf().size() );
+            ss.put_raw( le->get_buf().data_begin(), le->get_buf().size() );
+#endif
             log_entry_bufs.push_back(entry_buf);
             log_data_size += (int32)entry_buf->size();
         }
 
-        uint32_t flags = 0x0;
         size_t meta_size = 0;
         std::string meta_str;
         if (impl_->get_options().write_req_meta_) {
@@ -1891,6 +1953,26 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
                    port,
                    impl_->my_opt_.enable_ssl_,
                    l_ );
+}
+
+ptr<rpc_listener> asio_service::create_rpc_listener(const std::string& host,
+                                      ushort listening_port,
+                                      ptr<logger>& l)
+{
+    try {
+        return cs_new< asio_rpc_listener >
+                     ( impl_,
+                       impl_->io_svc_,
+                       impl_->ssl_server_ctx_,
+                       host,
+                       listening_port,
+                       impl_->my_opt_.enable_ssl_,
+                       l);
+    } catch (std::exception& ee) {
+        // Most likely exception happens due to wrong endpoint.
+        p_er("got exception on %s:%u: %s", host.c_str(), listening_port, ee.what());
+        return nullptr;
+    }
 }
 
 ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
