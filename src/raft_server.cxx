@@ -107,6 +107,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                                                 std::placeholders::_2 ) )
     , last_snapshot_(ctx->state_machine_->last_snapshot())
     , ea_follower_log_append_(new EventAwaiter())
+    , test_mode_flag_(opt.test_mode_flag_)
 {
     char temp_buf[4096];
     std::string print_msg;
@@ -372,6 +373,22 @@ void raft_server::update_params(const raft_params& new_params) {
 
 void raft_server::apply_and_log_current_params() {
     ptr<raft_params> params = ctx_->get_params();
+
+    if (!test_mode_flag_) {
+        if (params->heart_beat_interval_ >= params->election_timeout_lower_bound_) {
+            params->election_timeout_lower_bound_ = params->heart_beat_interval_ * 2;
+            p_wn("invalid election timeout lower bound detected, adjusted to %d",
+                 params->election_timeout_lower_bound_);
+        }
+        if (params->election_timeout_lower_bound_
+            >= params->election_timeout_upper_bound_) {
+            params->election_timeout_upper_bound_ =
+                params->election_timeout_lower_bound_ * 2;
+            p_wn("invalid election timeout upper bound detected, adjusted to %d",
+                 params->election_timeout_upper_bound_);
+        }
+    }
+
     p_in( "parameters: "
           "timeout %d - %d, heartbeat %d, "
           "leadership expiry %d, "

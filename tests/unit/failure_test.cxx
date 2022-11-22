@@ -291,7 +291,7 @@ int force_log_compaction_test() {
     std::atomic<bool> invoked(false);
     for (size_t ii = 0; ii < pkgs.size(); ++ii) {
         RaftPkg* ff = pkgs[ii];
-        raft_server::init_options opt;
+        raft_server::init_options opt(false, true, true);
         if (ii < 2) {
             opt.raft_callback_ = cb_default;
             ff->initServer(nullptr, opt);
