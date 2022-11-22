@@ -87,11 +87,9 @@ if (NOT WIN32)
     if (APPLE)
         include_directories(BEFORE
                 /usr/local/opt/openssl/include
-                /opt/homebrew/opt/openssl@1.1/include
                 )
         link_directories(
                 /usr/local/opt/openssl/lib
-                /opt/homebrew/opt/openssl@1.1/lib
                 )
     else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
