@@ -2960,14 +2960,19 @@ int extended_append_entries_api_test() {
 
     uint64_t cur_term = s1.raftServer->get_term();
     uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
+    void* context = static_cast< void * >(&s1);
 
     uint64_t num_cb_invoked = 0;
     uint64_t num_log_idx_mismatch = 0;
+    uint64_t num_context_mismatch = 0;
     auto ext_callback = [&](const raft_server::req_ext_cb_params& params) {
         if ( last_log_idx + 1 != params.log_idx ||
              cur_term != params.log_term ) {
             num_log_idx_mismatch++;
         }
+
+        if (context != params.context) { ++num_context_mismatch; }
+
         last_log_idx++;
         num_cb_invoked++;
     };
@@ -2982,6 +2987,7 @@ int extended_append_entries_api_test() {
             raft_server::req_ext_params ext_params;
             ext_params.expected_term_ = exp_term;
             ext_params.after_precommit_ = ext_callback;
+            ext_params.context = context;
 
             ptr< cmd_result< ptr<buffer> > > ret =
                 s1.raftServer->append_entries_ext( {msg}, ext_params );
@@ -3006,7 +3012,8 @@ int extended_append_entries_api_test() {
     CHK_EQ( NUM, num_cb_invoked );
     // Log index should match.
     CHK_Z( num_log_idx_mismatch );
-
+    // Callback should have invoked with correct context
+    CHK_Z( num_context_mismatch );
     print_stats(pkgs);
 
     s1.raftServer->shutdown();

@@ -131,6 +131,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
             req_ext_cb_params cb_params;
             cb_params.log_idx = last_idx;
             cb_params.log_term = cur_term;
+            cb_params.context = ext_params.context;
             ext_params.after_precommit_(cb_params);
         }
     }

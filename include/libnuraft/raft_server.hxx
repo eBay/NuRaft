@@ -260,6 +260,11 @@ public:
          * Raft log term number.
          */
         uint64_t log_term;
+
+        /**
+         * Opaque cookie which was passed in the req_ext_params
+         */
+        void* context{nullptr};
     };
 
     /**
@@ -284,6 +289,11 @@ public:
          * server's term does not match the given term.
          */
         uint64_t expected_term_;
+
+        /**
+         * Opaque cookie which will be passed as is to the req_ext_cb
+         */
+        void* context{nullptr};
     };
 
     /**
