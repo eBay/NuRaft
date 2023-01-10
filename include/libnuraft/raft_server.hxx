@@ -293,7 +293,7 @@ public:
         /**
          * Opaque cookie which will be passed as is to the req_ext_cb
          */
-        void* context{nullptr};
+        void* context_{nullptr};
     };
 
     /**

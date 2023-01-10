@@ -2987,7 +2987,7 @@ int extended_append_entries_api_test() {
             raft_server::req_ext_params ext_params;
             ext_params.expected_term_ = exp_term;
             ext_params.after_precommit_ = ext_callback;
-            ext_params.context = context;
+            ext_params.context_ = context;
 
             ptr< cmd_result< ptr<buffer> > > ret =
                 s1.raftServer->append_entries_ext( {msg}, ext_params );
