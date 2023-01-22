@@ -310,5 +310,4 @@ endif()
 install(TARGETS static_lib ARCHIVE DESTINATION lib)
 install(TARGETS shared_lib LIBRARY DESTINATION lib)
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/libnuraft DESTINATION include)
-
-
+install(FILES ${PROJECT_SOURCE_DIR}/src/event_awaiter.h DESTINATION include)
