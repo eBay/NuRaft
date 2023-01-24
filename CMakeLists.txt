@@ -85,8 +85,12 @@ if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
-        include_directories(BEFORE /usr/local/opt/openssl/include)
-        link_directories(/usr/local/opt/openssl/lib)
+        include_directories(BEFORE
+                /usr/local/opt/openssl/include
+                )
+        link_directories(
+                /usr/local/opt/openssl/lib
+                )
     else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
@@ -105,38 +109,46 @@ endif ()
 
 # === OpenSSL libraries ===
 if (NOT (DISABLE_SSL GREATER 0))
-    set(LIB_PATH_HINT
-        ~/Library/Frameworks
-        /Library/Frameworks
-        $ENV{HOME}/local/lib64
-        $ENV{HOME}/local/lib
-        /usr/lib
-        /usr/lib/x86_64-linux-gnu
-        /usr/lib64
-        /usr/local/lib
-        /usr/local/lib64
-        /opt/local/lib
-        /opt/local/lib64
-        /opt/csw
-        /opt)
-    find_path(OPENSSL_LIBRARY_PATH
-              NAMES libssl.a
-              PATHS ${PROJECT_SOURCE_DIR}
-                    ${DEPS_PREFIX}/lib
-                    ${DEPS_PREFIX}/lib64
-                    /usr/local/opt/openssl/lib
-                    ${LIB_PATH_HINT})
-
-    if (NOT OPENSSL_LIBRARY_PATH)
-        message(STATUS "Use system's side OpenSSL library")
-        set(LIBSSL ssl)
-        set(LIBCRYPTO crypto)
-    else ()
-        message(STATUS "Open SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
+    if (OPENSSL_LIBRARY_PATH AND OPENSSL_INCLUDE_PATH)
+        message(STATUS "Pre-defined SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
+        message(STATUS "Pre-defined SSL include path: ${OPENSSL_INCLUDE_PATH}")
+        include_directories(BEFORE ${OPENSSL_INCLUDE_PATH})
         set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
         set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
+    else ()
+        set(LIB_PATH_HINT
+            ~/Library/Frameworks
+            /Library/Frameworks
+            $ENV{HOME}/local/lib64
+            $ENV{HOME}/local/lib
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/lib64
+            /usr/local/lib
+            /usr/local/lib64
+            /opt/local/lib
+            /opt/local/lib64
+            /opt/csw
+            /opt)
+        find_path(OPENSSL_LIBRARY_PATH
+                  NAMES libssl.a
+                  PATHS ${PROJECT_SOURCE_DIR}
+                        ${DEPS_PREFIX}/lib
+                        ${DEPS_PREFIX}/lib64
+                        /usr/local/opt/openssl/lib
+                        ${LIB_PATH_HINT})
+
+        if (NOT OPENSSL_LIBRARY_PATH)
+            message(STATUS "Use system's side OpenSSL library")
+            set(LIBSSL ssl)
+            set(LIBCRYPTO crypto)
+        else ()
+            message(STATUS "Open SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
+            set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
+            set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
+        endif ()
     endif ()
-endif ()
+endif()
 
 # === Compiler options ===
 if (ADDRESS_SANITIZER GREATER 0)

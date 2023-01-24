@@ -14,3 +14,5 @@ nbproject/
 *.exe
 *.ilk
 *.lib
+.idea
+cmake-build*

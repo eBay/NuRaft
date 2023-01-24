@@ -463,12 +463,12 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
     int32 election_quorum_size = get_quorum_for_election() + 1;
 
     p_in("[PRE-VOTE RESP] peer %d (%s), term %lu, resp term %lu, "
-         "my role %s, dead %d, live %d, "
+         "my role %s, dead %d, live %d, abandoned %d, "
          "num voting members %d, quorum %d\n",
          resp.get_src(), (resp.get_accepted())?"O":"X",
          pre_vote_.term_, resp.get_term(),
          srv_role_to_string(role_).c_str(),
-         pre_vote_.dead_.load(), pre_vote_.live_.load(),
+         pre_vote_.dead_.load(), pre_vote_.live_.load(), pre_vote_.abandoned_.load(),
          get_num_voting_members(), election_quorum_size);
 
     if (pre_vote_.dead_ >= election_quorum_size) {
@@ -507,6 +507,10 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
 
     if (pre_vote_.abandoned_ >= election_quorum_size) {
         p_er("[PRE-VOTE DONE] this node has been removed, stepping down");
+        cb_func::Param param(id_, leader_);
+        CbReturnCode rc = ctx_->cb_func_.call( cb_func::RemovedFromCluster,
+                                               &param );
+        (void)rc;
         steps_to_down_ = 2;
     }
 }

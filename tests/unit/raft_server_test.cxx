@@ -187,7 +187,7 @@ int init_options_test() {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
-    raft_server::init_options opt;
+    raft_server::init_options opt(false, true, true);
 
     for (size_t ii = 0; ii < num_srvs; ++ii) {
         RaftPkg* ff = pkgs[ii];
@@ -1988,8 +1988,9 @@ int snapshot_manual_creation_test() {
     uint64_t committed_index = s1.raftServer->get_committed_log_idx();
 
     // Create a manual snapshot.
-    CHK_OK( s1.raftServer->create_snapshot() );
-    CHK_EQ( committed_index, s1.getTestSm()->last_snapshot()->get_last_log_idx() );
+    ulong log_idx = s1.raftServer->create_snapshot();
+    CHK_EQ( committed_index, log_idx );
+    CHK_EQ( log_idx, s1.raftServer->get_last_snapshot_idx() );
 
     // Make req to S3 failed.
     s1.fNet->makeReqFail("S3");
@@ -2011,6 +2012,88 @@ int snapshot_manual_creation_test() {
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
     CHK_EQ( committed_index, s3.getTestSm()->last_snapshot()->get_last_log_idx() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    fake_executer_killer(&exec_args);
+    hh.join();
+    CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
+int snapshot_randomized_creation_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    const size_t NUM = 50;
+
+    raft_params params;
+    params.with_randomized_snapshot_creation_enabled(true);
+    params.with_election_timeout_lower(0);
+    params.with_election_timeout_upper(10000);
+    params.with_hb_interval(5000);
+    params.with_client_req_timeout(1000000);
+    params.with_reserved_log_items(0);
+    params.with_snapshot_enabled(NUM);
+    params.with_log_sync_stopping_gap(1);
+
+    CHK_Z( launch_servers( pkgs, &params ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Append a message using separate thread.
+    ExecArgs exec_args(&s1);
+    TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii=0; ii<NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    // NOTE: Send it to S2, S3
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    CHK_NEQ(NUM, s1.getTestSm()->last_snapshot()->get_last_log_idx())
+    CHK_NEQ(NUM, s2.getTestSm()->last_snapshot()->get_last_log_idx())
+    CHK_NEQ(NUM, s3.getTestSm()->last_snapshot()->get_last_log_idx())
 
     print_stats(pkgs);
 
@@ -2877,14 +2960,19 @@ int extended_append_entries_api_test() {
 
     uint64_t cur_term = s1.raftServer->get_term();
     uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
+    void* context = static_cast< void * >(&s1);
 
     uint64_t num_cb_invoked = 0;
     uint64_t num_log_idx_mismatch = 0;
+    uint64_t num_context_mismatch = 0;
     auto ext_callback = [&](const raft_server::req_ext_cb_params& params) {
         if ( last_log_idx + 1 != params.log_idx ||
              cur_term != params.log_term ) {
             num_log_idx_mismatch++;
         }
+
+        if (context != params.context) { ++num_context_mismatch; }
+
         last_log_idx++;
         num_cb_invoked++;
     };
@@ -2899,6 +2987,7 @@ int extended_append_entries_api_test() {
             raft_server::req_ext_params ext_params;
             ext_params.expected_term_ = exp_term;
             ext_params.after_precommit_ = ext_callback;
+            ext_params.context_ = context;
 
             ptr< cmd_result< ptr<buffer> > > ret =
                 s1.raftServer->append_entries_ext( {msg}, ext_params );
@@ -2923,7 +3012,8 @@ int extended_append_entries_api_test() {
     CHK_EQ( NUM, num_cb_invoked );
     // Log index should match.
     CHK_Z( num_log_idx_mismatch );
-
+    // Callback should have invoked with correct context
+    CHK_Z( num_context_mismatch );
     print_stats(pkgs);
 
     s1.raftServer->shutdown();
@@ -3011,6 +3101,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "snapshot manual creation test",
                snapshot_manual_creation_test );
+
+    ts.doTest( "snapshot randomized creation test",
+               snapshot_randomized_creation_test );
 
     ts.doTest( "join empty node test",
                join_empty_node_test );

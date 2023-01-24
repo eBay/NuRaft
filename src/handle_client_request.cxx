@@ -30,6 +30,7 @@ limitations under the License.
 #include "tracer.hxx"
 
 #include <cassert>
+#include <chrono>
 #include <sstream>
 
 namespace nuraft {
@@ -39,17 +40,19 @@ ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
 {
     ptr<resp_msg> resp = nullptr;
     ptr<raft_params> params = ctx_->get_params();
+    uint64_t timestamp_us = timer_helper::get_timeofday_us();
+
     switch (params->locking_method_type_) {
         case raft_params::single_mutex: {
             recur_lock(lock_);
-            resp = handle_cli_req(req, ext_params);
+            resp = handle_cli_req(req, ext_params, timestamp_us);
             break;
         }
         case raft_params::dual_mutex:
         default: {
             // TODO: Use RW lock here.
             auto_lock(cli_lock_);
-            resp = handle_cli_req(req, ext_params);
+            resp = handle_cli_req(req, ext_params, timestamp_us);
             break;
         }
     }
@@ -80,13 +83,15 @@ void raft_server::request_append_entries_for_all() {
 }
 
 ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
-                                          const req_ext_params& ext_params)
+                                          const req_ext_params& ext_params,
+                                          uint64_t timestamp_us)
 {
     ptr<resp_msg> resp = nullptr;
     ulong last_idx = 0;
     ptr<buffer> ret_value = nullptr;
     ulong resp_idx = 1;
     ulong cur_term = state_->get_term();
+    ptr<raft_params> params = ctx_->get_params();
 
     resp = cs_new<resp_msg>( cur_term,
                              msg_type::append_entries_response,
@@ -111,9 +116,10 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
     for (size_t i = 0; i < num_entries; ++i) {
         // force the log's term to current term
         entries.at(i)->set_term(cur_term);
+        entries.at(i)->set_timestamp(timestamp_us);
 
         ulong next_slot = store_log_entry(entries.at(i));
-        p_db("append at log_idx %zu\n", next_slot);
+        p_db("append at log_idx %lu, timestamp %lu\n", next_slot, timestamp_us);
         last_idx = next_slot;
 
         ptr<buffer> buf = entries.at(i)->get_buf_ptr();
@@ -125,6 +131,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
             req_ext_cb_params cb_params;
             cb_params.log_idx = last_idx;
             cb_params.log_term = cur_term;
+            cb_params.context = ext_params.context_;
             ext_params.after_precommit_(cb_params);
         }
     }

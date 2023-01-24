@@ -38,7 +38,11 @@ limitations under the License.
 #include "strfmt.hxx"
 #include "tracer.hxx"
 
-#include "asio.hpp"
+#ifdef USE_BOOST_ASIO
+#include <boost/asio.hpp>
+#else
+#include <asio.hpp>
+#endif
 
 #include <atomic>
 #include <ctime>
@@ -62,7 +66,11 @@ limitations under the License.
     using ssl_socket = mock_ssl_socket;
     using ssl_context = mock_ssl_context;
 #else
-    #include "asio/ssl.hpp"
+#ifdef USE_BOOST_ASIO
+    #include <boost/asio/ssl.hpp>
+#else
+    #include <asio/ssl.hpp>
+#endif
     using ssl_socket = asio::ssl::stream<asio::ip::tcp::socket&>;
     using ssl_context = asio::ssl::context;
 #endif
@@ -109,6 +117,9 @@ limitations under the License.
 
 // If set, RPC message (response) includes additional hints.
 #define INCLUDE_HINT (0x2)
+
+// If set, each log entry will contain timestamp.
+#define INCLUDE_LOG_TIMESTAMP (0x4)
 
 // =======================
 
@@ -504,39 +515,49 @@ private:
         ptr<req_msg> req = cs_new<req_msg>
                            ( term, t, src, dst, last_term, last_idx, commit_idx );
         if (hdr->get_int() > 0 && log_ctx) {
-            log_ctx->pos(0);
+            buffer_serializer ss(log_ctx);
+            size_t log_ctx_size = log_ctx->size();
+
             // If flag is set, read meta first.
             if (flags_ & INCLUDE_META) {
                 size_t meta_len = 0;
-                const byte* meta_raw = log_ctx->get_bytes(meta_len);
+                const byte* meta_raw = (const byte*)ss.get_bytes(meta_len);
                 if (meta_len) {
                     meta_str = std::string((const char*)meta_raw, meta_len);
                 }
             }
 
-            while (log_ctx->size() > log_ctx->pos()) {
-                if (log_ctx->size() - log_ctx->pos() < sz_ulong + sz_byte + sz_int) {
+            size_t LOG_ENTRY_SIZE = 8 + 1 + 4;
+            if (flags_ & INCLUDE_LOG_TIMESTAMP) {
+                LOG_ENTRY_SIZE += 8;
+            }
+
+            while (log_ctx_size > ss.pos()) {
+                if (log_ctx_size - ss.pos() < LOG_ENTRY_SIZE) {
                     // Possibly corrupted packet. Stop here.
                     p_wn("wrong log ctx size %zu pos %zu, stop this session",
-                         log_ctx->size(), log_ctx->pos());
+                         log_ctx_size, ss.pos());
                     this->stop();
                     return;
                 }
-                ulong term = log_ctx->get_ulong();
-                log_val_type val_type = (log_val_type)log_ctx->get_byte();
-                size_t val_size = log_ctx->get_int();
-                if (log_ctx->size() - log_ctx->pos() < val_size) {
+                ulong term = ss.get_u64();
+                log_val_type val_type = (log_val_type)ss.get_u8();
+                uint64_t timestamp = (flags_ & INCLUDE_LOG_TIMESTAMP) ? ss.get_u64() : 0;
+
+                size_t val_size = ss.get_i32();
+                if (log_ctx_size - ss.pos() < val_size) {
                     // Out-of-bound size.
                     p_wn("wrong value size %zu log ctx %zu %zu, "
                          "stop this session",
-                         val_size, log_ctx->size(), log_ctx->pos());
+                         val_size, log_ctx_size, ss.pos());
                     this->stop();
                     return;
                 }
 
                 ptr<buffer> buf( buffer::alloc(val_size) );
-                log_ctx->get(buf);
-                ptr<log_entry> entry( cs_new<log_entry>(term, buf, val_type) );
+                ss.get_buffer(buf);
+                ptr<log_entry> entry(
+                    cs_new<log_entry>(term, buf, val_type, timestamp) );
                 req->log_entries().push_back(entry);
             }
         }
@@ -1085,22 +1106,38 @@ public:
         std::vector<ptr<buffer>> log_entry_bufs;
         int32 log_data_size(0);
 
+        uint32_t flags = 0x0;
+        size_t LOG_ENTRY_SIZE = 8 + 1 + 4;
+        if (impl_->get_options().replicate_log_timestamp_) {
+            LOG_ENTRY_SIZE += 8;
+            flags |= INCLUDE_LOG_TIMESTAMP;
+        }
+
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
             ptr<buffer> entry_buf = buffer::alloc
-                                    ( 8 + 1 + 4 + le->get_buf().size() );
+                                    ( LOG_ENTRY_SIZE + le->get_buf().size() );
+#if 0
             entry_buf->put( le->get_term() );
             entry_buf->put( (byte)le->get_val_type() );
             entry_buf->put( (int32)le->get_buf().size() );
             le->get_buf().pos(0);
             entry_buf->put( le->get_buf() );
             entry_buf->pos( 0 );
-
+#else
+            buffer_serializer ss(entry_buf);
+            ss.put_u64( le->get_term() );
+            ss.put_u8( le->get_val_type() );
+            if (impl_->get_options().replicate_log_timestamp_) {
+                ss.put_u64( le->get_timestamp() );
+            }
+            ss.put_i32( le->get_buf().size() );
+            ss.put_raw( le->get_buf().data_begin(), le->get_buf().size() );
+#endif
             log_entry_bufs.push_back(entry_buf);
             log_data_size += (int32)entry_buf->size();
         }
 
-        uint32_t flags = 0x0;
         size_t meta_size = 0;
         std::string meta_str;
         if (impl_->get_options().write_req_meta_) {
