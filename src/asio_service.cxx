@@ -795,9 +795,9 @@ public:
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
+        , stopped_(false)
         , acceptor_(io, endpoint)
         , session_id_cnt_(1)
-        , stopped_(false)
         , ssl_enabled_(_enable_ssl)
         , l_(l)
     {
@@ -813,14 +813,16 @@ public:
 
 public:
     virtual void stop() override {
+        auto_lock(acceptor_lock_);
         stopped_ = true;
         acceptor_.close();
     }
 
     virtual void listen(ptr<msg_handler>& handler) override {
         handler_ = handler;
+        std::lock_guard guard(acceptor_lock_);
         stopped_ = false;
-        start();
+        start(guard);
     }
 
     virtual void shutdown() override {
@@ -835,7 +837,7 @@ public:
     }
 
 private:
-    void start() {
+    void start(std::lock_guard<std::mutex> & acceptor_lock) {
         if (!acceptor_.is_open()) {
             return;
         }
@@ -873,11 +875,12 @@ private:
                   err.value(), err.message().c_str() );
         }
 
+        std::lock_guard guard(acceptor_lock_);
         if (!stopped_) {
             // Re-listen only when not stopped,
             // otherwise crash happens as this class or `acceptor_`
             // may be destroyed in the meantime.
-            this->start();
+            this->start(guard);
         }
     }
 
@@ -898,11 +901,14 @@ private:
     asio::io_service& io_svc_;
     ssl_context& ssl_ctx_;
     ptr<msg_handler> handler_;
+
+    std::mutex acceptor_lock_;
+    bool stopped_;
     asio::ip::tcp::acceptor acceptor_;
+
     std::vector<ptr<rpc_session>> active_sessions_;
     std::atomic<uint64_t> session_id_cnt_;
     std::mutex session_lock_;
-    std::atomic<bool> stopped_;
     bool ssl_enabled_;
     ptr<logger> l_;
 };
