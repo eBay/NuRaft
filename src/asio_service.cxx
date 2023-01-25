@@ -775,31 +775,35 @@ public:
 
 public:
     virtual void stop() override {
-        auto_lock(acceptor_lock_);
+        auto_lock(listener_lock_);
         stopped_ = true;
         acceptor_.close();
     }
 
     virtual void listen(ptr<msg_handler>& handler) override {
+        std::lock_guard<std::mutex> guard(listener_lock_);
         handler_ = handler;
-        std::lock_guard<std::mutex> guard(acceptor_lock_);
         stopped_ = false;
         start(guard);
     }
 
     virtual void shutdown() override {
-        auto_lock(session_lock_);
-        for (auto& entry: active_sessions_) {
-            ptr<rpc_session> s = entry;
-            s->stop();
-            s.reset();
+        {
+            auto_lock(session_lock_);
+            for (auto& entry: active_sessions_) {
+                ptr<rpc_session> s = entry;
+                s->stop();
+                s.reset();
+            }
+            active_sessions_.clear();
         }
-        active_sessions_.clear();
+
+        auto_lock(listener_lock_);
         handler_.reset();
     }
 
 private:
-    void start(std::lock_guard<std::mutex> & acceptor_lock) {
+    void start(std::lock_guard<std::mutex> & listener_lock_) {
         if (!acceptor_.is_open()) {
             return;
         }
@@ -837,7 +841,7 @@ private:
                   err.value(), err.message().c_str() );
         }
 
-        std::lock_guard<std::mutex> guard(acceptor_lock_);
+        std::lock_guard<std::mutex> guard(listener_lock_);
         if (!stopped_) {
             // Re-listen only when not stopped,
             // otherwise crash happens as this class or `acceptor_`
@@ -862,9 +866,9 @@ private:
     asio_service_impl* impl_;
     asio::io_service& io_svc_;
     ssl_context& ssl_ctx_;
-    ptr<msg_handler> handler_;
 
-    std::mutex acceptor_lock_;
+    std::mutex listener_lock_;
+    ptr<msg_handler> handler_;
     bool stopped_;
     asio::ip::tcp::acceptor acceptor_;
 
