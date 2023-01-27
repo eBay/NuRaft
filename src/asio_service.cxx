@@ -803,7 +803,7 @@ public:
     }
 
 private:
-    void start(std::lock_guard<std::mutex> & listener_lock_) {
+    void start(std::lock_guard<std::mutex> & listener_lock) {
         if (!acceptor_.is_open()) {
             return;
         }
