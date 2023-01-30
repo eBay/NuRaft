@@ -208,6 +208,9 @@ int leader_election_test() {
 }
 
 int ssl_test() {
+#ifdef SSL_LIBRARY_NOT_FOUND
+    return 0;
+#endif
     reset_log_files();
 
     std::string s1_addr = "localhost:20010";
