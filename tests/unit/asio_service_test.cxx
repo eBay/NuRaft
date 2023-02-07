@@ -208,9 +208,6 @@ int leader_election_test() {
 }
 
 int ssl_test() {
-#ifdef SSL_LIBRARY_NOT_FOUND
-    return 0;
-#endif
     reset_log_files();
 
     std::string s1_addr = "localhost:20010";
@@ -2708,7 +2705,7 @@ int main(int argc, char** argv) {
     ts.doTest( "leader election test",
                leader_election_test );
 
-#if defined(__linux__) || defined(__APPLE__)
+#if !SSL_LIBRARY_NOT_FOUND && (defined(__linux__) || defined(__APPLE__))
     ts.doTest( "ssl test",
                ssl_test );
 #endif
