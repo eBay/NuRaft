@@ -42,7 +42,7 @@ void raft_server::commit(ulong target_idx) {
     if (target_idx > quick_commit_index_) {
         quick_commit_index_ = target_idx;
         lagging_sm_target_index_ = target_idx;
-        p_db( "trigger commit upto %lu", quick_commit_index_.load() );
+        p_db( "trigger commit upto %" PRIu64 "", quick_commit_index_.load() );
 
         // if this is a leader notify peers to commit as well
         // for peers that are free, send the request, otherwise,
@@ -57,8 +57,8 @@ void raft_server::commit(ulong target_idx) {
         }
     }
 
-    p_tr( "local log idx %lu, target_commit_idx %lu, "
-          "quick_commit_index_ %lu, state_->get_commit_idx() %lu",
+    p_tr( "local log idx %" PRIu64 ", target_commit_idx %" PRIu64 ", "
+          "quick_commit_index_ %" PRIu64 ", state_->get_commit_idx() %" PRIu64 "",
           log_store_->next_slot() - 1, target_idx,
           quick_commit_index_.load(), sm_commit_index_.load() );
 
@@ -181,14 +181,14 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         ea_sm_commit_exec_in_progress_->invoke();
     });
 
-    p_db( "commit upto %ld, curruent idx %ld\n",
+    p_db( "commit upto %" PRIu64 ", curruent idx %" PRIu64,
           quick_commit_index_.load(), sm_commit_index_.load() );
 
     ulong log_start_idx = log_store_->start_index();
     if ( log_start_idx &&
          sm_commit_index_ < log_start_idx - 1 ) {
-        p_wn("current commit idx %lu is smaller than log start idx %lu - 1, "
-             "adjust it to %lu",
+        p_wn("current commit idx %" PRIu64 " is smaller than log start idx %" PRIu64 " - 1, "
+             "adjust it to %" PRIu64 "",
              sm_commit_index_.load(),
              log_start_idx,
              log_start_idx - 1);
@@ -206,7 +206,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             sm_commit_index_ < log_store_->next_slot() - 1 ) {
         // NOTE: Skip timeout checking for the first loop execution.
         if (!first_loop_exec && timeout_ms && tt.timeout()) {
-            p_wn( "abort commit due to timeout (%zu ms), %zu ms elapsed\n",
+            p_wn( "abort commit due to timeout (%zu ms), %" PRIu64 " ms elapsed",
                   timeout_ms, tt.get_ms() );
             finished_in_time = false;
             break;
@@ -219,14 +219,14 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         }
 
         ulong index_to_commit = sm_commit_index_ + 1;
-        p_tr( "commit upto %lu, current idx %lu\n",
+        p_tr( "commit upto %" PRIu64 ", current idx %" PRIu64 "\n",
               quick_commit_index_.load(), index_to_commit );
 
         ptr<log_entry> le = log_store_->entry_at(index_to_commit);
         if (!le)
         {
             // LCOV_EXCL_START
-            p_ft( "failed to get log entry with idx %lu", index_to_commit );
+            p_ft( "failed to get log entry with idx %" PRIu64 "", index_to_commit );
             ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
             ::exit(-1);
             // LCOV_EXCL_STOP
@@ -236,7 +236,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             // LCOV_EXCL_START
             // Zero term means that log store is corrupted
             // (failed to read log).
-            p_ft( "empty log at idx %lu, must be log corruption",
+            p_ft( "empty log at idx %" PRIu64 ", must be log corruption",
                   index_to_commit );
             ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
             ::exit(-1);
@@ -260,14 +260,14 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             param.ctx = &log_idx;
             ctx_->cb_func_.call(cb_func::StateMachineExecution, &param);
         } else {
-            p_er("sm_commit_index_ has been changed from %zu to %zu, "
-                 "this thread attempted %zu",
+            p_er("sm_commit_index_ has been changed from %" PRIu64 " to %" PRIu64 ", "
+                 "this thread attempted %" PRIu64,
                  index_to_commit - 1,
                  exp_idx,
                  index_to_commit);
         }
     }
-    p_db( "DONE: commit upto %ld, curruent idx %ld\n",
+    p_db( "DONE: commit upto %" PRIu64 ", curruent idx %" PRIu64,
           quick_commit_index_.load(), sm_commit_index_.load() );
     if (role_ == srv_role::follower) {
         ulong leader_idx = leader_commit_index_.load();
@@ -301,7 +301,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
     ulong pc_idx = precommit_index_.load();
     if (pc_idx < sm_idx) {
         // Pre-commit should have been invoked, must be a bug.
-        p_ft( "pre-commit index %zu is smaller than commit index %zu",
+        p_ft( "pre-commit index %" PRIu64 " is smaller than commit index %" PRIu64,
               pc_idx, sm_idx );
         ctx_->state_mgr_->system_exit(raft_err::N23_precommit_order_inversion);
         ::exit(-1);
@@ -334,7 +334,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
                 elem->result_code_ = cmd_result_code::OK;
                 elem->ret_value_ = ret_value;
                 need_to_check_commit_ret = false;
-                p_dv("notify cb %ld %p", sm_idx, &elem->awaiter_);
+                p_dv("notify cb %" PRIu64 " %p", sm_idx, &elem->awaiter_);
 
                 switch (ctx_->get_params()->return_method_) {
                 case raft_params::blocking:
@@ -366,7 +366,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
             elem->result_code_ = cmd_result_code::OK;
             elem->ret_value_ = ret_value;
             p_tr("commit thread is invoked earlier than user thread, "
-                 "log %lu, elem %p", sm_idx, elem.get());
+                 "log %" PRIu64 ", elem %p", sm_idx, elem.get());
 
             switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
@@ -406,7 +406,7 @@ void raft_server::commit_conf(ulong idx_to_commit,
         cluster_config::deserialize(le->get_buf());
 
     ptr<cluster_config> cur_conf = get_config();
-    p_in( "config at index %lu is committed, prev config log idx %lu",
+    p_in( "config at index %" PRIu64 " is committed, prev config log idx %" PRIu64 "",
           new_conf->get_log_idx(), cur_conf->get_log_idx() );
 
     config_changing_ = false;
@@ -415,7 +415,7 @@ void raft_server::commit_conf(ulong idx_to_commit,
         ctx_->state_mgr_->save_config(*new_conf);
         reconfigure(new_conf);
     } else {
-        p_in( "skipped config %lu, latest config %lu",
+        p_in( "skipped config %" PRIu64 ", latest config %" PRIu64 "",
               new_conf->get_log_idx(), cur_conf->get_log_idx() );
     }
 
@@ -465,7 +465,7 @@ bool raft_server::apply_config_log_entry(ptr<log_entry>& le,
 
 ulong raft_server::create_snapshot() {
     uint64_t committed_idx = sm_commit_index_;
-    p_in("manually create a snapshot on %lu", committed_idx);
+    p_in("manually create a snapshot on %" PRIu64 "", committed_idx);
     return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
 }
 
@@ -518,7 +518,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
          snp_in_progress_.compare_exchange_strong(f, true) )
     {
         snapshot_in_action = true;
-        p_in("creating a snapshot for index %lu", committed_idx);
+        p_in("creating a snapshot for index %" PRIu64 "", committed_idx);
 
         while ( conf->get_log_idx() > committed_idx &&
                 conf->get_prev_log_idx() >= log_store_->start_index() ) {
@@ -549,7 +549,8 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
             //  (necessary when we clone a node to another node),
             //  config at log idx 1 may not be visiable in some condition.
             p_wn("config at log idx 1 is not availabe, "
-                 "config log idx %zu, prev log idx %zu, committed idx %zu",
+                 "config log idx %" PRIu64 ", prev log idx %" PRIu64
+                 ", committed idx %" PRIu64,
                  conf->get_log_idx(), conf->get_prev_log_idx(), committed_idx);
             //ctx_->state_mgr_->system_exit(raft_err::N7_no_config_at_idx_one);
             //::exit(-1);
@@ -559,7 +560,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         ulong log_term_to_compact = log_store_->term_at(committed_idx);
         ptr<snapshot> new_snapshot
             ( cs_new<snapshot>(committed_idx, log_term_to_compact, conf) );
-        p_in( "create snapshot idx %ld log_term %ld\n",
+        p_in( "create snapshot idx %" PRIu64 " log_term %" PRIu64,
               committed_idx, log_term_to_compact );
         cmd_result<bool>::handler_type handler =
             (cmd_result<bool>::handler_type)
@@ -570,7 +571,8 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
                        std::placeholders::_2 );
         timer_helper tt;
         state_machine_->create_snapshot(*new_snapshot, handler);
-        p_in( "create snapshot idx %ld log_term %ld done: %lu us elapsed\n",
+        p_in( "create snapshot idx %" PRIu64 " log_term %" PRIu64
+              " done: %" PRIu64 " us elapsed",
               committed_idx, log_term_to_compact, tt.get_us() );
 
         snapshot_in_action = false;
@@ -579,7 +581,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     return false;
 
  } catch (std::exception &e) {
-    p_er( "failed to compact logs at index %lu due to errors %s",
+    p_er( "failed to compact logs at index %" PRIu64 " due to errors %s",
           committed_idx, e.what());
     if (snapshot_in_action) {
         bool val = true;
@@ -606,7 +608,7 @@ void raft_server::on_snapshot_completed
 
     {
         recur_lock(lock_);
-        p_in("snapshot idx %lu log_term %lu created, "
+        p_in("snapshot idx %" PRIu64 " log_term %" PRIu64 " created, "
              "compact the log store if needed",
              s->get_last_log_idx(), s->get_last_log_term());
 
@@ -617,7 +619,7 @@ void raft_server::on_snapshot_completed
                  (ulong)params->reserved_log_items_ ) {
             ulong compact_upto = new_snp->get_last_log_idx() -
                                      (ulong)params->reserved_log_items_;
-            p_in("log_store_ compact upto %lu", compact_upto);
+            p_in("log_store_ compact upto %" PRIu64 "", compact_upto);
             log_store_->compact(compact_upto);
         }
     }
@@ -628,12 +630,12 @@ void raft_server::on_snapshot_completed
 
 void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
     ptr<cluster_config> cur_config = get_config();
-    p_in( "new config log idx %zu, prev log idx %zu, "
-          "cur config log idx %zu, prev log idx %zu",
+    p_in( "new config log idx %" PRIu64 ", prev log idx %" PRIu64 ", "
+          "cur config log idx %" PRIu64 ", prev log idx %" PRIu64,
           new_config->get_log_idx(), new_config->get_prev_log_idx(),
           cur_config->get_log_idx(), cur_config->get_prev_log_idx() );
     p_db( "system is reconfigured to have %zu servers, "
-          "last config index: %lu, this config index: %lu",
+          "last config index: %" PRIu64 ", this config index: %" PRIu64 "",
           new_config->get_servers().size(),
           new_config->get_prev_log_idx(),
           new_config->get_log_idx() );
@@ -725,7 +727,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         int32 srv_removed = *it;
         if (srv_removed == id_ && !catching_up_) {
             p_in("this server (%d) has been removed from the cluster, "
-                 "will step down itself soon. config log idx %zu",
+                 "will step down itself soon. config log idx %" PRIu64,
                  id_,
                  new_config->get_log_idx());
             // this server is removed from cluster
@@ -813,7 +815,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
     if ( uncommitted_config_ &&
          uncommitted_config_->get_log_idx() == new_config->get_log_idx() ) {
         // All configs are committed.
-        p_in("clearing uncommitted config at log %zu, prev %zu",
+        p_in("clearing uncommitted config at log %" PRIu64 ", prev %" PRIu64,
              uncommitted_config_->get_log_idx(),
              uncommitted_config_->get_prev_log_idx());
         uncommitted_config_.reset();
@@ -848,8 +850,8 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
                 s_conf->get_priority());
         str_buf += temp_buf;
     }
-    p_in("new configuration: log idx %ld, prev log idx %ld\n"
-         "%smy id: %d, leader: %d, term: %zu",
+    p_in("new configuration: log idx %" PRIu64 ", prev log idx %" PRIu64 "\n"
+         "%smy id: %d, leader: %d, term: %" PRIu64,
          new_config->get_log_idx(), new_config->get_prev_log_idx(),
          str_buf.c_str(), id_, leader_.load(), state_->get_term());
 
@@ -877,7 +879,7 @@ void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
 
     timer_helper timer;
     wait_for_state_machine_pause(timeout_ms);
-    p_in( "waited %zu ms, state machine %s",
+    p_in( "waited %" PRIu64 " ms, state machine %s",
           timer.get_ms(),
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
 }

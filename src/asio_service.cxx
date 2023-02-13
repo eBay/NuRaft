@@ -256,7 +256,7 @@ public:
 
         cached_address_ = socket_.remote_endpoint().address().to_string();
         cached_port_ = socket_.remote_endpoint().port();
-        p_in( "session %lu got connection from %s:%u (as a server)",
+        p_in( "session %" PRIu64 " got connection from %s:%u (as a server)",
               session_id_,
               cached_address_.c_str(),
               cached_port_ );
@@ -280,14 +280,14 @@ public:
     void handle_handshake(ptr<rpc_session> self,
                           const ERROR_CODE& err) {
         if (!err) {
-            p_in( "session %lu handshake with %s:%u succeeded (as a server)",
+            p_in( "session %" PRIu64 " handshake with %s:%u succeeded (as a server)",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_ );
             this->start(self);
 
         } else {
-            p_er( "session %lu handshake with %s:%u failed: error %d, %s",
+            p_er( "session %" PRIu64 " handshake with %s:%u failed: error %d, %s",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_,
@@ -304,7 +304,7 @@ public:
                                (const ERROR_CODE& err) -> void
             {
                 if (err) {
-                    p_er("session %lu error happend during "
+                    p_er("session %" PRIu64 " error happend during "
                          "async wait: %d, %s",
                          session_id_,
                          err.value(),
@@ -323,7 +323,7 @@ public:
                   (const ERROR_CODE& err, size_t) -> void
         {
             if (err) {
-                p_er( "session %lu failed to read rpc header from socket %s:%u "
+                p_er( "session %" PRIu64 " failed to read rpc header from socket %s:%u "
                       "due to error %d, %s, ref count %ld",
                       session_id_,
                       cached_address_.c_str(),
@@ -451,7 +451,7 @@ private:
         if (!err) {
             this->read_complete(header_, log_ctx);
         } else {
-            p_er( "session %lu failed to read rpc log data from socket due "
+            p_er( "session %" PRIu64 " failed to read rpc log data from socket due "
                   "to error %d, %s",
                   session_id_,
                   err.value(),
@@ -610,7 +610,7 @@ private:
         }
 
        } catch (std::exception& ex) {
-        p_er( "session %lu failed to process request message "
+        p_er( "session %" PRIu64 " failed to process request message "
               "due to error: %s",
               this->session_id_,
               ex.what() );
@@ -697,7 +697,7 @@ private:
             if (!err_code) {
                 this->start(self);
             } else {
-                p_er( "session %lu failed to send response to peer due "
+                p_er( "session %" PRIu64 " failed to send response to peer due "
                       "to error %d",
                       session_id_,
                       err_code.value() );
@@ -706,7 +706,7 @@ private:
         } );
 
        } catch (std::exception& ex) {
-        p_er( "session %lu failed to process request message "
+        p_er( "session %" PRIu64 " failed to process request message "
               "due to error: %s",
               this->session_id_,
               ex.what() );
