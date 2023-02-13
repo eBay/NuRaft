@@ -150,12 +150,12 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             // We should not re-establish the connection to
             // to-be-removed server, as it will block removing it
             // from `peers_` list.
-            p_wn( "connection to peer %d is not active long time: %zu ms, "
+            p_wn( "connection to peer %d is not active long time: %d ms, "
                   "but this peer should be removed. do nothing",
                   p->get_id(),
                   last_active_time_ms );
         } else {
-            p_wn( "connection to peer %d is not active long time: %zu ms, "
+            p_wn( "connection to peer %d is not active long time: %d ms, "
                   "force re-connect",
                   p->get_id(),
                   last_active_time_ms );
@@ -333,7 +333,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
 
     if (last_log_idx >= cur_nxt_idx) {
         // LCOV_EXCL_START
-        p_er( "Peer's lastLogIndex is too large %llu v.s. %llu, ",
+        p_er( "Peer's lastLogIndex is too large %lu v.s. %lu, ",
               last_log_idx, cur_nxt_idx );
         ctx_->state_mgr_->system_exit(raft_err::N8_peer_last_log_idx_too_large);
         ::exit(-1);
@@ -346,7 +346,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
     // last_log_idx: last log index of replica (follower).
     // end_idx: if (cur_nxt_idx - last_log_idx) > max_append_size, limit it.
 
-    p_tr("last_log_idx: %d, starting_idx: %d, cur_nxt_idx: %d\n",
+    p_tr("last_log_idx: %lu, starting_idx: %lu, cur_nxt_idx: %lu\n",
          last_log_idx, starting_idx, cur_nxt_idx);
 
     // Verify log index range.
@@ -451,9 +451,9 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
              end_idx, adjusted_end_idx);
     }
 
-    p_db( "append_entries for %d with LastLogIndex=%llu, "
-          "LastLogTerm=%llu, EntriesLength=%d, CommitIndex=%llu, "
-          "Term=%llu, peer_last_sent_idx %zu",
+    p_db( "append_entries for %d with LastLogIndex=%lu, "
+          "LastLogTerm=%lu, EntriesLength=%zu, CommitIndex=%lu, "
+          "Term=%lu, peer_last_sent_idx %zu",
           p.get_id(), last_log_idx, last_log_term,
           ( log_entries ? log_entries->size() : 0 ), commit_idx, term,
           peer_last_sent_idx );
@@ -679,7 +679,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                     p_in( "rollback log %zu, term %zu", idx, old_entry->get_term() );
 
                 } else if (old_entry->get_val_type() == log_val_type::conf) {
-                    p_in( "revert from a prev config change to config at %llu",
+                    p_in( "revert from a prev config change to config at %lu",
                           get_config()->get_log_idx() );
                     config_changing_ = false;
                 }
@@ -702,7 +702,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                     ( state_machine::ext_op_params( log_idx, buf ) );
 
             } else if(entry->get_val_type() == log_val_type::conf) {
-                p_in("receive a config change from leader at %llu", log_idx);
+                p_in("receive a config change from leader at %lu", log_idx);
                 config_changing_ = true;
             }
 
@@ -725,7 +725,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                  log_store_->next_slot(), entry->get_term(), entry->get_timestamp());
             ulong idx_for_entry = store_log_entry(entry);
             if (entry->get_val_type() == log_val_type::conf) {
-                p_in( "receive a config change from leader at %llu",
+                p_in( "receive a config change from leader at %lu",
                       idx_for_entry );
                 config_changing_ = true;
 

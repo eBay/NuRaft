@@ -140,8 +140,8 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
         }
 
         if (snp->get_last_log_idx() != prev_sync_snp_log_idx) {
-            p_in( "trying to sync snapshot with last index %llu to peer %d, "
-                  "its last log idx %llu",
+            p_in( "trying to sync snapshot with last index %lu to peer %d, "
+                  "its last log idx %lu",
                   snp->get_last_log_idx(), p.get_id(), last_log_idx );
         }
         if (sync_ctx) {
@@ -182,7 +182,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
         int32 sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
         if ((size_t)sz_rd < data->size()) {
             // LCOV_EXCL_START
-            p_er( "only %d bytes could be read from snapshot while %d "
+            p_er( "only %d bytes could be read from snapshot while %zu "
                   "bytes are expected, must be something wrong, exit.",
                   sz_rd, data->size() );
             ctx_->state_mgr_->system_exit(raft_err::N18_partial_snapshot_block);
@@ -405,7 +405,7 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
 
     if (!resp.get_accepted()) {
         p_wn("peer doesn't accept the snapshot installation request, "
-             "next log idx %llu, "
+             "next log idx %lu, "
              "but we can move forward",
              resp.get_next_idx());
         srv_to_join_->set_next_log_idx(resp.get_next_idx());
@@ -441,12 +441,12 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
 
         p_in( "snapshot has been copied and applied to new server, "
               "continue to sync logs after snapshot, "
-              "next log idx %llu, matched idx %llu",
+              "next log idx %lu, matched idx %lu",
               srv_to_join_->get_next_log_idx(),
               srv_to_join_->get_matched_idx() );
     } else {
         sync_ctx->set_offset(resp.get_next_idx());
-        p_db( "continue to send snapshot to new server at offset %llu",
+        p_db( "continue to send snapshot to new server at offset %lu",
               resp.get_next_idx() );
     }
 

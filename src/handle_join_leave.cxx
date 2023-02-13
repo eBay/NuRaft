@@ -212,7 +212,7 @@ void raft_server::handle_join_cluster_resp(resp_msg& resp) {
 }
 
 void raft_server::sync_log_to_new_srv(ulong start_idx) {
-    p_db("[SYNC LOG] peer %d start idx %llu, my log start idx %llu\n",
+    p_db("[SYNC LOG] peer %d start idx %lu, my log start idx %lu\n",
          srv_to_join_->get_id(), start_idx, log_store_->start_index());
     // only sync committed logs
     ulong gap = ( quick_commit_index_ > start_idx )
@@ -330,7 +330,7 @@ ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {
 
     if (!catching_up_) {
         p_wn("This server is ready for cluster, ignore the request, "
-             "my next log idx %llu", resp->get_next_idx());
+             "my next log idx %lu", resp->get_next_idx());
         return resp;
     }
 
@@ -510,7 +510,7 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
               ( cur_conf->is_async_replication() );
 
     p_in( "removed server %d from configuration and "
-          "save the configuration to log store at %llu",
+          "save the configuration to log store at %lu",
           srv_id,
           new_conf->get_log_idx() );
 

@@ -67,7 +67,7 @@ void raft_server::request_prevote() {
                 if ( last_active_time_ms >
                          params->heart_beat_interval_ *
                              raft_server::raft_limits_.reconnect_limit_ ) {
-                    p_wn( "connection to peer %d is not active long time: %zu ms, "
+                    p_wn( "connection to peer %d is not active long time: %d ms, "
                           "need reconnection for prevote",
                           pp->get_id(),
                           last_active_time_ms );
@@ -261,7 +261,7 @@ void raft_server::request_vote(bool force_vote) {
             // Ship it.
             req->log_entries().push_back(fv_msg_le);
         }
-        p_db( "send %s to server %d with term %llu",
+        p_db( "send %s to server %d with term %lu",
               msg_type_to_string(req->get_type()).c_str(),
               it->second->get_id(),
               state_->get_term() );
@@ -494,7 +494,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
 
     if (pre_vote_.live_ >= election_quorum_size) {
         pre_vote_.quorum_reject_count_.fetch_add(1);
-        p_wn("[PRE-VOTE] rejected by quorum, count %zu",
+        p_wn("[PRE-VOTE] rejected by quorum, count %d",
              pre_vote_.quorum_reject_count_.load());
         if ( pre_vote_.quorum_reject_count_ >=
                  raft_server::raft_limits_.pre_vote_rejection_limit_ ) {

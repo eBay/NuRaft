@@ -187,8 +187,8 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     ulong log_start_idx = log_store_->start_index();
     if ( log_start_idx &&
          sm_commit_index_ < log_start_idx - 1 ) {
-        p_wn("current commit idx %llu is smaller than log start idx %llu - 1, "
-             "adjust it to %llu",
+        p_wn("current commit idx %lu is smaller than log start idx %lu - 1, "
+             "adjust it to %lu",
              sm_commit_index_.load(),
              log_start_idx,
              log_start_idx - 1);
@@ -219,14 +219,14 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         }
 
         ulong index_to_commit = sm_commit_index_ + 1;
-        p_tr( "commit upto %llu, current idx %llu\n",
+        p_tr( "commit upto %lu, current idx %lu\n",
               quick_commit_index_.load(), index_to_commit );
 
         ptr<log_entry> le = log_store_->entry_at(index_to_commit);
         if (!le)
         {
             // LCOV_EXCL_START
-            p_ft( "failed to get log entry with idx %llu", index_to_commit );
+            p_ft( "failed to get log entry with idx %lu", index_to_commit );
             ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
             ::exit(-1);
             // LCOV_EXCL_STOP
@@ -236,7 +236,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             // LCOV_EXCL_START
             // Zero term means that log store is corrupted
             // (failed to read log).
-            p_ft( "empty log at idx %llu, must be log corruption",
+            p_ft( "empty log at idx %lu, must be log corruption",
                   index_to_commit );
             ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
             ::exit(-1);
@@ -406,7 +406,7 @@ void raft_server::commit_conf(ulong idx_to_commit,
         cluster_config::deserialize(le->get_buf());
 
     ptr<cluster_config> cur_conf = get_config();
-    p_in( "config at index %llu is committed, prev config log idx %llu",
+    p_in( "config at index %lu is committed, prev config log idx %lu",
           new_conf->get_log_idx(), cur_conf->get_log_idx() );
 
     config_changing_ = false;
@@ -518,7 +518,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
          snp_in_progress_.compare_exchange_strong(f, true) )
     {
         snapshot_in_action = true;
-        p_in("creating a snapshot for index %llu", committed_idx);
+        p_in("creating a snapshot for index %lu", committed_idx);
 
         while ( conf->get_log_idx() > committed_idx &&
                 conf->get_prev_log_idx() >= log_store_->start_index() ) {
@@ -579,7 +579,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     return false;
 
  } catch (std::exception &e) {
-    p_er( "failed to compact logs at index %llu due to errors %s",
+    p_er( "failed to compact logs at index %lu due to errors %s",
           committed_idx, e.what());
     if (snapshot_in_action) {
         bool val = true;
@@ -632,8 +632,8 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
           "cur config log idx %zu, prev log idx %zu",
           new_config->get_log_idx(), new_config->get_prev_log_idx(),
           cur_config->get_log_idx(), cur_config->get_prev_log_idx() );
-    p_db( "system is reconfigured to have %d servers, "
-          "last config index: %llu, this config index: %llu",
+    p_db( "system is reconfigured to have %zu servers, "
+          "last config index: %lu, this config index: %lu",
           new_config->get_servers().size(),
           new_config->get_prev_log_idx(),
           new_config->get_log_idx() );
