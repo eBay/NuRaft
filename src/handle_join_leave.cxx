@@ -82,7 +82,7 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         // Check the last active time of that server.
         ulong last_active_ms = srv_to_join_->get_active_timer_us() / 1000;
         p_wn("previous adding server (%d) is in progress, "
-             "last activity: %zu ms ago",
+             "last activity: %" PRIu64 " ms ago",
              srv_to_join_->get_id(),
              last_active_ms);
 
@@ -93,7 +93,7 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
             return resp;
         }
         // Otherwise: activity timeout, reset the server.
-        p_wn("activity timeout (last activity %lu ms ago), start over",
+        p_wn("activity timeout (last activity %" PRIu64 " ms ago), start over",
              last_active_ms);
         reset_srv_to_join();
     }
@@ -156,7 +156,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     bool reset_commit_idx = true;
     if (catching_up_) {
         p_wn("this server is already in log syncing mode, "
-             "but let's do it again: sm idx %zu, quick commit idx %zu, "
+             "but let's do it again: sm idx %" PRIu64 ", quick commit idx %" PRIu64 ", "
              "will not reset commit index",
              sm_commit_index_.load(),
              quick_commit_index_.load());
@@ -212,7 +212,7 @@ void raft_server::handle_join_cluster_resp(resp_msg& resp) {
 }
 
 void raft_server::sync_log_to_new_srv(ulong start_idx) {
-    p_db("[SYNC LOG] peer %d start idx %lu, my log start idx %lu\n",
+    p_db("[SYNC LOG] peer %d start idx %" PRIu64 ", my log start idx %" PRIu64,
          srv_to_join_->get_id(), start_idx, log_store_->start_index());
     // only sync committed logs
     ulong gap = ( quick_commit_index_ > start_idx )
@@ -223,7 +223,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
            gap < (ulong)params->log_sync_stop_gap_ ) ||
          params->log_sync_stop_gap_ == 0 ) {
         p_in( "[SYNC LOG] LogSync is done for server %d "
-              "with log gap %zu (%zu - %zu, limit %d), "
+              "with log gap %" PRIu64 " (%" PRIu64 " - %" PRIu64 ", limit %d), "
               "now put the server into cluster",
               srv_to_join_->get_id(),
               gap, quick_commit_index_.load(), start_idx,
@@ -235,7 +235,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
         //   If there is any uncommitted changed config,
         //   new config should be generated on top of it.
         if (uncommitted_config_) {
-            p_in("uncommitted config exists at log %zu, prev log %zu",
+            p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64,
                  uncommitted_config_->get_log_idx(),
                  uncommitted_config_->get_prev_log_idx());
             cur_conf = uncommitted_config_;
@@ -330,12 +330,12 @@ ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {
 
     if (!catching_up_) {
         p_wn("This server is ready for cluster, ignore the request, "
-             "my next log idx %lu", resp->get_next_idx());
+             "my next log idx %" PRIu64 "", resp->get_next_idx());
         return resp;
     }
 
     log_store_->apply_pack(req.get_last_log_idx() + 1, entries[0]->get_buf());
-    p_db("last log %ld\n", log_store_->next_slot() - 1);
+    p_db("last log %" PRIu64, log_store_->next_slot() - 1);
     precommit_index_ = log_store_->next_slot() - 1;
     commit(log_store_->next_slot() - 1);
     resp->accept(log_store_->next_slot());
@@ -489,7 +489,7 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     // NOTE: Need to honor uncommitted config,
     //       refer to comment in `sync_log_to_new_srv()`
     if (uncommitted_config_) {
-        p_in("uncommitted config exists at log %zu, prev log %zu",
+        p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64,
              uncommitted_config_->get_log_idx(),
              uncommitted_config_->get_prev_log_idx());
         cur_conf = uncommitted_config_;
@@ -510,7 +510,7 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
               ( cur_conf->is_async_replication() );
 
     p_in( "removed server %d from configuration and "
-          "save the configuration to log store at %lu",
+          "save the configuration to log store at %" PRIu64,
           srv_id,
           new_conf->get_log_idx() );
 
@@ -529,7 +529,7 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
         srv_to_leave_ = pp;
         srv_to_leave_target_idx_ = new_conf->get_log_idx();
         p_in("set srv_to_leave_, "
-             "server %d will be removed from cluster, config %zu",
+             "server %d will be removed from cluster, config %" PRIu64,
              srv_id, srv_to_leave_target_idx_);
     }
 

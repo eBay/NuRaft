@@ -116,7 +116,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
             uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;
             if (cur_rpc_id != given_rpc_id) {
                 p_wn( "[EDGE CASE] got stale RPC response from %d: "
-                      "current %p (%zu), from parameter %p (%zu). "
+                      "current %p (%" PRIu64 "), from parameter %p (%" PRIu64 "). "
                       "will ignore this response",
                       config_->get_id(),
                       rpc_.get(),
@@ -176,7 +176,8 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 //   error. Those two are different instances and we
                 //   SHOULD NOT reset the new one.
                 p_wn( "[EDGE CASE] RPC for %d has been reset before "
-                      "returning error: current %p (%zu), from parameter %p (%zu)",
+                      "returning error: current %p (%" PRIu64
+                      "), from parameter %p (%" PRIu64 ")",
                       config_->get_id(),
                       rpc_.get(),
                       cur_rpc_id,

@@ -86,12 +86,12 @@ if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
-        include_directories(BEFORE
-                /usr/local/opt/openssl/include
-                )
-        link_directories(
-                /usr/local/opt/openssl/lib
-                )
+#        include_directories(BEFORE
+#                /usr/local/opt/openssl/include
+#                )
+#        link_directories(
+#                /usr/local/opt/openssl/lib
+#                )
     else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
@@ -145,7 +145,8 @@ if (NOT (DISABLE_SSL GREATER 0))
                   PATHS ${PROJECT_SOURCE_DIR}
                         ${DEPS_PREFIX}/include
                         /usr/include
-                        /usr/lcoal/include
+                        /usr/local/include
+                        /usr/local/opt/openssl/include
                         /opt/local/include
                         /opt/homebrew/opt/openssl/include)
 

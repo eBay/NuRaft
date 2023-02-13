@@ -180,7 +180,7 @@ void snapshot_io_mgr::async_io_loop() {
             logger* l_ = elem->raft_->l_.get();
             ulong obj_idx = elem->sync_ctx_->get_offset();
             void*& user_snp_ctx = elem->sync_ctx_->get_user_snp_ctx();
-            p_db("peer: %d, obj_idx: %ld, user_snp_ctx %p\n",
+            p_db("peer: %d, obj_idx: %" PRIu64 ", user_snp_ctx %p",
                  dst_id, obj_idx, user_snp_ctx);
 
             ulong snp_log_idx = elem->snapshot_->get_last_log_idx();
@@ -196,7 +196,8 @@ void snapshot_io_mgr::async_io_loop() {
                        data, is_last_request );
             if (rc < 0) {
                 // Snapshot read failed.
-                p_wn( "reading snapshot (idx %lu, term %lu, object %lu) "
+                p_wn( "reading snapshot (idx %" PRIu64 ", term %" PRIu64
+                      ", object %" PRIu64 ") "
                       "for peer %d failed: %d",
                       snp_log_idx, snp_log_term, obj_idx, dst_id, rc );
 
