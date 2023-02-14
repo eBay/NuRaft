@@ -2705,7 +2705,7 @@ int main(int argc, char** argv) {
     ts.doTest( "leader election test",
                leader_election_test );
 
-#if defined(__linux__) || defined(__APPLE__)
+#if !SSL_LIBRARY_NOT_FOUND && (defined(__linux__) || defined(__APPLE__))
     ts.doTest( "ssl test",
                ssl_test );
 #endif
