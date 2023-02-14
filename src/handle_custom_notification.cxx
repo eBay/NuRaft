@@ -188,8 +188,8 @@ ptr<resp_msg> raft_server::handle_out_of_log_msg(req_msg& req,
     out_of_log_range_ = true;
 
     ptr<out_of_log_msg> ool_msg = out_of_log_msg::deserialize(*msg->ctx_);
-    p_lv(log_lv, "this node is out of log range. leader's start index: %zu, "
-         "my last index: %zu",
+    p_lv(log_lv, "this node is out of log range. leader's start index: %" PRIu64 ", "
+         "my last index: %" PRIu64,
          ool_msg->start_idx_of_leader_,
          log_store_->next_slot() - 1);
 

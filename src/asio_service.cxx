@@ -256,7 +256,7 @@ public:
 
         cached_address_ = socket_.remote_endpoint().address().to_string();
         cached_port_ = socket_.remote_endpoint().port();
-        p_in( "session %lu got connection from %s:%u (as a server)",
+        p_in( "session %" PRIu64 " got connection from %s:%u (as a server)",
               session_id_,
               cached_address_.c_str(),
               cached_port_ );
@@ -280,14 +280,14 @@ public:
     void handle_handshake(ptr<rpc_session> self,
                           const ERROR_CODE& err) {
         if (!err) {
-            p_in( "session %lu handshake with %s:%u succeeded (as a server)",
+            p_in( "session %" PRIu64 " handshake with %s:%u succeeded (as a server)",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_ );
             this->start(self);
 
         } else {
-            p_er( "session %lu handshake with %s:%u failed: error %d, %s",
+            p_er( "session %" PRIu64 " handshake with %s:%u failed: error %d, %s",
                   session_id_,
                   cached_address_.c_str(),
                   cached_port_,
@@ -304,7 +304,7 @@ public:
                                (const ERROR_CODE& err) -> void
             {
                 if (err) {
-                    p_er("session %lu error happend during "
+                    p_er("session %" PRIu64 " error happend during "
                          "async wait: %d, %s",
                          session_id_,
                          err.value(),
@@ -323,8 +323,8 @@ public:
                   (const ERROR_CODE& err, size_t) -> void
         {
             if (err) {
-                p_er( "session %lu failed to read rpc header from socket %s:%u "
-                      "due to error %d, %s, ref count %u",
+                p_er( "session %" PRIu64 " failed to read rpc header from socket %s:%u "
+                      "due to error %d, %s, ref count %ld",
                       session_id_,
                       cached_address_.c_str(),
                       cached_port_,
@@ -451,7 +451,7 @@ private:
         if (!err) {
             this->read_complete(header_, log_ctx);
         } else {
-            p_er( "session %lu failed to read rpc log data from socket due "
+            p_er( "session %" PRIu64 " failed to read rpc log data from socket due "
                   "to error %d, %s",
                   session_id_,
                   err.value(),
@@ -610,7 +610,7 @@ private:
         }
 
        } catch (std::exception& ex) {
-        p_er( "session %lu failed to process request message "
+        p_er( "session %" PRIu64 " failed to process request message "
               "due to error: %s",
               this->session_id_,
               ex.what() );
@@ -697,7 +697,7 @@ private:
             if (!err_code) {
                 this->start(self);
             } else {
-                p_er( "session %lu failed to send response to peer due "
+                p_er( "session %" PRIu64 " failed to send response to peer due "
                       "to error %d",
                       session_id_,
                       err_code.value() );
@@ -706,7 +706,7 @@ private:
         } );
 
        } catch (std::exception& ex) {
-        p_er( "session %lu failed to process request message "
+        p_er( "session %" PRIu64 " failed to process request message "
               "due to error: %s",
               this->session_id_,
               ex.what() );
@@ -1021,7 +1021,7 @@ public:
             if (!attempting_conn_.compare_exchange_strong(exp, desired)) {
                 // Other thread is attempting connection, just wait.
                 p_wn( "cannot send req as other thread is racing on opening "
-                      "connection to (%s:%s), count %d",
+                      "connection to (%s:%s), count %zu",
                       host_.c_str(), port_.c_str(), num_send_fails_.load() );
                 num_send_fails_.fetch_add(1);
 
@@ -1085,7 +1085,7 @@ public:
         if (ssl_enabled_ && !ssl_ready_) {
             // TCP socket is opened, but SSL handshake is not done yet.
             // Since other thread is doing it, this thread should just wait.
-            p_wn( "cannot send req as SSL is not ready yet (%s:%s), count %d",
+            p_wn( "cannot send req as SSL is not ready yet (%s:%s), count %zu",
                   host_.c_str(), port_.c_str(), num_send_fails_.load() );
             num_send_fails_.fetch_add(1);
 
@@ -1750,7 +1750,7 @@ void asio_service_impl::worker_entry() {
             num_active_workers_.fetch_sub(1);
             exception_count++;
             p_er("asio worker thread got exception: %s, "
-                 "current number of workers: %zu, "
+                 "current number of workers: %u, "
                  "exception count (in 1-min window): %zu, "
                  "stopping status %u",
                  ee.what(),
@@ -1777,7 +1777,7 @@ void asio_service_impl::worker_entry() {
         my_opt_.worker_stop_(worker_id);
     }
 
-    p_in("end of asio worker thread, remaining threads: %zu",
+    p_in("end of asio worker thread, remaining threads: %u",
          num_active_workers_.load());
 }
 

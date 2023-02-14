@@ -67,7 +67,7 @@ void raft_server::request_prevote() {
                 if ( last_active_time_ms >
                          params->heart_beat_interval_ *
                              raft_server::raft_limits_.reconnect_limit_ ) {
-                    p_wn( "connection to peer %d is not active long time: %zu ms, "
+                    p_wn( "connection to peer %d is not active long time: %d ms, "
                           "need reconnection for prevote",
                           pp->get_id(),
                           last_active_time_ms );
@@ -88,7 +88,7 @@ void raft_server::request_prevote() {
             // Pre-vote failed due to non-responding voters.
             pre_vote_.failure_count_++;
             p_wn("total %d nodes (including this node) responded for pre-vote "
-                 "(term %zu, live %d, dead %d), at least %d nodes should "
+                 "(term %" PRIu64 ", live %d, dead %d), at least %d nodes should "
                  "respond. failure count %d",
                  pre_vote_.live_.load() + pre_vote_.dead_.load(),
                  pre_vote_.term_,
@@ -131,8 +131,8 @@ void raft_server::request_prevote() {
         }
     }
 
-    p_in("[PRE-VOTE INIT] my id %d, my role %s, term %ld, log idx %ld, "
-         "log term %ld, priority (target %d / mine %d)\n",
+    p_in("[PRE-VOTE INIT] my id %d, my role %s, term %" PRIu64 ", log idx %" PRIu64 ", "
+         "log term %" PRIu64 ", priority (target %d / mine %d)\n",
          id_, srv_role_to_string(role_).c_str(),
          state_->get_term(), log_store_->next_slot() - 1,
          term_for_log(log_store_->next_slot() - 1),
@@ -169,11 +169,12 @@ void raft_server::initiate_vote(bool force_vote) {
          grace_period &&
          sm_commit_index_ < lagging_sm_target_index_ ) {
         p_in("grace period option is enabled, and state machine needs catch-up: "
-             "%lu vs. %lu",
+             "%" PRIu64 " vs. %" PRIu64 "",
              sm_commit_index_.load(),
              lagging_sm_target_index_.load());
         if (vote_init_timer_term_ != cur_term) {
-            p_in("grace period: %d, term increment detected %lu vs. %lu, reset timer",
+            p_in("grace period: %d, term increment detected %" PRIu64 " vs. %" PRIu64
+                 ", reset timer",
                 grace_period, vote_init_timer_term_.load(), cur_term);
             vote_init_timer_.set_duration_ms(grace_period);
             vote_init_timer_.reset();
@@ -183,12 +184,14 @@ void raft_server::initiate_vote(bool force_vote) {
         if ( vote_init_timer_term_ == cur_term &&
              !vote_init_timer_.timeout() ) {
             // Grace period, do not initiate vote.
-            p_in("grace period: %d, term %lu, waited %lu ms, skip initiating vote",
+            p_in("grace period: %d, term %" PRIu64 ", waited %" PRIu64
+                 " ms, skip initiating vote",
                  grace_period, cur_term, vote_init_timer_.get_ms());
             return;
 
         } else {
-            p_in("grace period: %d, no new leader detected for term %lu for %lu ms",
+            p_in("grace period: %d, no new leader detected for term %" PRIu64
+                 " for %" PRIu64 " ms",
                  grace_period, cur_term, vote_init_timer_.get_ms());
         }
     }
@@ -222,8 +225,8 @@ void raft_server::request_vote(bool force_vote) {
     ctx_->state_mgr_->save_state(*state_);
     votes_granted_ += 1;
     votes_responded_ += 1;
-    p_in("[VOTE INIT] my id %d, my role %s, term %ld, log idx %ld, "
-         "log term %ld, priority (target %d / mine %d)\n",
+    p_in("[VOTE INIT] my id %d, my role %s, term %" PRIu64 ", log idx %" PRIu64 ", "
+         "log term %" PRIu64 ", priority (target %d / mine %d)\n",
          id_, srv_role_to_string(role_).c_str(),
          state_->get_term(), log_store_->next_slot() - 1,
          term_for_log(log_store_->next_slot() - 1),
@@ -261,7 +264,7 @@ void raft_server::request_vote(bool force_vote) {
             // Ship it.
             req->log_entries().push_back(fv_msg_le);
         }
-        p_db( "send %s to server %d with term %llu",
+        p_db( "send %s to server %d with term %" PRIu64 "",
               msg_type_to_string(req->get_type()).c_str(),
               it->second->get_id(),
               state_->get_term() );
@@ -275,8 +278,10 @@ void raft_server::request_vote(bool force_vote) {
 }
 
 ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
-    p_in("[VOTE REQ] my role %s, from peer %d, log term: req %ld / mine %ld\n"
-         "last idx: req %ld / mine %ld, term: req %ld / mine %ld\n"
+    p_in("[VOTE REQ] my role %s, from peer %d, "
+         "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
+         "last idx: req %" PRIu64 " / mine %" PRIu64
+         ", term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "priority: target %d / mine %d, voted_for %d",
          srv_role_to_string(role_).c_str(),
          req.get_src(), req.get_last_log_term(), log_store_->last_entry()->get_term(),
@@ -334,13 +339,13 @@ ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
             }
         }
 
-        p_in("decision: O (grant), voted_for %d, term %zu",
+        p_in("decision: O (grant), voted_for %d, term %" PRIu64,
              req.get_src(), resp->get_term());
         resp->accept(log_store_->next_slot());
         state_->set_voted_for(req.get_src());
         ctx_->state_mgr_->save_state(*state_);
     } else {
-        p_in("decision: X (deny), term %zu", resp->get_term());
+        p_in("decision: X (deny), term %" PRIu64, resp->get_term());
     }
 
     return resp;
@@ -355,7 +360,7 @@ void raft_server::handle_vote_resp(resp_msg& resp) {
     if (resp.get_term() != state_->get_term()) {
         // Vote response for other term. Should ignore it.
         p_in("[VOTE RESP] from peer %d, my role %s, "
-             "but different resp term %zu. ignore it.",
+             "but different resp term %" PRIu64 ". ignore it.",
              resp.get_src(), srv_role_to_string(role_).c_str(), resp.get_term());
         return;
     }
@@ -371,7 +376,7 @@ void raft_server::handle_vote_resp(resp_msg& resp) {
 
     int32 election_quorum_size = get_quorum_for_election() + 1;
 
-    p_in("[VOTE RESP] peer %d (%s), resp term %zu, my role %s, "
+    p_in("[VOTE RESP] peer %d (%s), resp term %" PRIu64 ", my role %s, "
          "granted %d, responded %d, "
          "num voting members %d, quorum %d\n",
          resp.get_src(), (resp.get_accepted()) ? "O" : "X", resp.get_term(),
@@ -380,10 +385,10 @@ void raft_server::handle_vote_resp(resp_msg& resp) {
          get_num_voting_members(), election_quorum_size);
 
     if (votes_granted_ >= election_quorum_size) {
-        p_in("Server is elected as leader for term %zu", state_->get_term());
+        p_in("Server is elected as leader for term %" PRIu64, state_->get_term());
         election_completed_ = true;
         become_leader();
-        p_in("  === LEADER (term %zu) ===\n", state_->get_term());
+        p_in("  === LEADER (term %" PRIu64 ") ===\n", state_->get_term());
     }
 }
 
@@ -395,8 +400,10 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
         next_idx_for_resp = std::numeric_limits<ulong>::max();
     }
 
-    p_in("[PRE-VOTE REQ] my role %s, from peer %d, log term: req %ld / mine %ld\n"
-         "last idx: req %ld / mine %ld, term: req %ld / mine %ld\n"
+    p_in("[PRE-VOTE REQ] my role %s, from peer %d, "
+         "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
+         "last idx: req %" PRIu64 " / mine %" PRIu64
+         ", term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "%s",
          srv_role_to_string(role_).c_str(),
          req.get_src(), req.get_last_log_term(),
@@ -439,7 +446,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
     if (resp.get_term() != pre_vote_.term_) {
         // Vote response for other term. Should ignore it.
         p_in("[PRE-VOTE RESP] from peer %d, my role %s, "
-             "but different resp term %lu (pre-vote term %lu). "
+             "but different resp term %" PRIu64 " (pre-vote term %" PRIu64 "). "
              "ignore it.",
              resp.get_src(), srv_role_to_string(role_).c_str(),
              resp.get_term(), pre_vote_.term_);
@@ -462,7 +469,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
 
     int32 election_quorum_size = get_quorum_for_election() + 1;
 
-    p_in("[PRE-VOTE RESP] peer %d (%s), term %lu, resp term %lu, "
+    p_in("[PRE-VOTE RESP] peer %d (%s), term %" PRIu64 ", resp term %" PRIu64 ", "
          "my role %s, dead %d, live %d, abandoned %d, "
          "num voting members %d, quorum %d\n",
          resp.get_src(), (resp.get_accepted())?"O":"X",
@@ -472,7 +479,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
          get_num_voting_members(), election_quorum_size);
 
     if (pre_vote_.dead_ >= election_quorum_size) {
-        p_in("[PRE-VOTE DONE] SUCCESS, term %zu", pre_vote_.term_);
+        p_in("[PRE-VOTE DONE] SUCCESS, term %" PRIu64, pre_vote_.term_);
 
         bool exp = false;
         bool val = true;
@@ -494,7 +501,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
 
     if (pre_vote_.live_ >= election_quorum_size) {
         pre_vote_.quorum_reject_count_.fetch_add(1);
-        p_wn("[PRE-VOTE] rejected by quorum, count %zu",
+        p_wn("[PRE-VOTE] rejected by quorum, count %d",
              pre_vote_.quorum_reject_count_.load());
         if ( pre_vote_.quorum_reject_count_ >=
                  raft_server::raft_limits_.pre_vote_rejection_limit_ ) {
