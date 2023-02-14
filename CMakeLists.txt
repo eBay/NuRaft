@@ -81,16 +81,17 @@ endif()
 if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
-        include_directories(BEFORE
-                /usr/local/opt/openssl/include
-                )
-        link_directories(
-                /usr/local/opt/openssl/lib
-                )
+#        include_directories(BEFORE
+#                /usr/local/opt/openssl/include
+#                )
+#        link_directories(
+#                /usr/local/opt/openssl/lib
+#                )
     else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
@@ -128,6 +129,7 @@ if (NOT (DISABLE_SSL GREATER 0))
             /usr/local/lib64
             /opt/local/lib
             /opt/local/lib64
+            /opt/homebrew/opt/openssl/lib
             /opt/csw
             /opt)
         find_path(OPENSSL_LIBRARY_PATH
@@ -138,6 +140,16 @@ if (NOT (DISABLE_SSL GREATER 0))
                         /usr/local/opt/openssl/lib
                         ${LIB_PATH_HINT})
 
+        find_path(OPENSSL_INCLUDE_PATH
+                  NAMES openssl/ssl.h
+                  PATHS ${PROJECT_SOURCE_DIR}
+                        ${DEPS_PREFIX}/include
+                        /usr/include
+                        /usr/local/include
+                        /usr/local/opt/openssl/include
+                        /opt/local/include
+                        /opt/homebrew/opt/openssl/include)
+
         if (NOT OPENSSL_LIBRARY_PATH)
             message(STATUS "Use system's side OpenSSL library")
             set(LIBSSL ssl)
@@ -146,6 +158,11 @@ if (NOT (DISABLE_SSL GREATER 0))
             message(STATUS "Open SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
             set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
             set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
+        endif ()
+
+        if (OPENSSL_INCLUDE_PATH)
+            message(STATUS "Open SSL include path: ${OPENSSL_INCLUDE_PATH}")
+            include_directories(BEFORE ${OPENSSL_INCLUDE_PATH})
         endif ()
     endif ()
 endif()

@@ -45,7 +45,7 @@ bool raft_server::check_snapshot_timeout(ptr<peer> pp) {
     if (!sync_ctx) return false;
 
     if ( sync_ctx->get_timer().timeout() ) {
-        p_wn("snapshot install task for peer %d timed out: %lu ms, "
+        p_wn("snapshot install task for peer %d timed out: %" PRIu64 " ms, "
              "reset snapshot sync context %p",
              pp->get_id(), sync_ctx->get_timer().get_ms(), sync_ctx.get());
         clear_snapshot_sync_ctx(*pp);
@@ -84,7 +84,8 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
     ulong prev_sync_snp_log_idx = 0;
     if (sync_ctx) {
         snp = sync_ctx->get_snapshot();
-        p_db( "previous sync_ctx exists %p, offset %zu, snp idx %zu, user_ctx %p",
+        p_db( "previous sync_ctx exists %p, offset %" PRIu64 ", snp idx %" PRIu64
+              ", user_ctx %p",
               sync_ctx.get(),
               sync_ctx->get_offset(),
               snp->get_last_log_idx(),
@@ -118,7 +119,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
                   p.get_id(), snp == nilptr ? 1 : 0,
                   last_log_idx > snp->get_last_log_idx() ? 1 : 0 );
             if (snp) {
-                p_er("last log idx %zu, snp last log idx %zu",
+                p_er("last log idx %" PRIu64 ", snp last log idx %" PRIu64,
                      last_log_idx, snp->get_last_log_idx());
             }
             ctx_->state_mgr_->system_exit(raft_err::N16_snapshot_for_peer_not_found);
@@ -140,8 +141,8 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
         }
 
         if (snp->get_last_log_idx() != prev_sync_snp_log_idx) {
-            p_in( "trying to sync snapshot with last index %llu to peer %d, "
-                  "its last log idx %llu",
+            p_in( "trying to sync snapshot with last index %" PRIu64 " to peer %d, "
+                  "its last log idx %" PRIu64 "",
                   snp->get_last_log_idx(), p.get_id(), last_log_idx );
         }
         if (sync_ctx) {
@@ -182,7 +183,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
         int32 sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
         if ((size_t)sz_rd < data->size()) {
             // LCOV_EXCL_START
-            p_er( "only %d bytes could be read from snapshot while %d "
+            p_er( "only %d bytes could be read from snapshot while %zu "
                   "bytes are expected, must be something wrong, exit.",
                   sz_rd, data->size() );
             ctx_->state_mgr_->system_exit(raft_err::N18_partial_snapshot_block);
@@ -199,13 +200,14 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
         sync_ctx = p.get_snapshot_sync_ctx();
         ulong obj_idx = sync_ctx->get_offset();
         void*& user_snp_ctx = sync_ctx->get_user_snp_ctx();
-        p_dv("peer: %d, obj_idx: %ld, user_snp_ctx %p\n",
+        p_dv("peer: %d, obj_idx: %" PRIu64 ", user_snp_ctx %p",
              (int)p.get_id(), obj_idx, user_snp_ctx);
 
         int rc = state_machine_->read_logical_snp_obj( *snp, user_snp_ctx, obj_idx,
                                                        data, last_request );
         if (rc < 0) {
-            p_wn( "reading snapshot (idx %lu, term %lu, object %lu) failed: %d",
+            p_wn( "reading snapshot (idx %" PRIu64 ", term %" PRIu64
+                  ", object %" PRIu64 ") failed: %d",
                   snp->get_last_log_idx(),
                   snp->get_last_log_term(),
                   obj_idx,
@@ -266,8 +268,8 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
                            log_store_->next_slot() );
 
     if (!catching_up_ && req.get_term() < state_->get_term()) {
-        p_wn("received an install snapshot request (%zu) which has lower term "
-             "than this server (%zu), decline the request",
+        p_wn("received an install snapshot request (%" PRIu64 ") which has lower term "
+             "than this server (%" PRIu64 "), decline the request",
              req.get_term(), state_->get_term());
         return resp;
     }
@@ -283,8 +285,8 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
     ptr<snapshot_sync_req> sync_req =
         snapshot_sync_req::deserialize(entries[0]->get_buf());
     if (sync_req->get_snapshot().get_last_log_idx() <= sm_commit_index_) {
-        p_wn( "received a snapshot (%zu) that is older than "
-              "current commit idx (%zu), last log idx %zu",
+        p_wn( "received a snapshot (%" PRIu64 ") that is older than "
+              "current commit idx (%" PRIu64 "), last log idx %" PRIu64,
               sync_req->get_snapshot().get_last_log_idx(),
               sm_commit_index_.load(),
               log_store_->next_slot() - 1);
@@ -345,7 +347,7 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
             ptr<snapshot> snp = sync_ctx->get_snapshot();
             if (snp->get_type() == snapshot::raw_binary) {
                 // LCOV_EXCL_START
-                p_db("resp.get_next_idx(): %zu, snp->size(): %zu\n",
+                p_db("resp.get_next_idx(): %" PRIu64 ", snp->size(): %" PRIu64,
                      resp.get_next_idx(), snp->size());
                 // LCOV_EXCL_STOP
             }
@@ -364,17 +366,18 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
 
                 need_to_catchup = p->clear_pending_commit() ||
                                   p->get_next_log_idx() < log_store_->next_slot();
-                p_in("snapshot done %zu, %zu, %d\n",
+                p_in("snapshot done %" PRIu64 ", %" PRIu64 ", %d",
                      p->get_next_log_idx(), p->get_matched_idx(), need_to_catchup);
             } else {
-                p_db("continue to sync snapshot at offset %zu", resp.get_next_idx());
+                p_db("continue to sync snapshot at offset %" PRIu64,
+                     resp.get_next_idx());
                 sync_ctx->set_offset(resp.get_next_idx());
             }
         }
 
     } else {
-        p_wn( "peer %d declined snapshot: p->get_next_log_idx(): %zu, "
-              "log_store_->next_slot(): %zu\n",
+        p_wn( "peer %d declined snapshot: p->get_next_log_idx(): %" PRIu64 ", "
+              "log_store_->next_slot(): %" PRIu64,
               p->get_id(), p->get_next_log_idx(), log_store_->next_slot() );
         p->set_next_log_idx(resp.get_next_idx());
 
@@ -405,7 +408,7 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
 
     if (!resp.get_accepted()) {
         p_wn("peer doesn't accept the snapshot installation request, "
-             "next log idx %llu, "
+             "next log idx %" PRIu64 ", "
              "but we can move forward",
              resp.get_next_idx());
         srv_to_join_->set_next_log_idx(resp.get_next_idx());
@@ -441,12 +444,12 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
 
         p_in( "snapshot has been copied and applied to new server, "
               "continue to sync logs after snapshot, "
-              "next log idx %llu, matched idx %llu",
+              "next log idx %" PRIu64 ", matched idx %" PRIu64 "",
               srv_to_join_->get_next_log_idx(),
               srv_to_join_->get_matched_idx() );
     } else {
         sync_ctx->set_offset(resp.get_next_idx());
-        p_db( "continue to send snapshot to new server at offset %llu",
+        p_db( "continue to send snapshot to new server at offset %" PRIu64 "",
               resp.get_next_idx() );
     }
 
@@ -460,7 +463,8 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
     bool is_last_obj = req.is_done();
     if (is_first_obj || is_last_obj) {
         // INFO level: log only first and last object.
-        p_in("save snapshot (idx %lu, term %lu) offset 0x%lx, %s %s\n",
+        p_in("save snapshot (idx %" PRIu64 ", term %" PRIu64 ") offset 0x%" PRIx64
+             ", %s %s",
              req.get_snapshot().get_last_log_idx(),
              req.get_snapshot().get_last_log_term(),
              req.get_offset(),
@@ -468,7 +472,8 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
              (is_last_obj)  ? "last obj"  : "" );
     } else {
         // above DEBUG: log all.
-        p_db("save snapshot (idx %lu, term %lu) offset 0x%lx, %s %s\n",
+        p_db("save snapshot (idx %" PRIu64 ", term %" PRIu64 ") offset 0x%" PRIx64
+             ", %s %s",
              req.get_snapshot().get_last_log_idx(),
              req.get_snapshot().get_last_log_term(),
              req.get_offset(),
@@ -542,7 +547,8 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             // LCOV_EXCL_STOP
         }
 
-        p_in( "successfully receive a snapshot (idx %zu term %zu) from leader",
+        p_in( "successfully receive a snapshot (idx %" PRIu64 " term %" PRIu64
+              ") from leader",
               req.get_snapshot().get_last_log_idx(),
               req.get_snapshot().get_last_log_term() );
         if (log_store_->compact(req.get_snapshot().get_last_log_idx())) {
@@ -584,8 +590,8 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
             set_last_snapshot(new_snp);
 
             restart_election_timer();
-            p_in("snapshot idx %zu term %zu is successfully applied, "
-                 "log start %zu last idx %zu",
+            p_in("snapshot idx %" PRIu64 " term %" PRIu64 " is successfully applied, "
+                 "log start %" PRIu64 " last idx %" PRIu64,
                  new_snp->get_last_log_idx(),
                  new_snp->get_last_log_term(),
                  log_store_->start_index(),
