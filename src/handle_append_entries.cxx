@@ -757,7 +757,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
             while ( last_durable_index <
                     req.get_last_log_idx() + req.log_entries().size() ) {
                 // Some logs are not durable yet, wait here and block the thread.
-                p_tr( "durable idnex %" PRIu64
+                p_tr( "durable index %" PRIu64
                       ", sleep and wait for log appending completion",
                       last_durable_index );
                 ea_follower_log_append_->wait_ms(params->heart_beat_interval_);
