@@ -53,6 +53,11 @@ $ brew install openssl
 
 #### 2. Fetch [Asio](https://github.com/chriskohlhoff/asio) library: ####
 
+* Linux, OsSX & Windows
+```sh
+git submodule update --init
+```
+
 * Linux & OSX
 ```sh
 $ ./prepare.sh
