@@ -19,7 +19,7 @@ limitations under the License.
 #include "fake_network.hxx"
 #include "raft_package_fake.hxx"
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "raft_params.hxx"
 #include "test_common.h"
 

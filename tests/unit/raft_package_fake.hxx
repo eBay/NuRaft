@@ -18,7 +18,7 @@ limitations under the License.
 #include "fake_network.hxx"
 #include "raft_functional_common.hxx"
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 
 using namespace nuraft;
 using namespace raft_functional_common;

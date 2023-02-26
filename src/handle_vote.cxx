@@ -21,7 +21,7 @@ limitations under the License.
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "state_mgr.hxx"
