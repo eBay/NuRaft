@@ -20,7 +20,7 @@ limitations under the License.
 #include "in_memory_log_store.hxx"
 #include "raft_package_asio.hxx"
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "test_common.h"
 
 #include <unordered_map>

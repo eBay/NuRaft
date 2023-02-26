@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "raft_server.hxx"
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "peer.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"

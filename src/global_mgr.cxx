@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "global_mgr.hxx"
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "logger.hxx"
 #include "raft_server.hxx"
 #include "tracer.hxx"

@@ -38,8 +38,6 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
-class EventAwaiter;
-
 namespace nuraft {
 
 using CbReturnCode = cb_func::ReturnCode;
@@ -47,6 +45,7 @@ using CbReturnCode = cb_func::ReturnCode;
 class cluster_config;
 class custom_notification_msg;
 class delayed_task_scheduler;
+class EventAwaiter;
 class logger;
 class peer;
 class rpc_client;

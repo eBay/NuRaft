@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "snapshot_sync_ctx.hxx"
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "peer.hxx"
 #include "raft_server.hxx"
 #include "state_machine.hxx"

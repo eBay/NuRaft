@@ -17,7 +17,7 @@ limitations under the License.
 
 #pragma once
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "internal_timer.hxx"
 #include "log_store.hxx"
 
