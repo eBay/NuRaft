@@ -53,20 +53,25 @@ $ brew install openssl
 
 #### 2. Fetch [Asio](https://github.com/chriskohlhoff/asio) library: ####
 
-* Linux, OsSX & Windows
+##### Using git submodule
+
 ```sh
-git submodule update --init
+$ git submodule update --init
 ```
 
-* Linux & OSX
+##### Other ways to fetch:
+
+* Linux & OSX: using the bash script
+
 ```sh
 $ ./prepare.sh
 ```
-* Windows
-    * Clone [Asio](https://github.com/chriskohlhoff/asio) `asio-1-12-0`
-      into the project directory.
+
+* Windows: doing it manually
+  * Clone [Asio](https://github.com/chriskohlhoff/asio) `asio-1-24-0` into the project directory.
+
 ```sh
-C:\NuRaft> git clone https://github.com/chriskohlhoff/asio -b asio-1-12-0
+C:\NuRaft> git clone https://github.com/chriskohlhoff/asio -b asio-1-24-0
 ```
 
 #### 3. Build static library, tests, and examples: ####
