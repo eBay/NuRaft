@@ -62,7 +62,7 @@ enum msg_type {
     custom_notification_response    = 29,
 };
 
-static bool ATTR_UNUSED is_valid_msg(msg_type type) {
+inline bool ATTR_UNUSED is_valid_msg(msg_type type) {
     if ( type >= request_vote_request &&
          type <= other_response ) {
         return true;
@@ -71,8 +71,7 @@ static bool ATTR_UNUSED is_valid_msg(msg_type type) {
 }
 
 // for tracing and debugging
-static std::string ATTR_UNUSED msg_type_to_string(msg_type type)
-{
+inline std::string ATTR_UNUSED msg_type_to_string(msg_type type) {
     switch (type) {
     case request_vote_request:          return "request_vote_request";
     case request_vote_response:         return "request_vote_response";

@@ -21,6 +21,8 @@ limitations under the License.
 #ifndef _SRV_ROLE_HXX_
 #define _SRV_ROLE_HXX_
 
+#include <string>
+
 namespace nuraft {
 
 #include "attr_unused.hxx"
@@ -31,7 +33,7 @@ enum srv_role {
     leader      = 0x3
 };
 
-static std::string ATTR_UNUSED
+inline std::string ATTR_UNUSED
        srv_role_to_string(srv_role _role)
 {
     switch (_role) {

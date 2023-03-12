@@ -21,7 +21,9 @@ limitations under the License.
 #ifndef _STATE_MGR_HXX_
 #define _STATE_MGR_HXX_
 
+#include "basic_types.hxx"
 #include "pp_util.hxx"
+#include "ptr.hxx"
 
 namespace nuraft {
 

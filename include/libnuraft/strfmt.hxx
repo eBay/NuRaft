@@ -21,6 +21,10 @@ limitations under the License.
 #ifndef _STRING_FORMATTER_HXX_
 #define _STRING_FORMATTER_HXX_
 
+#include "pp_util.hxx"
+
+#include <cstdio>
+
 namespace nuraft {
 
 template<int N>
