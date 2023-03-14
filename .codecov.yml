@@ -5,11 +5,13 @@ codecov:
 coverage:
   precision: 3
   round: down
-  range: "70...85"
+  range:
+    - 70
+    - 85
 
   status:
-    project: yes
-    patch: yes
+    project: no
+    patch: no
     changes: no
 
 parsers:

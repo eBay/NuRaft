@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
+project(NuRaft VERSION 1.0.0 LANGUAGES CXX)
 
 # === Build type (default: RelWithDebInfo, O2) ===========
 if (NOT CMAKE_BUILD_TYPE)
@@ -13,6 +14,7 @@ if (NOT CMAKE_BUILD_TYPE)
     message(STATUS "Build type is not given, use default.")
 endif ()
 message(STATUS "Build type: " ${CMAKE_BUILD_TYPE})
+message(STATUS "Build Install Prefix : " ${CMAKE_INSTALL_PREFIX})
 
 set(BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -59,6 +61,7 @@ endif ()
 # === Includes ===
 include_directories(BEFORE ./)
 include_directories(BEFORE ${ASIO_INCLUDE_DIR})
+include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include/libnuraft)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples/calculator)
@@ -68,7 +71,7 @@ include_directories(BEFORE ${PROJECT_SOURCE_DIR}/tests)
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/tests/unit)
 if (DEPS_PREFIX)
     message(STATUS "deps prefix: " ${DEPS_PREFIX})
-    include_directories(BEFORE ${DEPS_PREFIX}/include)
+    include_directories(AFTER ${DEPS_PREFIX}/include)
 else()
     message(STATUS "deps prefix is not given")
 endif()
@@ -78,11 +81,17 @@ endif()
 if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
-        include_directories(BEFORE /usr/local/opt/openssl/include)
-        link_directories(/usr/local/opt/openssl/lib)
+#        include_directories(BEFORE
+#                /usr/local/opt/openssl/include
+#                )
+#        link_directories(
+#                /usr/local/opt/openssl/lib
+#                )
     else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
@@ -101,38 +110,62 @@ endif ()
 
 # === OpenSSL libraries ===
 if (NOT (DISABLE_SSL GREATER 0))
-    set(LIB_PATH_HINT
-        ~/Library/Frameworks
-        /Library/Frameworks
-        $ENV{HOME}/local/lib64
-        $ENV{HOME}/local/lib
-        /usr/lib
-        /usr/lib/x86_64-linux-gnu
-        /usr/lib64
-        /usr/local/lib
-        /usr/local/lib64
-        /opt/local/lib
-        /opt/local/lib64
-        /opt/csw
-        /opt)
-    find_path(OPENSSL_LIBRARY_PATH
-              NAMES libssl.a
-              PATHS ${PROJECT_SOURCE_DIR}
-                    ${DEPS_PREFIX}/lib
-                    ${DEPS_PREFIX}/lib64
-                    /usr/local/opt/openssl/lib
-                    ${LIB_PATH_HINT})
-
-    if (NOT OPENSSL_LIBRARY_PATH)
-        message(STATUS "Use system's side OpenSSL library")
-        set(LIBSSL ssl)
-        set(LIBCRYPTO crypto)
-    else ()
-        message(STATUS "Open SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
+    if (OPENSSL_LIBRARY_PATH AND OPENSSL_INCLUDE_PATH)
+        message(STATUS "Pre-defined SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
+        message(STATUS "Pre-defined SSL include path: ${OPENSSL_INCLUDE_PATH}")
+        include_directories(BEFORE ${OPENSSL_INCLUDE_PATH})
         set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
         set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
+    else ()
+        set(LIB_PATH_HINT
+            ~/Library/Frameworks
+            /Library/Frameworks
+            $ENV{HOME}/local/lib64
+            $ENV{HOME}/local/lib
+            /usr/lib
+            /usr/lib/x86_64-linux-gnu
+            /usr/lib64
+            /usr/local/lib
+            /usr/local/lib64
+            /opt/local/lib
+            /opt/local/lib64
+            /opt/homebrew/opt/openssl/lib
+            /opt/csw
+            /opt)
+        find_path(OPENSSL_LIBRARY_PATH
+                  NAMES libssl.a
+                  PATHS ${PROJECT_SOURCE_DIR}
+                        ${DEPS_PREFIX}/lib
+                        ${DEPS_PREFIX}/lib64
+                        /usr/local/opt/openssl/lib
+                        ${LIB_PATH_HINT})
+
+        find_path(OPENSSL_INCLUDE_PATH
+                  NAMES openssl/ssl.h
+                  PATHS ${PROJECT_SOURCE_DIR}
+                        ${DEPS_PREFIX}/include
+                        /usr/include
+                        /usr/local/include
+                        /usr/local/opt/openssl/include
+                        /opt/local/include
+                        /opt/homebrew/opt/openssl/include)
+
+        if (NOT OPENSSL_LIBRARY_PATH)
+            message(STATUS "Use system's side OpenSSL library")
+            set(LIBSSL ssl)
+            set(LIBCRYPTO crypto)
+        else ()
+            message(STATUS "Open SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
+            set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
+            set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
+        endif ()
+
+        if (OPENSSL_INCLUDE_PATH)
+            message(STATUS "Open SSL include path: ${OPENSSL_INCLUDE_PATH}")
+            include_directories(BEFORE ${OPENSSL_INCLUDE_PATH})
+        endif ()
     endif ()
-endif ()
+endif()
 
 # === Compiler options ===
 if (ADDRESS_SANITIZER GREATER 0)
@@ -150,10 +183,10 @@ if (CODE_COVERAGE GREATER 0)
     APPEND_COVERAGE_COMPILER_FLAGS()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-inline")
     set(COVERAGE_EXCLUDES
-        'asio/*'
-        'examples/*'
-        'tests/*'
-        'usr/*'
+        '*asio/*'
+        '*examples/*'
+        '*tests/*'
+        '*usr/*'
     )
 endif()
 
@@ -161,6 +194,11 @@ if ( (TESTSUITE_NO_COLOR GREATER 0) OR (WIN32) )
     add_definitions(-DTESTSUITE_NO_COLOR=1)
     add_definitions(-DLOGGER_NO_COLOR=1)
     message(STATUS "---- NO ANSI COLOR ----")
+endif()
+
+if (ENABLE_RAFT_STATS GREATER 0)
+    add_definitions(-DENABLE_RAFT_STATS=1)
+    message(STATUS "---- ENABLED RAFT STATS ----")
 endif()
 
 # === Other shared libraries ===
@@ -181,7 +219,7 @@ set(ROOT_SRC ${PROJECT_SOURCE_DIR}/src)
 set(EXAMPLES_SRC ${PROJECT_SOURCE_DIR}/examples)
 
 # === Copy script files ===
-file(COPY ${CMAKE_SOURCE_DIR}/scripts/test/runtests.sh
+file(COPY ${PROJECT_SOURCE_DIR}/scripts/test/runtests.sh
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
 # === Generate dummy self-signed cert and key for testing ===
@@ -212,8 +250,10 @@ set(RAFT_CORE
     ${ROOT_SRC}/cluster_config.cxx
     ${ROOT_SRC}/crc32.cxx
     ${ROOT_SRC}/error_code.cxx
+    ${ROOT_SRC}/global_mgr.cxx
     ${ROOT_SRC}/handle_append_entries.cxx
     ${ROOT_SRC}/handle_client_request.cxx
+    ${ROOT_SRC}/handle_custom_notification.cxx
     ${ROOT_SRC}/handle_commit.cxx
     ${ROOT_SRC}/handle_join_leave.cxx
     ${ROOT_SRC}/handle_priority.cxx
@@ -225,8 +265,10 @@ set(RAFT_CORE
     ${ROOT_SRC}/peer.cxx
     ${ROOT_SRC}/raft_server.cxx
     ${ROOT_SRC}/snapshot.cxx
+    ${ROOT_SRC}/snapshot_sync_ctx.cxx
     ${ROOT_SRC}/snapshot_sync_req.cxx
     ${ROOT_SRC}/srv_config.cxx
+    ${ROOT_SRC}/stat_mgr.cxx
     )
 add_library(RAFT_CORE_OBJ OBJECT ${RAFT_CORE})
 
@@ -238,6 +280,12 @@ set(LIBRARY_NAME "nuraft")
 
 add_library(static_lib ${STATIC_LIB_SRC})
 set_target_properties(static_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
+
+add_library(shared_lib SHARED ${STATIC_LIB_SRC})
+set_target_properties(shared_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
+if (APPLE)
+    target_link_libraries(shared_lib ${LIBRARIES})
+endif ()
 
 if (WIN32)
     set(LIBRARY_OUTPUT_NAME "${LIBRARY_NAME}.lib")
@@ -263,6 +311,7 @@ if (CODE_COVERAGE GREATER 0)
         serialization_test
         timer_test
         strfmt_test
+        stat_mgr_test
     )
 
     # lcov
@@ -273,5 +322,10 @@ if (CODE_COVERAGE GREATER 0)
     )
 endif()
 
+
+# === Install Targets ===
+install(TARGETS static_lib ARCHIVE DESTINATION lib)
+install(TARGETS shared_lib LIBRARY DESTINATION lib)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/libnuraft DESTINATION include)
 
 

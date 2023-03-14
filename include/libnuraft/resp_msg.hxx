@@ -27,6 +27,7 @@ limitations under the License.
 namespace nuraft {
 
 class resp_msg;
+class peer;
 using resp_cb =
     std::function<ptr<resp_msg>(ptr<resp_msg>)>;
 
@@ -43,6 +44,7 @@ public:
              bool accepted = false)
         : msg_base(term, type, src, dst)
         , next_idx_(next_idx)
+        , next_batch_size_hint_in_bytes_(0)
         , accepted_(accepted)
         , ctx_(nullptr)
         , cb_func_(nullptr)
@@ -55,6 +57,14 @@ public:
 public:
     ulong get_next_idx() const {
         return next_idx_;
+    }
+
+    int64 get_next_batch_size_hint_in_bytes() const {
+        return next_batch_size_hint_in_bytes_;
+    }
+
+    void set_next_batch_size_hint_in_bytes(int64 bytes) {
+        next_batch_size_hint_in_bytes_ = bytes;
     }
 
     bool get_accepted() const {
@@ -72,6 +82,14 @@ public:
 
     ptr<buffer> get_ctx() const {
         return ctx_;
+    }
+
+    void set_peer(ptr<peer> peer) {
+        peer_ = peer;
+    }
+
+    ptr<peer> get_peer() const {
+        return peer_;
     }
 
     void set_cb(resp_cb _func) {
@@ -110,8 +128,10 @@ public:
 
 private:
     ulong next_idx_;
+    int64 next_batch_size_hint_in_bytes_;
     bool accepted_;
     ptr<buffer> ctx_;
+    ptr<peer> peer_;
     resp_cb cb_func_;
     resp_async_cb async_cb_func_;
     cmd_result_code result_code_;

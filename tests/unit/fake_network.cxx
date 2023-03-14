@@ -69,6 +69,7 @@ FakeNetwork::FakeNetwork(const std::string& _endpoint,
     : myEndpoint(_endpoint)
     , base(_base)
     , handler(nullptr)
+    , online(true)
 {}
 
 ptr<rpc_client> FakeNetwork::create_client(const std::string& endpoint) {
@@ -94,7 +95,7 @@ void FakeNetwork::listen(ptr<msg_handler>& _handler) {
 }
 
 ptr<resp_msg> FakeNetwork::gotMsg(ptr<req_msg>& msg) {
-    ptr<resp_msg> resp = handler->process_req(*msg);
+    ptr<resp_msg> resp = raft_server_handler::process_req(handler.get(), *msg);
     return resp;
 }
 
@@ -102,7 +103,7 @@ bool FakeNetwork::execReqResp(const std::string& endpoint) {
     if (endpoint.empty()) {
         // Do the same thing to all.
 
-        std::unordered_map< std::string, ptr<FakeClient> > clients_clone;
+        std::map< std::string, ptr<FakeClient> > clients_clone;
 
         // WARNING:
         //   As a result of processing req or resp, client re-connection
@@ -141,7 +142,7 @@ bool FakeNetwork::execReqResp(const std::string& endpoint) {
 ptr<FakeClient> FakeNetwork::findClient(const std::string& endpoint) {
     std::lock_guard<std::mutex> ll(clientsLock);
     auto entry = clients.find(endpoint);
-    assert(entry != clients.end());
+    if (entry == clients.end()) return nullptr;
     return entry->second;
 }
 
@@ -151,6 +152,9 @@ bool FakeNetwork::delieverReqTo(const std::string& endpoint,
     // this:                    source (sending request)
     // conn->dstNet (endpoint): destination (sending response)
     ptr<FakeClient> conn = findClient(endpoint);
+
+    // If destination is offline, make failure.
+    if (!conn->isDstOnline()) return makeReqFail(endpoint, random_order);
 
     auto pkg_entry = conn->pendingReqs.begin();
     if (pkg_entry == conn->pendingReqs.end()) return false;
@@ -258,11 +262,13 @@ void FakeNetwork::handleAllFrom(const std::string& endpoint) {
 
 size_t FakeNetwork::getNumPendingReqs(const std::string& endpoint) {
     ptr<FakeClient> conn = findClient(endpoint);
+    if (!conn) return 0;
     return conn->pendingReqs.size();
 }
 
 size_t FakeNetwork::getNumPendingResps(const std::string& endpoint) {
     ptr<FakeClient> conn = findClient(endpoint);
+    if (!conn) return 0;
     return conn->pendingResps.size();
 }
 
@@ -281,16 +287,21 @@ void FakeNetwork::shutdown() {
 
 
 // === FakeClient
+static std::atomic<uint64_t> fake_client_id_counter(1);
 
 FakeClient::FakeClient(FakeNetwork* mother,
                        FakeNetwork* dst)
-    : motherNet(mother)
+    : myId(fake_client_id_counter.fetch_add(1))
+    , motherNet(mother)
     , dstNet(dst)
 {}
 
 FakeClient::~FakeClient() {}
 
-void FakeClient::send(ptr<req_msg>& req, rpc_handler& when_done) {
+void FakeClient::send(ptr<req_msg>& req,
+                      rpc_handler& when_done,
+                      uint64_t /*send_timeout_ms*/)
+{
     SimpleLogger* ll = motherNet->getBase()->getLogger();
     _log_info(ll, "got request %s -> %s, %s",
               motherNet->getEndpoint().c_str(),
@@ -302,6 +313,19 @@ void FakeClient::send(ptr<req_msg>& req, rpc_handler& when_done) {
 void FakeClient::dropPackets() {
     pendingReqs.clear();
     pendingResps.clear();
+}
+
+bool FakeClient::isDstOnline() {
+    if (!dstNet) return false;
+    return dstNet->isOnline();
+}
+
+uint64_t FakeClient::get_id() const {
+    return myId;
+}
+
+bool FakeClient::is_abandoned() const {
+    return false;
 }
 
 

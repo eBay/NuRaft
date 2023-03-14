@@ -37,10 +37,12 @@ class log_entry {
 public:
     log_entry(ulong term,
               const ptr<buffer>& buff,
-              log_val_type value_type = log_val_type::app_log)
+              log_val_type value_type = log_val_type::app_log,
+              uint64_t log_timestamp = 0)
         : term_(term)
         , value_type_(value_type)
         , buff_(buff)
+        , timestamp_us_(log_timestamp)
         {}
 
     __nocopy__(log_entry);
@@ -82,6 +84,14 @@ public:
         return buff_;
     }
 
+    uint64_t get_timestamp() const {
+        return timestamp_us_;
+    }
+
+    void set_timestamp(uint64_t t) {
+        timestamp_us_ = t;
+    }
+
     ptr<buffer> serialize() {
         buff_->pos(0);
         ptr<buffer> buf = buffer::alloc( sizeof(ulong) +
@@ -108,9 +118,27 @@ public:
     }
 
 private:
+    /**
+     * The term number when this log entry was generated.
+     */
     ulong term_;
+
+    /**
+     * Type of this log entry.
+     */
     log_val_type value_type_;
+
+    /**
+     * Actual data that this log entry carries.
+     */
     ptr<buffer> buff_;
+
+    /**
+     * The timestamp (since epoch) when this log entry was generated
+     * in microseconds. Used only when `log_entry_timestamp_` in
+     * `asio_service_options` is set.
+     */
+    uint64_t timestamp_us_;
 };
 
 }

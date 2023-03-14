@@ -15,12 +15,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "fake_network.hxx"
 #include "raft_functional_common.hxx"
+
+#include "event_awaiter.hxx"
 
 using namespace nuraft;
 using namespace raft_functional_common;
 
-static size_t COMMIT_TIME_MS = 50;
+static size_t ATTR_UNUSED COMMIT_TIME_MS = 50;
+static size_t ATTR_UNUSED COMMIT_TIMEOUT_SEC = 3;
 
 class RaftPkg {
 public:
@@ -44,11 +48,13 @@ public:
         {}
 
     ~RaftPkg() {
-        myLogWrapper->destroy();
-        fNet->shutdown();
+        if (myLogWrapper) myLogWrapper->destroy();
+        if (fNet) fNet->shutdown();
     }
 
-    void initServer(raft_params* given_params = nullptr)
+    void initServer(raft_params* given_params = nullptr,
+                    const raft_server::init_options& opt =
+                        raft_server::init_options(false, true, true))
     {
         fNet = cs_new<FakeNetwork>( myEndpoint, fBase );
         fBase->addNetwork(fNet);
@@ -76,10 +82,38 @@ public:
         } else {
             params = *given_params;
         }
+        // For deterministic test, we should not use BG thread.
+        params.use_bg_thread_for_urgent_commit_ = false;
 
         ctx = new context( sMgr, sm, listener, myLog,
                            rpcCliFactory, scheduler, params );
-        raftServer = cs_new<raft_server>(ctx);
+        raftServer = cs_new<raft_server>(ctx, opt);
+    }
+
+    /**
+     * Re-init Raft server without changing internal data including state machine.
+     */
+    void restartServer(raft_params* given_params = nullptr,
+                       const raft_server::init_options& opt =
+                           raft_server::init_options(false, true, true))
+    {
+        if (!given_params) {
+            params.with_election_timeout_lower(0);
+            params.with_election_timeout_upper(10000);
+            params.with_hb_interval(5000);
+            params.with_client_req_timeout(1000000);
+            params.with_reserved_log_items(0);
+            params.with_snapshot_enabled(5);
+            params.with_log_sync_stopping_gap(1);
+        } else {
+            params = *given_params;
+        }
+        // For deterministic test, we should not use BG thread.
+        params.use_bg_thread_for_urgent_commit_ = false;
+
+        ctx = new context( sMgr, sm, listener, myLog,
+                           rpcCliFactory, scheduler, params );
+        raftServer = cs_new<raft_server>(ctx, opt);
     }
 
     void free() {
@@ -102,6 +136,11 @@ public:
         _s_info(ll) << msg;
     }
 
+    void localLog(const std::string& msg) {
+        SimpleLogger* ll = myLogWrapper->getLogger();
+        _s_info(ll) << msg;
+    }
+
     int myId;
     std::string myEndpoint;
     ptr<FakeNetworkBase> fBase;
@@ -119,13 +158,92 @@ public:
     ptr<raft_server> raftServer;
 };
 
-static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs) {
+// ===== Helper functions waiting for the execution of state machine ====
+// NOTE: A single thread at a time (not MT-safe).
+static std::atomic<bool> commit_done(false);
+static std::list<int> removed_servers;
+static std::vector<RaftPkg*> pkgs_to_watch;
+static std::mutex pkgs_to_watch_lock;
+static EventAwaiter ea_wait_for_commit;
+
+static bool ATTR_UNUSED check_pkgs() {
+    // Check if all current committed logs are executed in
+    // their state machines.
+    std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
+    for (RaftPkg* pp: pkgs_to_watch) {
+        if ( pp->raftServer->get_committed_log_idx() <
+             pp->raftServer->get_target_committed_log_idx() ) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static int ATTR_UNUSED wait_for_sm_exec(const std::vector<RaftPkg*>& pkgs,
+                                        size_t timeout_sec)
+{
+    {
+        std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
+        pkgs_to_watch = pkgs;
+    }
+    TestSuite::GcFunc gc_pkgs([&]() {
+        // Auto clear.
+        std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
+        pkgs_to_watch.clear();
+    });
+
+    ea_wait_for_commit.reset();
+    commit_done = false;
+    if (check_pkgs()) {
+        // Already executed even before sleeping.
+        return 0;
+    }
+    ea_wait_for_commit.wait_ms(timeout_sec * 1000);
+
+    if (commit_done) {
+        return 0;
+    }
+    return -1;
+}
+
+static cb_func::ReturnCode ATTR_UNUSED cb_default(
+    cb_func::Type type, cb_func::Param* param)
+{
+    if (type == cb_func::Type::StateMachineExecution) {
+        if (check_pkgs()) {
+            // Multiple commit threads may enter here at the same time,
+            // but only one thread should invoke the EA.
+            bool exp = false;
+            if (commit_done.compare_exchange_strong(exp, true)) {
+                ea_wait_for_commit.invoke();
+            }
+        }
+    } else if (type == cb_func::Type::RemovedFromCluster) {
+        if (param) {
+            removed_servers.push_back(param->myId);
+        }
+    }
+    return cb_func::ReturnCode::Ok;
+}
+// ==============
+
+
+static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
+                                 raft_params* custom_params = nullptr,
+                                 bool restart = false) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
+    raft_server::init_options opt(false, true, true);
+    opt.raft_callback_ = cb_default;
+
     for (size_t ii = 0; ii < num_srvs; ++ii) {
         RaftPkg* ff = pkgs[ii];
-        ff->initServer();
+        if (restart) {
+            ff->restartServer(custom_params, opt);
+        } else {
+            ff->initServer(custom_params, opt);
+        }
         ff->fNet->listen(ff->raftServer);
         ff->fTimer->invoke( timer_task_type::election_timer );
     }
@@ -152,18 +270,26 @@ static INT_UNUSED make_group(const std::vector<RaftPkg*>& pkgs) {
         // Notify new commit.
         leader->fNet->execReqResp();
         // Wait for bg commit for configuration change.
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
         // Now heartbeat to new node is enabled.
 
         // Heartbeat.
         leader->fTimer->invoke( timer_task_type::heartbeat_timer );
-        // Heartbeat req/resp, to finish the catch-up phase.
+        // The new node receives the commit of
+        // the new config (membership change), and now be the part of cluster.
+        leader->fNet->execReqResp();
+        // Wait for bg commit for new node.
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+        // One more heartbeat.
+        leader->fTimer->invoke( timer_task_type::heartbeat_timer );
+        // New node will clear the catch-up flag.
         leader->fNet->execReqResp();
         // Need one-more req/resp.
         leader->fNet->execReqResp();
         // Wait for bg commit for new node.
-        TestSuite::sleep_ms(COMMIT_TIME_MS);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
     }
     return 0;
 }

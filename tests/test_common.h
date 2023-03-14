@@ -1009,9 +1009,10 @@ public:
                 std::string _unit =
                     (unit.empty()) ? "" : unit + " ";
 
-                _msg("\r%s%ld/%ld %s(%.1f%%)",
-                     _comment.c_str(), curValue, num, _unit.c_str(),
-                     (double)curValue*100/num);
+                Msg mm;
+                mm << "\r" << _comment << curValue << "/" << num << " " << _unit
+                   << std::fixed << std::setprecision(1) << "("
+                   << (double)curValue * 100 / num << "%)";
                 fflush(stdout);
             }
             if (curValue >= num) {

@@ -1,9 +1,9 @@
 .vscode/
+build
 debug/
 Debug/
 .vs/
 *.user
-asio/
 nbproject/
 *.obj
 *.o
@@ -13,3 +13,5 @@ nbproject/
 *.exe
 *.ilk
 *.lib
+.idea
+cmake-build*

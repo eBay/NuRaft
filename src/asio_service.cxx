@@ -27,16 +27,26 @@ limitations under the License.
 
 #include "asio_service.hxx"
 
+#include "buffer_serializer.hxx"
+#include "callback.hxx"
 #include "crc32.hxx"
+#include "global_mgr.hxx"
+#include "internal_timer.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
+#include "raft_server_handler.hxx"
 #include "strfmt.hxx"
 #include "tracer.hxx"
 
-#include "asio.hpp"
+#ifdef USE_BOOST_ASIO
+#include <boost/asio.hpp>
+#else
+#include <asio.hpp>
+#endif
 
 #include <atomic>
 #include <ctime>
+#include <exception>
 #include <fstream>
 #include <list>
 #include <queue>
@@ -56,7 +66,11 @@ limitations under the License.
     using ssl_socket = mock_ssl_socket;
     using ssl_context = mock_ssl_context;
 #else
-    #include "asio/ssl.hpp"
+#ifdef USE_BOOST_ASIO
+    #include <boost/asio/ssl.hpp>
+#else
+    #include <asio/ssl.hpp>
+#endif
     using ssl_socket = asio::ssl::stream<asio::ip::tcp::socket&>;
     using ssl_context = asio::ssl::context;
 #endif
@@ -96,8 +110,18 @@ limitations under the License.
 #define DATA_SIZE_LEN (4)
 #define CRC_FLAGS_LEN (8)
 
-// RPC Flags.
+// === RPC Flags =========
+
+// If set, RPC message includes custom meta given by user.
 #define INCLUDE_META (0x1)
+
+// If set, RPC message (response) includes additional hints.
+#define INCLUDE_HINT (0x2)
+
+// If set, each log entry will contain timestamp.
+#define INCLUDE_LOG_TIMESTAMP (0x4)
+
+// =======================
 
 namespace nuraft {
 
@@ -146,11 +170,13 @@ public:
 // asio service implementation
 class asio_service_impl {
 public:
-    asio_service_impl(const asio_service::options& _opt = asio_service::options());
+    asio_service_impl(const asio_service::options& _opt = asio_service::options(),
+                      ptr<logger> l = nullptr);
     ~asio_service_impl();
 
     const asio_service::options& get_options() const { return my_opt_; }
     asio::io_service& get_io_svc() { return io_svc_; }
+    uint64_t assign_client_id() { return client_id_counter_.fetch_add(1); }
 
 private:
 #ifndef SSL_LIBRARY_NOT_FOUND
@@ -172,8 +198,11 @@ private:
     std::mutex stopping_lock_;
     std::condition_variable stopping_cv_;
     std::atomic<uint32_t> num_active_workers_;
+    std::atomic<uint32_t> worker_id_;
     std::list< ptr<std::thread> > worker_handles_;
     asio_service::options my_opt_;
+    std::atomic<uint64_t> client_id_counter_;
+    ptr<logger> l_;
     friend asio_service;
 };
 
@@ -181,7 +210,10 @@ private:
 class rpc_session;
 typedef std::function<void(const ptr<rpc_session>&)> session_closed_callback;
 
-class rpc_session : public std::enable_shared_from_this<rpc_session> {
+class rpc_session
+    : public std::enable_shared_from_this<rpc_session>
+    , public raft_server_handler
+     {
 public:
     rpc_session( uint64_t id,
                  asio_service_impl* _impl,
@@ -202,6 +234,9 @@ public:
         , header_(buffer::alloc(RPC_REQ_HEADER_SIZE))
         , l_(logger)
         , callback_(callback)
+        , src_id_(-1)
+        , is_leader_(false)
+        , cached_port_(0)
     {
         p_tr("asio rpc session created: %p", this);
     }
@@ -219,10 +254,12 @@ public:
         // this is safe since we only expose ctor to cs_new
         ptr<rpc_session> self = this->shared_from_this();
 
-        p_in( "session %zu got connection from %s:%u (as a server)",
+        cached_address_ = socket_.remote_endpoint().address().to_string();
+        cached_port_ = socket_.remote_endpoint().port();
+        p_in( "session %" PRIu64 " got connection from %s:%u (as a server)",
               session_id_,
-              socket_.remote_endpoint().address().to_string().c_str(),
-              socket_.remote_endpoint().port() );
+              cached_address_.c_str(),
+              cached_port_ );
 
         if (ssl_enabled_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
@@ -243,18 +280,19 @@ public:
     void handle_handshake(ptr<rpc_session> self,
                           const ERROR_CODE& err) {
         if (!err) {
-            p_in( "session %zu handshake with %s:%u succeeded (as a server)",
+            p_in( "session %" PRIu64 " handshake with %s:%u succeeded (as a server)",
                   session_id_,
-                  socket_.remote_endpoint().address().to_string().c_str(),
-                  socket_.remote_endpoint().port() );
+                  cached_address_.c_str(),
+                  cached_port_ );
             this->start(self);
 
         } else {
-            p_er( "session %zu handshake with %s:%u failed: error %d",
+            p_er( "session %" PRIu64 " handshake with %s:%u failed: error %d, %s",
                   session_id_,
-                  socket_.remote_endpoint().address().to_string().c_str(),
-                  socket_.remote_endpoint().port(),
-                  err.value() );
+                  cached_address_.c_str(),
+                  cached_port_,
+                  err.value(),
+                  err.message().c_str() );
 
             // Lazy stop.
             ptr<asio::steady_timer> timer =
@@ -266,10 +304,11 @@ public:
                                (const ERROR_CODE& err) -> void
             {
                 if (err) {
-                    p_er("session %zu error happend during "
-                         "async wait: %d",
+                    p_er("session %" PRIu64 " error happend during "
+                         "async wait: %d, %s",
                          session_id_,
-                         err.value());
+                         err.value(),
+                         err.message().c_str());
                 }
                 this->stop();
             });
@@ -284,12 +323,14 @@ public:
                   (const ERROR_CODE& err, size_t) -> void
         {
             if (err) {
-                p_er( "session %zu failed to read rpc header from socket %s:%u "
-                      "due to error %d",
+                p_er( "session %" PRIu64 " failed to read rpc header from socket %s:%u "
+                      "due to error %d, %s, ref count %ld",
                       session_id_,
-                      socket_.remote_endpoint().address().to_string().c_str(),
-                      socket_.remote_endpoint().port(),
-                      err.value() );
+                      cached_address_.c_str(),
+                      cached_port_,
+                      err.value(),
+                      err.message().c_str(),
+                      self.use_count() );
                 this->stop();
                 return;
             }
@@ -356,6 +397,7 @@ public:
     }
 
     void stop() {
+        invoke_connection_callback(false);
         close_socket();
         if (callback_) {
             callback_(this->shared_from_this());
@@ -368,6 +410,27 @@ public:
     }
 
 private:
+    void invoke_connection_callback(bool is_open) {
+        if (is_leader_ && src_id_ != handler_->get_leader()) {
+            // Leader has been changed without closing session.
+            is_leader_ = false;
+        }
+
+        cb_func::ConnectionArgs
+            args( session_id_,
+                  cached_address_,
+                  cached_port_,
+                  src_id_,
+                  is_leader_ );
+        cb_func::Param cb_param( handler_->get_id(),
+                                 handler_->get_leader(),
+                                 -1,
+                                 &args );
+        handler_->invoke_callback
+            ( is_open ? cb_func::ConnectionOpened : cb_func::ConnectionClosed,
+              &cb_param );
+    }
+
     void close_socket() {
         // MONSTOR-9378: Do nothing (the same as in `asio_rpc_client`),
         // early closing socket before destroying this instance
@@ -388,10 +451,11 @@ private:
         if (!err) {
             this->read_complete(header_, log_ctx);
         } else {
-            p_er( "session %zu failed to read rpc log data from socket due "
-                  "to error %d",
+            p_er( "session %" PRIu64 " failed to read rpc log data from socket due "
+                  "to error %d, %s",
                   session_id_,
-                  err.value() );
+                  err.value(),
+                  err.message().c_str() );
             this->stop();
         }
     }
@@ -409,43 +473,91 @@ private:
         ulong last_idx = hdr->get_ulong();
         ulong commit_idx = hdr->get_ulong();
 
+        if (src_id_ == -1) {
+            // It means this is the first message on this session.
+            // Invoke callback function of new connection.
+            src_id_ = src;
+            invoke_connection_callback(true);
+
+        } else if (is_leader_ && src_id_ != handler_->get_leader()) {
+            // Leader has been changed without closing session.
+            is_leader_ = false;
+        }
+
+        if (!is_leader_) {
+            // If leader flag is not set, we identify whether the endpoint
+            // server is leader based on the message type (only leader
+            // can send below message types).
+            if ( t == msg_type::append_entries_request ||
+                 t == msg_type::sync_log_request ||
+                 t == msg_type::join_cluster_request ||
+                 t == msg_type::leave_cluster_request ||
+                 t == msg_type::install_snapshot_request ||
+                 t == msg_type::priority_change_request ||
+                 t == msg_type::custom_notification_request ) {
+                is_leader_ = true;
+                cb_func::ConnectionArgs
+                    args( session_id_,
+                          cached_address_,
+                          cached_port_,
+                          src_id_,
+                          is_leader_ );
+                cb_func::Param cb_param( handler_->get_id(),
+                                         handler_->get_leader(),
+                                         -1,
+                                         &args );
+                handler_->invoke_callback( cb_func::NewSessionFromLeader,
+                                           &cb_param );
+            }
+        }
+
         std::string meta_str;
         ptr<req_msg> req = cs_new<req_msg>
                            ( term, t, src, dst, last_term, last_idx, commit_idx );
         if (hdr->get_int() > 0 && log_ctx) {
-            log_ctx->pos(0);
+            buffer_serializer ss(log_ctx);
+            size_t log_ctx_size = log_ctx->size();
+
             // If flag is set, read meta first.
             if (flags_ & INCLUDE_META) {
                 size_t meta_len = 0;
-                const byte* meta_raw = log_ctx->get_bytes(meta_len);
+                const byte* meta_raw = (const byte*)ss.get_bytes(meta_len);
                 if (meta_len) {
                     meta_str = std::string((const char*)meta_raw, meta_len);
                 }
             }
 
-            while (log_ctx->size() > log_ctx->pos()) {
-                if (log_ctx->size() - log_ctx->pos() < sz_ulong + sz_byte + sz_int) {
+            size_t LOG_ENTRY_SIZE = 8 + 1 + 4;
+            if (flags_ & INCLUDE_LOG_TIMESTAMP) {
+                LOG_ENTRY_SIZE += 8;
+            }
+
+            while (log_ctx_size > ss.pos()) {
+                if (log_ctx_size - ss.pos() < LOG_ENTRY_SIZE) {
                     // Possibly corrupted packet. Stop here.
                     p_wn("wrong log ctx size %zu pos %zu, stop this session",
-                         log_ctx->size(), log_ctx->pos());
+                         log_ctx_size, ss.pos());
                     this->stop();
                     return;
                 }
-                ulong term = log_ctx->get_ulong();
-                log_val_type val_type = (log_val_type)log_ctx->get_byte();
-                size_t val_size = log_ctx->get_int();
-                if (log_ctx->size() - log_ctx->pos() < val_size) {
+                ulong term = ss.get_u64();
+                log_val_type val_type = (log_val_type)ss.get_u8();
+                uint64_t timestamp = (flags_ & INCLUDE_LOG_TIMESTAMP) ? ss.get_u64() : 0;
+
+                size_t val_size = ss.get_i32();
+                if (log_ctx_size - ss.pos() < val_size) {
                     // Out-of-bound size.
                     p_wn("wrong value size %zu log ctx %zu %zu, "
                          "stop this session",
-                         val_size, log_ctx->size(), log_ctx->pos());
+                         val_size, log_ctx_size, ss.pos());
                     this->stop();
                     return;
                 }
 
                 ptr<buffer> buf( buffer::alloc(val_size) );
-                log_ctx->get(buf);
-                ptr<log_entry> entry( cs_new<log_entry>(term, buf, val_type) );
+                ss.get_buffer(buf);
+                ptr<log_entry> entry(
+                    cs_new<log_entry>(term, buf, val_type, timestamp) );
                 req->log_entries().push_back(entry);
             }
         }
@@ -463,18 +575,53 @@ private:
         }
 
         // === RAFT server processes the request here. ===
-        ptr<resp_msg> resp = handler_->process_req(*req);
+        ptr<resp_msg> resp = raft_server_handler::process_req(handler_.get(), *req);
         if (!resp) {
             p_wn("no response is returned from raft message handler");
             this->stop();
             return;
         }
 
-        if (resp->has_cb()) {
-            // If callback function exists, get new response message.
-            resp = resp->call_cb(resp);
+        if (resp->has_async_cb()) {
+            // Response will be ready later, setup a callback function
+            // (only for auto-forwarding with `client_request` type
+            //  in async handling mode).
+            ptr< cmd_result< ptr<buffer> > > ret = resp->call_async_cb();
+
+            // WARNING: `self` should be captured to avoid releasing this `rpc_session`.
+            ret->when_ready(
+                [this, self, req, resp]
+                ( cmd_result<ptr<buffer>, ptr<std::exception>>& res,
+                  ptr<std::exception>& exp ) {
+                    resp->set_ctx(res.get());
+                    on_resp_ready(req, resp);
+                    // This is needed to avoid circular reference.
+                    res.reset();
+                }
+            );
+
+        } else {
+            // Response should already be ready when we reach here.
+            if (resp->has_cb()) {
+                // If callback function exists, get new response message.
+                resp = resp->call_cb(resp);
+            }
+            on_resp_ready(req, resp);
         }
 
+       } catch (std::exception& ex) {
+        p_er( "session %" PRIu64 " failed to process request message "
+              "due to error: %s",
+              this->session_id_,
+              ex.what() );
+        this->stop();
+       }
+    }
+
+    void on_resp_ready(ptr<req_msg> req, ptr<resp_msg> resp) {
+        ptr<rpc_session> self = this->shared_from_this();
+
+       try {
         ptr<buffer> resp_ctx = resp->get_ctx();
         int32 resp_ctx_size = (resp_ctx) ? resp_ctx->size() : 0;
 
@@ -491,44 +638,57 @@ private:
             }
         }
 
-        int buf_size = RPC_RESP_HEADER_SIZE + resp_meta_size + resp_ctx_size;
+        size_t resp_hint_size = 0;
+        if (resp->get_next_batch_size_hint_in_bytes()) {
+            // Hint is given, set the flag.
+            flags |= INCLUDE_HINT;
+            // For future extension, we will put 2-byte version and 2-byte length.
+            resp_hint_size += sizeof(uint16_t) * 2 + sizeof(int64);
+        }
+
+        size_t carried_data_size = resp_meta_size + resp_hint_size + resp_ctx_size;
+
+        int buf_size = RPC_RESP_HEADER_SIZE + carried_data_size;
         ptr<buffer> resp_buf = buffer::alloc(buf_size);
+        buffer_serializer bs(resp_buf);
 
-        resp_buf->pos(0);
-        byte* resp_buf_data = resp_buf->data();
-
-        byte marker = 0x1;
-        resp_buf->put(marker);
-        resp_buf->put((byte)resp->get_type());
-        resp_buf->put(resp->get_src());
-        resp_buf->put(resp->get_dst());
-        resp_buf->put(resp->get_term());
-        resp_buf->put(resp->get_next_idx());
-        resp_buf->put((byte)resp->get_accepted());
-        resp_buf->put((int32)resp_meta_size + resp_ctx_size);
+        const byte RESP_MARKER = 0x1;
+        bs.put_u8(RESP_MARKER);
+        bs.put_u8(resp->get_type());
+        bs.put_i32(resp->get_src());
+        bs.put_i32(resp->get_dst());
+        bs.put_u64(resp->get_term());
+        bs.put_u64(resp->get_next_idx());
+        bs.put_u8(resp->get_accepted());
+        bs.put_i32(carried_data_size);
 
         // Calculate CRC32 on header only.
-        uint32_t crc_val = crc32_8( resp_buf_data,
+        uint32_t crc_val = crc32_8( resp_buf->data_begin(),
                                     RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN,
                                     0 );
 
         uint64_t flags_crc = ((uint64_t)flags << 32) | crc_val;
-        resp_buf->put((ulong)flags_crc);
+        bs.put_u64(flags_crc);
 
         // Handling meta if the flag is set.
         if (flags & INCLUDE_META) {
-            resp_buf->put( (byte*)resp_meta_str.data(), resp_meta_str.size() );
+            bs.put_str(resp_meta_str);
+        }
+        // Put hint if the flag is set.
+        if (flags & INCLUDE_HINT) {
+            const uint16_t CUR_HINT_VERSION = 0;
+            bs.put_u16(CUR_HINT_VERSION);
+            bs.put_u16(sizeof(ulong));
+            bs.put_i64(resp->get_next_batch_size_hint_in_bytes());
         }
 
         if (resp_ctx_size) {
             resp_ctx->pos(0);
-            resp_buf->put(*resp_ctx);
+            bs.put_buffer(*resp_ctx);
         }
 
-        resp_buf->pos(0);
-
         aa::write( ssl_enabled_, ssl_socket_, socket_,
-                   asio::buffer(resp_buf->data(), resp_buf->size()),
+                   asio::buffer(resp_buf->data_begin(), resp_buf->size()),
                    [this, self, resp_buf]
                    (ERROR_CODE err_code, size_t) -> void
         {
@@ -537,7 +697,7 @@ private:
             if (!err_code) {
                 this->start(self);
             } else {
-                p_er( "session %zu failed to send response to peer due "
+                p_er( "session %" PRIu64 " failed to send response to peer due "
                       "to error %d",
                       session_id_,
                       err_code.value() );
@@ -546,7 +706,7 @@ private:
         } );
 
        } catch (std::exception& ex) {
-        p_er( "session %zu failed to process request message "
+        p_er( "session %" PRIu64 " failed to process request message "
               "due to error: %s",
               this->session_id_,
               ex.what() );
@@ -566,6 +726,23 @@ private:
     ptr<buffer> header_;
     ptr<logger> l_;
     session_closed_callback callback_;
+
+    /**
+     * Source server (endpoint) ID, used to check whether it is leader.
+     * This value is `-1` at the beginning, which denotes this session
+     * hasn't received any message from the endpoint.
+     * Note that this ID should not be changed throughout the life time
+     * of the session.
+     */
+    int32 src_id_;
+
+    /**
+     * `true` if the endpoint server was leader when it was last seen.
+     */
+    bool is_leader_;
+
+    std::string cached_address_;
+    uint32_t cached_port_;
 };
 
 // rpc listener implementation
@@ -584,9 +761,9 @@ public:
         , io_svc_(io)
         , ssl_ctx_(ssl_ctx)
         , handler_()
+        , stopped_(false)
         , acceptor_(io, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port))
         , session_id_cnt_(1)
-        , stopped_(false)
         , ssl_enabled_(_enable_ssl)
         , l_(l)
     {
@@ -598,29 +775,35 @@ public:
 
 public:
     virtual void stop() override {
+        auto_lock(listener_lock_);
         stopped_ = true;
         acceptor_.close();
     }
 
     virtual void listen(ptr<msg_handler>& handler) override {
+        std::lock_guard<std::mutex> guard(listener_lock_);
         handler_ = handler;
         stopped_ = false;
-        start();
+        start(guard);
     }
 
     virtual void shutdown() override {
-        auto_lock(session_lock_);
-        for (auto& entry: active_sessions_) {
-            ptr<rpc_session> s = entry;
-            s->stop();
-            s.reset();
+        {
+            auto_lock(session_lock_);
+            for (auto& entry: active_sessions_) {
+                ptr<rpc_session> s = entry;
+                s->stop();
+                s.reset();
+            }
+            active_sessions_.clear();
         }
-        active_sessions_.clear();
+
+        auto_lock(listener_lock_);
         handler_.reset();
     }
 
 private:
-    void start() {
+    void start(std::lock_guard<std::mutex> & listener_lock) {
         if (!acceptor_.is_open()) {
             return;
         }
@@ -654,15 +837,16 @@ private:
             session->prepare_handshake();
 
         } else {
-            p_er( "failed to accept a rpc connection due to error %d",
-                  err.value() );
+            p_er( "failed to accept a rpc connection due to error %d, %s",
+                  err.value(), err.message().c_str() );
         }
 
+        std::lock_guard<std::mutex> guard(listener_lock_);
         if (!stopped_) {
             // Re-listen only when not stopped,
             // otherwise crash happens as this class or `acceptor_`
             // may be destroyed in the meantime.
-            this->start();
+            this->start(guard);
         }
     }
 
@@ -682,12 +866,15 @@ private:
     asio_service_impl* impl_;
     asio::io_service& io_svc_;
     ssl_context& ssl_ctx_;
+
+    std::mutex listener_lock_;
     ptr<msg_handler> handler_;
+    bool stopped_;
     asio::ip::tcp::acceptor acceptor_;
+
     std::vector<ptr<rpc_session>> active_sessions_;
     std::atomic<uint64_t> session_id_cnt_;
     std::mutex session_lock_;
-    std::atomic<bool> stopped_;
     bool ssl_enabled_;
     ptr<logger> l_;
 };
@@ -715,13 +902,21 @@ public:
         , ssl_ready_(false)
         , num_send_fails_(0)
         , abandoned_(false)
+        , socket_busy_(false)
+        , operation_timer_(io_svc)
         , l_(l)
     {
+        client_id_ = impl_->assign_client_id();
         if (ssl_enabled_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
             assert(0); // Should not reach here.
 #else
-            ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
+            if (_impl->get_options().skip_verification_) {
+                ssl_socket_.set_verify_mode(asio::ssl::verify_none);
+            } else {
+                ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
+            }
+
             ssl_socket_.set_verify_callback
                         ( std::bind( &asio_rpc_client::verify_certificate,
                                      this,
@@ -738,6 +933,14 @@ public:
     }
 
 public:
+    uint64_t get_id() const override {
+        return client_id_;
+    }
+
+    bool is_abandoned() const override {
+        return abandoned_;
+    }
+
 #ifndef SSL_LIBRARY_NOT_FOUND
     bool verify_certificate(bool preverified,
                             asio::ssl::verify_context& ctx)
@@ -763,6 +966,7 @@ public:
                      ptr<asio::steady_timer> timer,
                      ptr<req_msg>& req,
                      rpc_handler& when_done,
+                     uint64_t send_timeout_ms,
                      const ERROR_CODE& err )
     {
         if ( err || num_send_fails_ >= SEND_RETRY_MAX ) {
@@ -783,10 +987,13 @@ public:
             when_done(rsp, except);
             return;
         }
-        send(req, when_done);
+        send(req, when_done, send_timeout_ms);
     }
 
-    virtual void send(ptr<req_msg>& req, rpc_handler& when_done) __override__ {
+    virtual void send(ptr<req_msg>& req,
+                      rpc_handler& when_done,
+                      uint64_t send_timeout_ms = 0) __override__
+    {
         if (abandoned_) {
             p_er( "client %p to %s:%s is already stale (SSL %s)",
                   this, host_.c_str(), port_.c_str(),
@@ -802,8 +1009,8 @@ public:
 
         ptr<asio_rpc_client> self = this->shared_from_this();
         while (!socket().is_open()) { // Dummy one-time loop
-            p_db( "socket to %s:%s is not opened yet",
-                  host_.c_str(), port_.c_str() );
+            p_db( "socket %p to %s:%s is not opened yet",
+                  this, host_.c_str(), port_.c_str() );
 
             // WARNING:
             //   Only one thread can establish connection at a time.
@@ -814,7 +1021,7 @@ public:
             if (!attempting_conn_.compare_exchange_strong(exp, desired)) {
                 // Other thread is attempting connection, just wait.
                 p_wn( "cannot send req as other thread is racing on opening "
-                      "connection to (%s:%s), count %d",
+                      "connection to (%s:%s), count %zu",
                       host_.c_str(), port_.c_str(), num_send_fails_.load() );
                 num_send_fails_.fetch_add(1);
 
@@ -829,6 +1036,7 @@ public:
                                               timer,
                                               req,
                                               when_done,
+                                              send_timeout_ms,
                                               std::placeholders::_1 ) );
                 return;
             }
@@ -840,43 +1048,44 @@ public:
                 break;
             }
 
-            asio::ip::tcp::resolver::query q
-                ( host_, port_, asio::ip::tcp::resolver::query::all_matching );
-
-            resolver_.async_resolve
-            ( q,
-              [self, this, req, when_done]
-              ( std::error_code err,
-                asio::ip::tcp::resolver::iterator itor ) -> void
-            {
-                if (!err) {
-                    asio::async_connect
-                        ( socket(),
-                          itor,
-                          std::bind( &asio_rpc_client::connected,
-                                     self,
-                                     req,
-                                     when_done,
-                                     std::placeholders::_1,
-                                     std::placeholders::_2 ) );
-                } else {
-                    ptr<resp_msg> rsp;
-                    ptr<rpc_exception> except
-                       ( cs_new<rpc_exception>
-                               ( lstrfmt("failed to resolve host %s "
-                                         "due to error %d")
-                                        .fmt( host_.c_str(), err.value() ),
-                                 req ) );
-                    when_done(rsp, except);
-                }
-            } );
+            if (impl_->get_options().custom_resolver_) {
+                impl_->get_options().custom_resolver_(
+                    host_,
+                    port_,
+                    [this, self, req, when_done, send_timeout_ms]
+                    ( const std::string& resolved_host,
+                      const std::string& resolved_port,
+                      std::error_code err ) {
+                        if (!err) {
+                            p_in( "custom resolver: %s:%s to %s:%s",
+                                  host_.c_str(), port_.c_str(),
+                                  resolved_host.c_str(), resolved_port.c_str() );
+                            execute_resolver(self, req, resolved_host, resolved_port,
+                                             when_done, send_timeout_ms);
+                        } else {
+                            ptr<resp_msg> rsp;
+                            ptr<rpc_exception> except
+                               ( cs_new<rpc_exception>
+                                       ( lstrfmt("failed to resolve host %s by given "
+                                                 "custom resolver "
+                                                 "due to error %d, %s")
+                                                .fmt( host_.c_str(),
+                                                      err.value(),
+                                                      err.message().c_str() ),
+                                         req ) );
+                            when_done(rsp, except);
+                        }
+                    } );
+            } else {
+                execute_resolver(self, req, host_, port_, when_done, send_timeout_ms);
+            }
             return;
         }
 
         if (ssl_enabled_ && !ssl_ready_) {
             // TCP socket is opened, but SSL handshake is not done yet.
             // Since other thread is doing it, this thread should just wait.
-            p_wn( "cannot send req as SSL is not ready yet (%s:%s), count %d",
+            p_wn( "cannot send req as SSL is not ready yet (%s:%s), count %zu",
                   host_.c_str(), port_.c_str(), num_send_fails_.load() );
             num_send_fails_.fetch_add(1);
 
@@ -891,9 +1100,13 @@ public:
                                           timer,
                                           req,
                                           when_done,
+                                          send_timeout_ms,
                                           std::placeholders::_1 ) );
             return;
         }
+
+        // Socket should be idle now. If not, it should be a bug.
+        set_busy_flag(true);
 
         // If we reach here, that means connection is valid.
         // Reset the counter.
@@ -903,22 +1116,38 @@ public:
         std::vector<ptr<buffer>> log_entry_bufs;
         int32 log_data_size(0);
 
+        uint32_t flags = 0x0;
+        size_t LOG_ENTRY_SIZE = 8 + 1 + 4;
+        if (impl_->get_options().replicate_log_timestamp_) {
+            LOG_ENTRY_SIZE += 8;
+            flags |= INCLUDE_LOG_TIMESTAMP;
+        }
+
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
             ptr<buffer> entry_buf = buffer::alloc
-                                    ( 8 + 1 + 4 + le->get_buf().size() );
+                                    ( LOG_ENTRY_SIZE + le->get_buf().size() );
+#if 0
             entry_buf->put( le->get_term() );
             entry_buf->put( (byte)le->get_val_type() );
             entry_buf->put( (int32)le->get_buf().size() );
             le->get_buf().pos(0);
             entry_buf->put( le->get_buf() );
             entry_buf->pos( 0 );
-
+#else
+            buffer_serializer ss(entry_buf);
+            ss.put_u64( le->get_term() );
+            ss.put_u8( le->get_val_type() );
+            if (impl_->get_options().replicate_log_timestamp_) {
+                ss.put_u64( le->get_timestamp() );
+            }
+            ss.put_i32( le->get_buf().size() );
+            ss.put_raw( le->get_buf().data_begin(), le->get_buf().size() );
+#endif
             log_entry_bufs.push_back(entry_buf);
             log_data_size += (int32)entry_buf->size();
         }
 
-        uint32_t flags = 0x0;
         size_t meta_size = 0;
         std::string meta_str;
         if (impl_->get_options().write_req_meta_) {
@@ -965,6 +1194,17 @@ public:
         }
         req_buf->pos(0);
 
+        if (send_timeout_ms != 0)
+        {
+            operation_timer_.expires_after
+                   ( std::chrono::duration_cast<std::chrono::nanoseconds>
+                     ( std::chrono::milliseconds( send_timeout_ms ) ) );
+            operation_timer_.async_wait( std::bind( &asio_rpc_client::cancel_socket,
+                                                    this,
+                                                    std::placeholders::_1 ) );
+        }
+
+
         // Note: without passing `req_buf` to callback function, it will be
         //       unreachable before the write is done so that it is freed
         //       and the memory corruption will occur.
@@ -979,6 +1219,65 @@ public:
                               std::placeholders::_2 ) );
     }
 private:
+    void execute_resolver(ptr<asio_rpc_client> self,
+                          ptr<req_msg> req,
+                          const std::string& host,
+                          const std::string& port,
+                          rpc_handler when_done,
+                          uint64_t send_timeout_ms) {
+        asio::ip::tcp::resolver::query q
+            ( host, port, asio::ip::tcp::resolver::query::all_matching );
+
+        resolver_.async_resolve
+        ( q,
+          [self, this, req, when_done, host, port, send_timeout_ms]
+          ( std::error_code err,
+            asio::ip::tcp::resolver::iterator itor ) -> void
+        {
+            if (!err) {
+                asio::async_connect
+                    ( socket(),
+                      itor,
+                      std::bind( &asio_rpc_client::connected,
+                                 self,
+                                 req,
+                                 when_done,
+                                 send_timeout_ms,
+                                 std::placeholders::_1,
+                                 std::placeholders::_2 ) );
+            } else {
+                ptr<resp_msg> rsp;
+                ptr<rpc_exception> except
+                   ( cs_new<rpc_exception>
+                           ( lstrfmt("failed to resolve host %s "
+                                     "due to error %d, %s")
+                                    .fmt( host.c_str(),
+                                          err.value(),
+                                          err.message().c_str() ),
+                             req ) );
+                when_done(rsp, except);
+            }
+        } );
+    }
+
+    void set_busy_flag(bool to) {
+        if (to == true) {
+            bool exp = false;
+            if (!socket_busy_.compare_exchange_strong(exp, true)) {
+                p_ft("socket %p is already in use, race happened on connection to %s:%s",
+                     this, host_.c_str(), port_.c_str());
+                assert(0);
+            }
+        } else {
+            bool exp = true;
+            if (!socket_busy_.compare_exchange_strong(exp, false)) {
+                p_ft("socket %p is already idle, race happened on connection to %s:%s",
+                     this, host_.c_str(), port_.c_str());
+                assert(0);
+            }
+        }
+    }
+
     void close_socket() {
         // Do nothing,
         // early closing socket before destroying this instance
@@ -997,14 +1296,28 @@ private:
 #endif
     }
 
+    void cancel_socket(const ERROR_CODE& err) {
+        if (err) { // Timer was cancelled itself, it's OK.
+            return;
+        }
+
+        if (socket().is_open()) {
+            p_wn("cancelling operations due to socket (%s:%s) timeout",
+                host_.c_str(), port_.c_str());
+            abandoned_ = true;
+            socket_.cancel();
+        }
+    }
+
     void connected(ptr<req_msg>& req,
                    rpc_handler& when_done,
+                   uint64_t send_timeout_ms,
                    std::error_code err,
                    asio::ip::tcp::resolver::iterator itor)
     {
         if (!err) {
-            p_in( "connected to %s:%s (as a client)",
-                  host_.c_str(), port_.c_str() );
+            p_in( "%p connected to %s:%s (as a client)",
+                  this, host_.c_str(), port_.c_str() );
             if (ssl_enabled_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
                 assert(0); // Should not reach here.
@@ -1015,10 +1328,11 @@ private:
                                  this,
                                  req,
                                  when_done,
+                                 send_timeout_ms,
                                  std::placeholders::_1 ) );
 #endif
             } else {
-                this->send(req, when_done);
+                this->send(req, when_done, send_timeout_ms);
             }
 
         } else {
@@ -1026,9 +1340,9 @@ private:
             ptr<resp_msg> rsp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
-                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d")
+                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(rsp, except);
         }
@@ -1036,6 +1350,7 @@ private:
 
     void handle_handshake(ptr<req_msg>& req,
                           rpc_handler& when_done,
+                          uint64_t send_timeout_ms,
                           const ERROR_CODE& err)
     {
         ptr<asio_rpc_client> self = this->shared_from_this();
@@ -1044,21 +1359,22 @@ private:
             p_in( "handshake with %s:%s succeeded (as a client)",
                   host_.c_str(), port_.c_str() );
             ssl_ready_ = true;
-            this->send(req, when_done);
+            this->send(req, when_done, send_timeout_ms);
 
         } else {
             abandoned_ = true;
-            p_er( "failed SSL handshake with peer %d, %s:%s, error %d",
-                  req->get_dst(), host_.c_str(), port_.c_str(), err.value() );
+            p_er( "failed SSL handshake with peer %d, %s:%s, error %d, %s",
+                  req->get_dst(), host_.c_str(), port_.c_str(), err.value(),
+                  err.message().c_str() );
 
             // Immediately stop.
             ptr<resp_msg> resp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt("failed SSL handshake with peer %d, %s:%s, "
-                            "error %d")
+                            "error %d, %s")
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             when_done(resp, except);
         }
@@ -1087,14 +1403,15 @@ private:
                                 std::placeholders::_2));
 
         } else {
+            operation_timer_.cancel();
             abandoned_ = true;
             ptr<resp_msg> rsp;
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to send request to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
@@ -1114,22 +1431,21 @@ private:
             ptr<rpc_exception> except
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "failed to read response to peer %d, %s:%s, "
-                             "error %d" )
+                             "error %d, %s" )
                            .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value() ),
+                                 port_.c_str(), err.value(), err.message().c_str() ),
                     req ) );
             close_socket();
             when_done(rsp, except);
             return;
         }
 
-        resp_buf->pos(0);
-        byte* resp_buf_data = resp_buf->data();
-        uint32_t crc_local = crc32_8( resp_buf_data,
+        buffer_serializer bs(resp_buf);
+        uint32_t crc_local = crc32_8( resp_buf->data_begin(),
                                       RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN,
                                       0 );
-        resp_buf->pos(RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN);
-        uint64_t flags_and_crc = resp_buf->get_ulong();
+        bs.pos(RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN);
+        uint64_t flags_and_crc = bs.get_u64();
         uint32_t crc_buf = flags_and_crc & (uint32_t)0xffffffff;
         uint32_t flags = (flags_and_crc >> 32);
 
@@ -1147,14 +1463,14 @@ private:
             return;
         }
 
-        resp_buf->pos(1);
-        byte msg_type_val = resp_buf->get_byte();
-        int32 src = resp_buf->get_int();
-        int32 dst = resp_buf->get_int();
-        ulong term = resp_buf->get_ulong();
-        ulong nxt_idx = resp_buf->get_ulong();
-        byte accepted_val = resp_buf->get_byte();
-        int32 meta_and_ctx_size = resp_buf->get_int();
+        bs.pos(1);
+        byte msg_type_val = bs.get_u8();
+        int32 src = bs.get_i32();
+        int32 dst = bs.get_i32();
+        ulong term = bs.get_u64();
+        ulong nxt_idx = bs.get_u64();
+        byte accepted_val = bs.get_u8();
+        int32 carried_data_size = bs.get_i32();
         ptr<resp_msg> rsp
             ( cs_new<resp_msg>
               ( term, (msg_type)msg_type_val, src, dst,
@@ -1170,10 +1486,10 @@ private:
             if (!meta_ok) return;
         }
 
-        if (meta_and_ctx_size) {
-            ptr<buffer> ctx_buf = buffer::alloc(meta_and_ctx_size);
+        if (carried_data_size) {
+            ptr<buffer> ctx_buf = buffer::alloc(carried_data_size);
             aa::read( ssl_enabled_, ssl_socket_, socket_,
-                      asio::buffer(ctx_buf->data(), meta_and_ctx_size),
+                      asio::buffer(ctx_buf->data(), carried_data_size),
                       std::bind( &asio_rpc_client::ctx_read,
                                  self,
                                  req,
@@ -1184,6 +1500,8 @@ private:
                                  std::placeholders::_1,
                                  std::placeholders::_2 ) );
         } else {
+            operation_timer_.cancel();
+            set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
         }
@@ -1197,33 +1515,56 @@ private:
                   std::error_code err,
                   size_t bytes_transferred)
     {
-        if ( !(flags & INCLUDE_META) ) {
-            // Meta does not exist, just use the buffer as it is.
+        if ( !(flags & INCLUDE_META) &&
+             !(flags & INCLUDE_HINT) ) {
+            // Neither meta nor hint exists,
+            // just use the buffer as it is for ctx.
             ctx_buf->pos(0);
             rsp->set_ctx(ctx_buf);
+
+            operation_timer_.cancel();
+            set_busy_flag(false);
             ptr<rpc_exception> except;
             when_done(rsp, except);
             return;
         }
 
-        // Otherwise: custom meta exists.
-        size_t resp_meta_len = 0;
-        const byte* resp_meta_raw = ctx_buf->get_bytes(resp_meta_len);
+        // Otherwise: buffer contains composite data.
+        buffer_serializer bs(ctx_buf);
+        int remaining_len = ctx_buf->size();
 
-        // If callback is given, verify meta
-        // (if meta is empty, invoke callback according to the flag).
-        if ( impl_->get_options().read_resp_meta_ &&
-             ( resp_meta_len ||
-               impl_->get_options().invoke_resp_cb_on_empty_meta_ ) ) {
+        // 1) Custom meta.
+        if (flags & INCLUDE_META) {
+            size_t resp_meta_len = 0;
+            void* resp_meta_raw = bs.get_bytes(resp_meta_len);
 
-            bool meta_ok = handle_custom_resp_meta
-                           ( req, rsp, when_done,
-                             std::string( (const char*)resp_meta_raw,
-                                          resp_meta_len) );
-            if (!meta_ok) return;
+            // If callback is given, verify meta
+            // (if meta is empty, invoke callback according to the flag).
+            if ( impl_->get_options().read_resp_meta_ &&
+                 ( resp_meta_len ||
+                   impl_->get_options().invoke_resp_cb_on_empty_meta_ ) ) {
+
+                bool meta_ok = handle_custom_resp_meta
+                               ( req, rsp, when_done,
+                                 std::string( (const char*)resp_meta_raw,
+                                              resp_meta_len) );
+                if (!meta_ok) return;
+            }
+            remaining_len -= sizeof(int32) + resp_meta_len;
         }
 
-        size_t remaining_len = ctx_buf->size() - (sizeof(int32) + resp_meta_len);
+        // 2) Hint.
+        if (flags & INCLUDE_HINT) {
+            size_t hint_len = 0;
+            uint16_t hint_version = bs.get_u16();
+            (void)hint_version;
+            hint_len = bs.get_u16();
+            rsp->set_next_batch_size_hint_in_bytes(bs.get_i64());
+            remaining_len -= sizeof(uint16_t) * 2 + hint_len;
+        }
+
+        // 3) Context.
+        assert(remaining_len >= 0);
         if (remaining_len) {
             // It has context, read it.
             ptr<buffer> actual_ctx = buffer::alloc(remaining_len);
@@ -1231,6 +1572,8 @@ private:
             rsp->set_ctx(actual_ctx);
         }
 
+        operation_timer_.cancel();
+        set_busy_flag(false);
         ptr<rpc_exception> except;
         when_done(rsp, except);
     }
@@ -1250,7 +1593,7 @@ private:
                 ( cs_new<rpc_exception>
                   ( sstrfmt( "response meta verification failed: "
                              "from peer %d, %s:%s")
-                           .fmt( rsp->get_dst(), host_.c_str(),
+                           .fmt( req->get_dst(), host_.c_str(),
                                  port_.c_str() ),
                     req ) );
             close_socket();
@@ -1274,6 +1617,9 @@ private:
     std::atomic<bool> ssl_ready_;
     std::atomic<size_t> num_send_fails_;
     std::atomic<bool> abandoned_;
+    std::atomic<bool> socket_busy_;
+    uint64_t client_id_;
+    asio::steady_timer operation_timer_;
     ptr<logger> l_;
 };
 
@@ -1292,10 +1638,16 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     }
 }
 
-asio_service_impl::asio_service_impl(const asio_service::options& _opt)
+asio_service_impl::asio_service_impl(const asio_service::options& _opt,
+                                     ptr<logger> l)
     : io_svc_()
-    , ssl_server_ctx_(ssl_context::sslv23)
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
+    , ssl_server_ctx_(ssl_context::tlsv12_server)
+    , ssl_client_ctx_(ssl_context::tlsv12_client)
+#else
+    , ssl_server_ctx_(ssl_context::sslv23)  // Any version
     , ssl_client_ctx_(ssl_context::sslv23)
+#endif
     , asio_timer_(io_svc_)
     , continue_(1)
     , logger_list_lock_()
@@ -1303,7 +1655,10 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt)
     , stopping_lock_()
     , stopping_cv_()
     , num_active_workers_(0)
+    , worker_id_(0)
     , my_opt_(_opt)
+    , client_id_counter_(1)
+    , l_(l)
 {
     if (my_opt_.enable_ssl_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
@@ -1368,13 +1723,62 @@ std::string asio_service_impl::get_password
 #endif
 
 void asio_service_impl::worker_entry() {
-    try {
-        num_active_workers_.fetch_add(1);
-        io_svc_.run();
-        num_active_workers_.fetch_sub(1);
-    } catch (...) {
-        // ignore all exceptions
+    uint32_t worker_id = worker_id_.fetch_add(1);
+    std::string thread_name = "nuraft_w_" + std::to_string(worker_id);
+#ifdef __linux__
+    pthread_setname_np(pthread_self(), thread_name.c_str());
+#elif __APPLE__
+    pthread_setname_np(thread_name.c_str());
+#endif
+
+    if (my_opt_.worker_start_) {
+        my_opt_.worker_start_(worker_id);
     }
+
+    static std::atomic<size_t> exception_count(0);
+    static timer_helper timer(60 * 1000000); // 1 min.
+    const size_t MAX_COUNT = 10;
+
+    do {
+        try {
+            num_active_workers_.fetch_add(1);
+            io_svc_.run();
+            num_active_workers_.fetch_sub(1);
+
+        } catch (std::exception& ee) {
+            // LCOV_EXCL_START
+            num_active_workers_.fetch_sub(1);
+            exception_count++;
+            p_er("asio worker thread got exception: %s, "
+                 "current number of workers: %u, "
+                 "exception count (in 1-min window): %zu, "
+                 "stopping status %u",
+                 ee.what(),
+                 num_active_workers_.load(),
+                 exception_count.load(),
+                 stopping_status_.load());
+            // LCOV_EXCL_STOP
+        }
+
+        // LCOV_EXCL_START
+        if (timer.timeout_and_reset()) {
+            exception_count = 0;
+
+        } else if (exception_count > MAX_COUNT) {
+            p_ft("too many exceptions (%zu) in 1-min time window.",
+                 exception_count.load());
+            exception_count = 0;
+            abort();
+        }
+        // LCOV_EXCL_STOP
+    } while (stopping_status_ != 1);
+
+    if (my_opt_.worker_stop_) {
+        my_opt_.worker_stop_(worker_id);
+    }
+
+    p_in("end of asio worker thread, remaining threads: %u",
+         num_active_workers_.load());
 }
 
 void asio_service_impl::timer_handler(ERROR_CODE err) {
@@ -1412,6 +1816,9 @@ void asio_service_impl::stop() {
         }
     }
 
+    // Stop all workers.
+    stopping_status_ = 1;
+
     io_svc_.stop();
     while (!io_svc_.stopped()) {
         std::this_thread::yield();
@@ -1425,7 +1832,7 @@ void asio_service_impl::stop() {
 }
 
 asio_service::asio_service(const options& _opt, ptr<logger> _l)
-    : impl_(new asio_service_impl(_opt))
+    : impl_(new asio_service_impl(_opt, _l))
     , l_(_l)
     {}
 
@@ -1517,12 +1924,49 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
 ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
                                                      ptr<logger>& l )
 {
-    return cs_new< asio_rpc_listener >
-                 ( impl_,
-                   impl_->io_svc_,
-                   impl_->ssl_server_ctx_,
-                   listening_port,
-                   impl_->my_opt_.enable_ssl_,
-                   l );
+    try {
+        return cs_new< asio_rpc_listener >
+                     ( impl_,
+                       impl_->io_svc_,
+                       impl_->ssl_server_ctx_,
+                       listening_port,
+                       impl_->my_opt_.enable_ssl_,
+                       l );
+    } catch (std::exception& ee) {
+        // Most likely exception happens due to wrong endpoint.
+        p_er("got exception: %s", ee.what());
+        return nullptr;
+    }
+}
+
+// ==========================
+// NOTE:
+//   We put Asio-related global manager functions to here,
+//   to avoid unnecessary dependency requirements (e.g., SSL)
+//   for those who don't want to use Asio.
+ptr<asio_service> nuraft_global_mgr::init_asio_service
+                  ( const asio_service_options& asio_opt,
+                    ptr<logger> logger_inst )
+{
+    nuraft_global_mgr* mgr = get_instance();
+    if (!mgr) return nullptr;
+
+    std::lock_guard<std::mutex> l(mgr->asio_service_lock_);
+    if (mgr->asio_service_) return mgr->asio_service_;
+
+    mgr->asio_service_ = cs_new<asio_service>(asio_opt, logger_inst);
+    return mgr->asio_service_;
+}
+
+ptr<asio_service> nuraft_global_mgr::get_asio_service() {
+    // NOTE:
+    //   Basic assumption is that this function is not called frequently,
+    //   only once at the initialization time. Hence it is ok to acquire
+    //   lock for a such read-only operation.
+    nuraft_global_mgr* mgr = get_instance();
+    if (!mgr) return nullptr;
+
+    std::lock_guard<std::mutex> l(mgr->asio_service_lock_);
+    return mgr->asio_service_;
 }
 

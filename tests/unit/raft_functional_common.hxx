@@ -24,7 +24,11 @@ limitations under the License.
 #include "test_common.h"
 
 #include <cassert>
+#include <limits>
+#include <list>
 #include <map>
+#include <set>
+#include <sstream>
 
 #define INT_UNUSED      int ATTR_UNUSED
 #define VOID_UNUSED     void ATTR_UNUSED
@@ -38,7 +42,11 @@ namespace raft_functional_common {
 class TestSm : public state_machine {
 public:
     TestSm(SimpleLogger* logger = nullptr)
-        : myLog(logger)
+        : customBatchSize(0)
+        , lastCommittedConfigIdx(0)
+        , targetSnpReadFailures(0)
+        , snpDelayMs(0)
+        , myLog(logger)
     {
         (void)myLog;
     }
@@ -55,6 +63,10 @@ public:
         return ret;
     }
 
+    void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) {
+        lastCommittedConfigIdx = log_idx;
+    }
+
     ptr<buffer> pre_commit(const ulong log_idx, buffer& data) {
         std::lock_guard<std::mutex> ll(dataLock);
         preCommits[log_idx] = buffer::copy(data);
@@ -66,6 +78,8 @@ public:
     }
 
     void rollback(const ulong log_idx, buffer& data) {
+        std::lock_guard<std::mutex> ll(dataLock);
+        rollbacks.push_back(log_idx);
     }
 
     void save_logical_snp_obj(snapshot& s,
@@ -74,6 +88,10 @@ public:
                               bool is_first_obj,
                               bool is_last_obj)
     {
+        if (snpDelayMs) {
+            TestSuite::sleep_ms(snpDelayMs);
+        }
+
         if (obj_id == 0) {
             // Special object containing metadata.
             // Request next object.
@@ -110,6 +128,10 @@ public:
     }
 
     bool apply_snapshot(snapshot& s) {
+        std::lock_guard<std::mutex> ll(lastSnapshotLock);
+        // NOTE: We only handle logical snapshot.
+        ptr<buffer> snp_buf = s.serialize();
+        lastSnapshot = snapshot::deserialize(*snp_buf);
         return true;
     }
 
@@ -124,6 +146,14 @@ public:
             int ctx = 0xabcdef;
             user_snp_ctx = malloc( sizeof(ctx) );
             memcpy(user_snp_ctx, &ctx, sizeof(ctx));
+
+            std::lock_guard<std::mutex> ll(openedUserCtxsLock);
+            openedUserCtxs.insert(user_snp_ctx);
+        }
+
+        if (targetSnpReadFailures > 0) {
+            targetSnpReadFailures--;
+            return -1;
         }
 
         if (obj_id == 0) {
@@ -182,6 +212,14 @@ public:
         // Check magic number.
         assert(ctx == 0xabcdef);
         free(user_snp_ctx);
+
+        std::lock_guard<std::mutex> ll(openedUserCtxsLock);
+        openedUserCtxs.erase(user_snp_ctx);
+    }
+
+    size_t getNumOpenedUserCtxs() const {
+        std::lock_guard<std::mutex> ll(openedUserCtxsLock);
+        return openedUserCtxs.size();
     }
 
     ptr<snapshot> last_snapshot() {
@@ -193,7 +231,7 @@ public:
         std::lock_guard<std::mutex> ll(dataLock);
         auto entry = commits.rbegin();
         if (entry == commits.rend()) return 0;
-        return entry->first;
+        return std::max(entry->first, lastCommittedConfigIdx.load());
     }
 
     void create_snapshot(snapshot& s,
@@ -207,6 +245,37 @@ public:
         ptr<std::exception> except(nullptr);
         bool ret = true;
         when_done(ret, except);
+    }
+
+    void set_next_batch_size_hint_in_bytes(ulong to) {
+        customBatchSize = to;
+    }
+
+    int64 get_next_batch_size_hint_in_bytes() {
+        return customBatchSize;
+    }
+
+    uint64_t adjust_commit_index(const adjust_commit_index_params& params) {
+        std::lock_guard<std::mutex> l(serversForCommitLock);
+        if (serversForCommit.empty()) {
+            return params.expected_commit_index_;
+        }
+
+        uint64_t min_index = std::numeric_limits<uint64_t>::max();
+        for (int srv_id: serversForCommit) {
+            auto entry = params.peer_index_map_.find(srv_id);
+            if (entry == params.peer_index_map_.end()) {
+                // Something went wrong.
+                assert(0);
+                return params.expected_commit_index_;
+            }
+            min_index = std::min(entry->second, min_index);
+        }
+        return min_index;
+    }
+
+    const std::list<uint64_t>& getRollbackIdxs() const {
+        return rollbacks;
     }
 
     bool isSame(const TestSm& with, bool check_precommit = false) {
@@ -272,13 +341,6 @@ public:
         return 0;
     }
 
-    ulong getLastCommittedIdx() const {
-        std::lock_guard<std::mutex> ll(dataLock);
-        auto entry = commits.rbegin();
-        if (entry == commits.rend()) return 0;
-        return entry->first;
-    }
-
     ptr<buffer> getData(ulong log_idx) const {
         std::lock_guard<std::mutex> ll(dataLock);
         auto entry = commits.find(log_idx);
@@ -286,14 +348,55 @@ public:
         return entry->second;
     }
 
+    void truncateData(ulong log_idx_upto) {
+        auto entry = preCommits.lower_bound(log_idx_upto);
+        preCommits.erase(entry, preCommits.end());
+        auto entry2 = commits.lower_bound(log_idx_upto);
+        commits.erase(entry2, commits.end());
+
+        if (lastCommittedConfigIdx > log_idx_upto) {
+            lastCommittedConfigIdx = log_idx_upto;
+        }
+    }
+
+    void setSnpReadFailure(int num_failures) {
+        targetSnpReadFailures = num_failures;
+    }
+
+    void setSnpDelay(size_t delay_ms) {
+        snpDelayMs = delay_ms;
+    }
+
+    void setServersForCommit(const std::list<int>& src) {
+        std::lock_guard<std::mutex> l(serversForCommitLock);
+        serversForCommit = src;
+    }
+
 private:
     std::map<uint64_t, ptr<buffer>> preCommits;
     std::map<uint64_t, ptr<buffer>> commits;
-    std::map<uint64_t, ptr<buffer>> rollbacks;
+    std::list<uint64_t> rollbacks;
     mutable std::mutex dataLock;
 
     ptr<snapshot> lastSnapshot;
     mutable std::mutex lastSnapshotLock;
+
+    std::atomic<uint64_t> customBatchSize;
+
+    std::atomic<uint64_t> lastCommittedConfigIdx;
+
+    std::atomic<int> targetSnpReadFailures;
+
+    std::atomic<size_t> snpDelayMs;
+
+    std::set<void*> openedUserCtxs;
+    mutable std::mutex openedUserCtxsLock;
+
+    /**
+     * If non-empty, the commit index will be min(log index of servers).
+     */
+    std::list<int> serversForCommit;
+    mutable std::mutex serversForCommitLock;
 
     SimpleLogger* myLog;
 };
@@ -340,9 +443,16 @@ public:
         return myId;
     }
     void system_exit(const int exit_code) {
+        abort();
     }
 
     ptr<srv_config> get_srv_config() const { return mySrvConfig; }
+
+    void set_disk_delay(raft_server* raft, size_t delay_ms) {
+        curLogStore->set_disk_delay(raft, delay_ms);
+    }
+
+    ptr<inmem_log_store> get_inmem_log_store() const { return curLogStore; }
 
 private:
     int myId;
@@ -354,14 +464,17 @@ private:
 };
 
 static VOID_UNUSED reset_log_files() {
+    std::stringstream ss;
+    ss << "srv*.log ";
+
 #if defined(__linux__) || defined(__APPLE__)
-    std::string cmd = "rm -f base.log srv1.log srv2.log srv3.log 2> /dev/null";
+    std::string cmd = "rm -f base.log " + ss.str() + "2> /dev/null";
     FILE* fp = popen(cmd.c_str(), "r");
     int r = pclose(fp);
     (void)r;
 
 #elif defined(WIN32) || defined(_WIN32)
-    std::string cmd = "del /s /f /q base.log srv1.log srv2.log srv3.log > NUL";
+    std::string cmd = "del /s /f /q base.log " + ss.str() + "> NUL";
     int r = system(cmd.c_str());
     (void)r;
 

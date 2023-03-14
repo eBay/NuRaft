@@ -2,10 +2,10 @@
 NuRaft
 ======
 
-[![Build Status](https://travis-ci.org/eBay/NuRaft.svg?branch=master)](https://travis-ci.org/eBay/NuRaft)
+[![build](https://github.com/eBay/NuRaft/workflows/build/badge.svg)](https://github.com/eBay/NuRaft/actions)
 [![codecov](https://codecov.io/gh/eBay/NuRaft/branch/master/graph/badge.svg)](https://codecov.io/gh/eBay/NuRaft)
 
-Raft implementation derived from [cornerstone](https://github.com/datatechnology/cornerstone) project, which is a very lightweight C++ implementation with minimum dependencies, originally written by [Andy Chen](https://github.com/andy-yx-chen).
+Raft implementation derived from the [cornerstone](https://github.com/datatechnology/cornerstone) project, which is a very lightweight C++ implementation with minimum dependencies, originally written by [Andy Chen](https://github.com/andy-yx-chen).
 
 New features that are not described in the [original paper](https://raft.github.io/raft.pdf), but required for the real-world use cases in eBay, have been added. We believe those features are useful for others outside eBay as well.
 
@@ -30,7 +30,8 @@ Features
 * [Custom/separate quorum size for commit & leader election](docs/custom_quorum_size.md)
 * [Asynchronous replication](docs/async_replication.md)
 * [SSL/TLS support](docs/enabling_ssl.md)
-
+* [Parallel Log Appending](docs/parallel_log_appending.md)
+* [Custom Commit Policy](docs/custom_commit_policy.md)
 
 How to Build
 ------------
@@ -38,8 +39,7 @@ How to Build
 
 * Ubuntu
 ```sh
-$ sudo apt-get install cmake
-$ sudo apt-get install openssl libssl-dev
+$ sudo apt-get install cmake openssl libssl-dev libz-dev
 ```
 
 * OSX
@@ -49,16 +49,30 @@ $ brew install openssl
 ```
 * Windows
     * Download and install [CMake](https://cmake.org/download/).
-    * Currently we do not support SSL for Windows.
+    * Currently, we do not support SSL for Windows.
 
 #### 2. Fetch [Asio](https://github.com/chriskohlhoff/asio) library: ####
 
-* Linux & OSX
+##### Using git submodule
+
+```sh
+$ git submodule update --init
+```
+
+##### Other ways to fetch:
+
+* Linux & OSX: using the bash script
+
 ```sh
 $ ./prepare.sh
 ```
-* Windows
-    * Clone [Asio](https://github.com/chriskohlhoff/asio) into project directory.
+
+* Windows: doing it manually
+  * Clone [Asio](https://github.com/chriskohlhoff/asio) `asio-1-24-0` into the project directory.
+
+```sh
+C:\NuRaft> git clone https://github.com/chriskohlhoff/asio -b asio-1-24-0
+```
 
 #### 3. Build static library, tests, and examples: ####
 
@@ -108,9 +122,9 @@ Please refer to [tests/bench](./tests/bench).
 
 Supported Platforms
 -------------------
-* Ubuntu (tested on 14.04, 16.04, and 18.04)
+* Ubuntu (tested on 14.04 -- 20.04)
 * Centos (tested on 7)
-* OSX (tested on 10.13 and 10.14)
+* OSX (tested on 10.13 -- 12.3)
 * Windows (built using MSVC 2019, not thoroughly tested)
 
 
@@ -127,7 +141,7 @@ Contact
 
 License Information
 --------------------
-Copyright 2017-2019 eBay Inc.
+Copyright 2017-present eBay Inc.
 
 Author/Developer: Jung-Sang Ahn
 

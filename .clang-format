@@ -1,0 +1,22 @@
+---
+Language: Cpp
+UseTab: Never
+IndentWidth: 4
+AccessModifierOffset: -4
+TabWidth: 4
+ColumnLimit: 90
+BreakConstructorInitializersBeforeComma: true
+BreakBeforeTernaryOperators: true
+BreakBeforeBinaryOperators: NonAssignment
+PointerAlignment: Left
+AllowShortIfStatementsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: true
+SpaceBeforeRangeBasedForLoopColon: false
+BinPackArguments: false
+BinPackParameters: false
+AlwaysBreakBeforeMultilineStrings: false
+AlignEscapedNewlines: Left
+#IndentPPDirectives: BeforeHash
+AllowShortLambdasOnASingleLine: Inline
+AlignAfterOpenBracket: true
+AlignOperands: true

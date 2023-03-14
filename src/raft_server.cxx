@@ -23,9 +23,15 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "context.hxx"
 #include "error_code.hxx"
+#include "event_awaiter.hxx"
+#include "global_mgr.hxx"
 #include "handle_client_request.hxx"
+#include "handle_custom_notification.hxx"
+#include "internal_timer.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
+#include "snapshot_sync_ctx.hxx"
+#include "stat_mgr.hxx"
 #include "state_machine.hxx"
 #include "state_mgr.hxx"
 #include "tracer.hxx"
@@ -39,8 +45,11 @@ namespace nuraft {
 
 const int raft_server::default_snapshot_sync_block_size = 4 * 1024;
 
-raft_server::raft_server(context* ctx)
-    : initialized_(false)
+raft_server::limits raft_server::raft_limits_;
+
+raft_server::raft_server(context* ctx, const init_options& opt)
+    : bg_append_ea_(nullptr)
+    , initialized_(false)
     , leader_(-1)
     , id_(ctx->state_mgr_->server_id())
     , target_priority_(srv_config::INIT_PRIORITY)
@@ -54,9 +63,16 @@ raft_server::raft_server(context* ctx)
     , election_completed_(true)
     , config_changing_(false)
     , catching_up_(false)
+    , out_of_log_range_(false)
     , data_fresh_(false)
     , stopping_(false)
     , commit_bg_stopped_(false)
+    , append_bg_stopped_(false)
+    , write_paused_(false)
+    , sm_commit_paused_(false)
+    , sm_commit_exec_in_progress_(false)
+    , ea_sm_commit_exec_in_progress_(new EventAwaiter())
+    , next_leader_candidate_(-1)
     , im_learner_(false)
     , serving_req_(false)
     , steps_to_down_(0)
@@ -71,10 +87,15 @@ raft_server::raft_server(context* ctx)
     , state_machine_(ctx->state_machine_)
     , receiving_snapshot_(false)
     , et_cnt_receiving_snapshot_(0)
+    , first_snapshot_distance_(0)
     , l_(ctx->logger_)
     , stale_config_(nullptr)
     , config_(ctx->state_mgr_->load_config())
+    , uncommitted_config_(nullptr)
     , srv_to_join_(nullptr)
+    , srv_to_join_snp_retry_required_(false)
+    , srv_to_leave_(nullptr)
+    , srv_to_leave_target_idx_(0)
     , conf_to_add_(nullptr)
     , resp_handler_( (rpc_handler)std::bind( &raft_server::handle_peer_resp,
                                              this,
@@ -85,23 +106,51 @@ raft_server::raft_server(context* ctx)
                                                 std::placeholders::_1,
                                                 std::placeholders::_2 ) )
     , last_snapshot_(ctx->state_machine_->last_snapshot())
+    , ea_follower_log_append_(new EventAwaiter())
+    , test_mode_flag_(opt.test_mode_flag_)
 {
     char temp_buf[4096];
     std::string print_msg;
+
+    if (opt.raft_callback_) {
+        ctx->set_cb_func(opt.raft_callback_);
+    }
 
     ptr<raft_params> params = ctx_->get_params();
     if (params->stale_log_gap_ < params->fresh_log_gap_) {
         params->stale_log_gap_ = params->fresh_log_gap_;
     }
+    if (params->enable_randomized_snapshot_creation_ &&
+        !get_last_snapshot() &&
+        params->snapshot_distance_ > 1) {
+        uint64_t seed = timer_helper::get_timeofday_us() * id_;
 
-    log_current_params();
+        // Flip the integer.
+        auto* first = reinterpret_cast<uint8_t*>(&seed);
+        auto* last = reinterpret_cast<uint8_t*>(&seed) + sizeof(seed);
+        while ((first != last) && (first != -- last)) std::swap(*first++, *last);
+
+        std::default_random_engine engine(seed);
+        std::uniform_int_distribution<int32>
+            distribution( params->snapshot_distance_ / 2,
+                          std::max( params->snapshot_distance_ / 2,
+                                    params->snapshot_distance_ - 1 ) );
+
+        first_snapshot_distance_ = distribution(engine);
+        p_in("First snapshot creation log distance %u", first_snapshot_distance_);
+    }
+
+    apply_and_log_current_params();
     update_rand_timeout();
+    precommit_index_ = log_store_->next_slot() - 1;
+    lagging_sm_target_index_ = log_store_->next_slot() - 1;
 
     if (!state_) {
         state_ = cs_new<srv_state>();
         state_->set_term(0);
         state_->set_voted_for(-1);
     }
+    vote_init_timer_term_ = state_->get_term();
 
     print_msg.clear();
 
@@ -110,6 +159,8 @@ raft_server::raft_server(context* ctx)
     ss << "   === INIT RAFT SERVER ===\n"
        << "commit index " << sm_commit_index_ << "\n"
        << "term " << state_->get_term() << "\n"
+       << "election timer " << ( state_->is_election_timer_allowed()
+                                 ? "allowed" : "not allowed" ) << "\n"
        << "log store start " << log_store_->start_index()
        << ", end " << log_store_->next_slot() - 1 << "\n"
        << "config log idx " << c_conf->get_log_idx()
@@ -154,7 +205,7 @@ raft_server::raft_server(context* ctx)
         ptr<log_entry> entry(log_store_->entry_at(i));
         if (entry->get_val_type() == log_val_type::conf) {
             p_in( "detect a configuration change "
-                  "that is not committed yet at index %llu", i );
+                  "that is not committed yet at index %" PRIu64 "", i );
             config_changing_ = true;
             break;
         }
@@ -211,21 +262,68 @@ raft_server::raft_server(context* ctx)
     print_msg += temp_buf;
     sprintf(temp_buf, "num peers: %d\n", (int)peers_.size());
     print_msg += temp_buf;
-    p_in(print_msg.c_str());
+    p_in("%s", print_msg.c_str());
 
-    bg_commit_thread_ = std::thread(std::bind(&raft_server::commit_in_bg, this));
+    if (opt.start_server_in_constructor_) {
+        start_server(opt.skip_initial_election_timeout_);
+    }
+}
 
-    p_in("wait for HB, for %d + [%d, %d] ms",
-         params->rpc_failure_backoff_,
-         params->election_timeout_lower_bound_,
-         params->election_timeout_upper_bound_);
-    std::this_thread::sleep_for( std::chrono::milliseconds
-                                 (params->rpc_failure_backoff_) );
-    restart_election_timer();
+void raft_server::start_server(bool skip_initial_election_timeout)
+{
+    ptr<raft_params> params = ctx_->get_params();
+    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    if (mgr) {
+        p_in("global manager is detected. will use shared thread pool");
+        commit_bg_stopped_ = true;
+        append_bg_stopped_ = true;
+        mgr->init_raft_server(this);
+
+    } else {
+        p_in("global manager does not exist. "
+             "will use local thread for commit and append");
+        bg_commit_thread_ = std::thread(std::bind(&raft_server::commit_in_bg, this));
+
+        bg_append_ea_ = new EventAwaiter();
+        bg_append_thread_ = std::thread(std::bind(&raft_server::append_entries_in_bg, this));
+    }
+
+    if (skip_initial_election_timeout) {
+        // Issue #23:
+        //   During remediation, the node (to be added) shouldn't be
+        //   even a temp leader (to avoid local commit). We provide
+        //   this option for that purpose.
+        p_in("skip initialization of election timer by given parameter, "
+             "waiting for the first heartbeat");
+        // Make this status persistent, so as to make it not
+        // trigger any election even after process restart.
+        state_->allow_election_timer(false);
+        ctx_->state_mgr_->save_state(*state_);
+
+    } else if (!state_->is_election_timer_allowed()) {
+        p_in("skip initialization of election timer by previously saved state, "
+             "waiting for the first heartbeat");
+
+    } else {
+        p_in("wait for HB, for %d + [%d, %d] ms",
+             params->rpc_failure_backoff_,
+             params->election_timeout_lower_bound_,
+             params->election_timeout_upper_bound_);
+        std::this_thread::sleep_for( std::chrono::milliseconds
+                                     (params->rpc_failure_backoff_) );
+        restart_election_timer();
+    }
+    priority_change_timer_.reset();
+    vote_init_timer_.set_duration_ms(params->grace_period_of_lagging_state_machine_);
+    vote_init_timer_.reset();
     p_db("server %d started", id_);
 }
 
 raft_server::~raft_server() {
+    // For the case that user does not call shutdown() and directly
+    // destroy the current `raft_server` instance.
+    cancel_global_requests();
+
     recur_lock(lock_);
     stopping_ = true;
     std::unique_lock<std::mutex> commit_lock(commit_cv_lock_);
@@ -235,6 +333,9 @@ raft_server::~raft_server() {
     commit_lock.release();
     ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10));
     cancel_schedulers();
+    delete bg_append_ea_;
+    delete ea_sm_commit_exec_in_progress_;
+    delete ea_follower_log_append_;
 }
 
 void raft_server::update_rand_timeout() {
@@ -256,7 +357,7 @@ void raft_server::update_params(const raft_params& new_params) {
 
     ptr<raft_params> clone = cs_new<raft_params>(new_params);
     ctx_->set_params(clone);
-    log_current_params();
+    apply_and_log_current_params();
 
     update_rand_timeout();
     if (role_ != srv_role::leader) {
@@ -264,21 +365,45 @@ void raft_server::update_params(const raft_params& new_params) {
     }
     for (auto& entry: peers_) {
         peer* p = entry.second.get();
+        auto_lock(p->get_lock());
         p->set_hb_interval(clone->heart_beat_interval_);
         p->resume_hb_speed();
     }
 }
 
-void raft_server::log_current_params() {
+void raft_server::apply_and_log_current_params() {
     ptr<raft_params> params = ctx_->get_params();
+
+    if (!test_mode_flag_) {
+        if (params->heart_beat_interval_ >= params->election_timeout_lower_bound_) {
+            params->election_timeout_lower_bound_ = params->heart_beat_interval_ * 2;
+            p_wn("invalid election timeout lower bound detected, adjusted to %d",
+                 params->election_timeout_lower_bound_);
+        }
+        if (params->election_timeout_lower_bound_
+            >= params->election_timeout_upper_bound_) {
+            params->election_timeout_upper_bound_ =
+                params->election_timeout_lower_bound_ * 2;
+            p_wn("invalid election timeout upper bound detected, adjusted to %d",
+                 params->election_timeout_upper_bound_);
+        }
+    }
+
     p_in( "parameters: "
           "timeout %d - %d, heartbeat %d, "
           "leadership expiry %d, "
           "max batch %d, backoff %d, snapshot distance %d, "
+          "enable randomized snapshot creation %s, "
+          "log sync stop gap %d, "
           "reserved logs %d, client timeout %d, "
           "auto forwarding %s, API call type %s, "
           "custom commit quorum size %d, "
-          "custom election quorum size %d",
+          "custom election quorum size %d, "
+          "snapshot receiver %s, "
+          "leadership transfer wait time %d, "
+          "grace period of lagging state machine %d, "
+          "snapshot IO: %s, "
+          "parallel log appending: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -286,13 +411,26 @@ void raft_server::log_current_params() {
           params->max_append_size_,
           params->rpc_failure_backoff_,
           params->snapshot_distance_,
+          params->enable_randomized_snapshot_creation_ ? "YES" : "NO",
+          params->log_sync_stop_gap_,
           params->reserved_log_items_,
           params->client_req_timeout_,
           ( params->auto_forwarding_ ? "ON" : "OFF" ),
           ( params->return_method_ == raft_params::blocking
             ? "BLOCKING" : "ASYNC" ),
           params->custom_commit_quorum_size_,
-          params->custom_election_quorum_size_ );
+          params->custom_election_quorum_size_,
+          params->exclude_snp_receiver_from_quorum_ ? "EXCLUDED" : "INCLUDED",
+          params->leadership_transfer_min_wait_time_,
+          params->grace_period_of_lagging_state_machine_,
+          params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING",
+          params->parallel_log_appending_ ? "ON" : "OFF" );
+
+    status_check_timer_.set_duration_ms(params->heart_beat_interval_);
+    status_check_timer_.reset();
+
+    leadership_transfer_timer_.set_duration_ms
+        (params->leadership_transfer_min_wait_time_);
 }
 
 raft_params raft_server::get_current_params() const {
@@ -306,8 +444,24 @@ void raft_server::stop_server() {
     drop_all_pending_commit_elems();
 }
 
+void raft_server::cancel_global_requests() {
+    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    if (mgr) {
+        mgr->close_raft_server(this);
+    }
+}
+
 void raft_server::shutdown() {
     p_in("shutting down raft core");
+
+    // If the global manager exists, cancel all pending requests.
+    cancel_global_requests();
+
+    // Cancel snapshot requests if exist.
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->use_bg_thread_for_snapshot_io_) {
+        snapshot_io_mgr::instance().drop_reqs(this);
+    }
 
     // Terminate background commit thread.
     {   recur_lock(lock_);
@@ -317,9 +471,13 @@ void raft_server::shutdown() {
         }
     }
 
+    p_in("sent stop signal to the commit thread.");
+
     // Cancel all scheduler tasks.
     // TODO: how do we guarantee all tasks are done?
     cancel_schedulers();
+
+    p_in("cancelled all schedulers.");
 
     // Wait until background commit thread terminates.
     while (!commit_bg_stopped_) {
@@ -328,20 +486,69 @@ void raft_server::shutdown() {
         }
         std::this_thread::yield();
     }
+
+    p_in("commit thread stopped.");
+
     drop_all_pending_commit_elems();
 
+    p_in("all pending commit elements dropped.");
+
     // Clear shared_ptrs that the current server is holding.
-    {   std::lock_guard<std::mutex> l(ctx_->lock_);
+    {   std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
         ctx_->logger_.reset();
         ctx_->rpc_listener_.reset();
         ctx_->rpc_cli_factory_.reset();
         ctx_->scheduler_.reset();
     }
 
+    p_in("reset all pointers.");
+
+    // Server to join/leave.
+    if (srv_to_join_) {
+        reset_srv_to_join();
+    }
+    if (srv_to_leave_) {
+        reset_srv_to_leave();
+    }
+
     // Wait for BG commit thread.
     if (bg_commit_thread_.joinable()) {
         bg_commit_thread_.join();
     }
+
+    p_in("joined terminated commit thread.");
+
+    while (bg_append_ea_ && !append_bg_stopped_) {
+        bg_append_ea_->invoke();
+        std::this_thread::yield();
+    }
+
+    p_in("sent stop signal to background append thread.");
+
+    if (bg_append_thread_.joinable()) {
+        bg_append_thread_.join();
+    }
+
+    {
+        auto_lock(auto_fwd_reqs_lock_);
+        p_in("clean up auto-forwarding queue: %zu elems", auto_fwd_reqs_.size());
+        auto_fwd_reqs_.clear();
+    }
+
+    p_in("clean up auto-forwarding clients");
+    cleanup_auto_fwd_pkgs();
+
+    p_in("raft_server shutdown completed.");
+}
+
+bool raft_server::is_regular_member(const ptr<peer>& p) {
+    // Skip to-be-removed server.
+    if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) return false;
+
+    // Skip learner.
+    if (p->is_learner()) return false;
+
+    return true;
 }
 
 // Number of nodes that are able to vote, including leader itself.
@@ -349,7 +556,8 @@ int32 raft_server::get_num_voting_members() {
     int32 count = 0;
     for (auto& entry: peers_) {
         ptr<peer>& p = entry.second;
-        if (p->is_learner()) continue;
+        auto_lock(p->get_lock());
+        if (!is_regular_member(p)) continue;
         count++;
     }
     if (!im_learner_) count++;
@@ -372,6 +580,19 @@ int32 raft_server::get_quorum_for_election() {
 int32 raft_server::get_quorum_for_commit() {
     ptr<raft_params> params = ctx_->get_params();
     int32 num_voting_members = get_num_voting_members();
+
+    if (params->exclude_snp_receiver_from_quorum_){
+        // If the option is on, exclude any peer who is
+        // receiving snapshot.
+        for (auto& entry: peers_) {
+            ptr<peer>& p = entry.second;
+            if ( num_voting_members &&
+                 p->get_snapshot_sync_ctx() ) {
+                num_voting_members--;
+            }
+        }
+    }
+
     if ( params->custom_commit_quorum_size_ <= 0 ||
          params->custom_commit_quorum_size_ > num_voting_members ) {
         return num_voting_members / 2;
@@ -384,7 +605,8 @@ int32 raft_server::get_leadership_expiry() {
     int expiry = params->leadership_expiry_;
     if (expiry == 0) {
         // If 0, default expiry: 20x of heartbeat.
-        expiry = params->heart_beat_interval_ * peer::RESPONSE_LIMIT;
+        expiry = params->heart_beat_interval_ *
+                     raft_server::raft_limits_.leadership_limit_;
     }
     return expiry;
 }
@@ -394,18 +616,15 @@ size_t raft_server::get_not_responding_peers() {
     // (i.e., don't respond 20x heartbeat time long).
     size_t num_not_resp_nodes = 0;
 
-    int expiry = get_leadership_expiry();
-    if (expiry < 0) {
-        // Negative expiry, leadership will never be expired.
-        return 0;
-    }
+    ptr<raft_params> params = ctx_->get_params();
+    int expiry = params->heart_beat_interval_ *
+                     raft_server::raft_limits_.response_limit_;
 
     // Check the number of not responding peers.
     for (auto& entry: peers_) {
         ptr<peer> p = entry.second;
 
-        // Skip learner.
-        if (p->is_learner()) continue;
+        if (!is_regular_member(p)) continue;
 
         int32 resp_elapsed_ms = (int32)(p->get_resp_timer_us() / 1000);
         if ( resp_elapsed_ms > expiry ) {
@@ -415,7 +634,23 @@ size_t raft_server::get_not_responding_peers() {
     return num_not_resp_nodes;
 }
 
-ptr<resp_msg> raft_server::process_req(req_msg& req) {
+size_t raft_server::get_num_stale_peers() {
+    // Check the number of peers lagging more than `stale_log_gap_`.
+    if (leader_ != id_) return 0;
+
+    size_t count = 0;
+    for (auto& entry: peers_) {
+        ptr<peer>& pp = entry.second;
+        if ( get_last_log_idx() > pp->get_last_accepted_log_idx() +
+                                  ctx_->get_params()->stale_log_gap_ ) {
+            count++;
+        }
+    }
+    return count;
+}
+
+ptr<resp_msg> raft_server::process_req(req_msg& req,
+                                       const req_ext_params& ext_params) {
     cb_func::Param param(id_, leader_);
     param.ctx = &req;
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::ProcessReq, &param);
@@ -424,9 +659,8 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
         return nullptr;
     }
 
-    recur_lock(lock_);
-    p_db( "Receive a %s message from %d with LastLogIndex=%llu, "
-          "LastLogTerm=%llu, EntriesLength=%d, CommitIndex=%llu and Term=%llu",
+    p_db( "Receive a %s message from %d with LastLogIndex=%" PRIu64 ", "
+          "LastLogTerm %" PRIu64 ", EntriesLength=%zu, CommitIndex=%" PRIu64 " and Term=%" PRIu64 "",
           msg_type_to_string(req.get_type()).c_str(),
           req.get_src(),
           req.get_last_log_idx(),
@@ -441,11 +675,28 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
         return nullptr;
     }
 
+    if ( req.get_type() == msg_type::client_request ) {
+        // Client request doesn't need to go through below process.
+        return handle_cli_req_prelock(req, ext_params);
+    }
+
+    recur_lock(lock_);
     if ( req.get_type() == msg_type::append_entries_request ||
          req.get_type() == msg_type::request_vote_request ||
          req.get_type() == msg_type::install_snapshot_request ) {
         // we allow the server to be continue after term updated to save a round message
-        update_term(req.get_term());
+        bool term_updated = update_term(req.get_term());
+
+        if ( !im_learner_ &&
+             !hb_alive_ &&
+             term_updated &&
+             req.get_type() == msg_type::request_vote_request ) {
+            // If someone has newer term, that means leader has not been
+            // elected in the current term, and this node's election timer
+            // has been reset by this request.
+            // We should decay the target priority here.
+            decay_target_priority();
+        }
 
         // Reset stepping down value to prevent this server goes down when leader
         // crashes after sending a LeaveClusterRequest
@@ -474,9 +725,6 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
     } else if (req.get_type() == msg_type::priority_change_request) {
         resp = handle_priority_change_req(req);
 
-    } else if (req.get_type() == msg_type::client_request) {
-        resp = handle_cli_req(req);
-
     } else {
         // extended requests
         resp = handle_ext_msg(req);
@@ -484,7 +732,7 @@ ptr<resp_msg> raft_server::process_req(req_msg& req) {
 
     if (resp) {
         p_db( "Response back a %s message to %d with Accepted=%d, "
-              "Term=%llu, NextIndex=%llu",
+              "Term=%" PRIu64 ", NextIndex=%" PRIu64 "",
               msg_type_to_string(resp->get_type()).c_str(),
               resp->get_dst(),
               resp->get_accepted() ? 1 : 0,
@@ -523,7 +771,8 @@ void raft_server::reset_peer_info() {
         // re-joins the cluster.
         ptr<buffer> new_conf_buf(my_next_config->serialize());
         ptr<log_entry> entry(cs_new<log_entry>(
-                state_->get_term(), new_conf_buf, log_val_type::conf));
+            state_->get_term(), new_conf_buf, log_val_type::conf,
+            timer_helper::get_timeofday_us()));
         store_log_entry(entry, log_store_->next_slot()-1);
     }
 }
@@ -532,21 +781,29 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
     recur_lock(lock_);
     if (err) {
         int32 peer_id = err->req()->get_dst();
-        peer* pp = nullptr;
+        ptr<peer> pp = nullptr;
         auto entry = peers_.find(peer_id);
-        if (entry != peers_.end()) pp = entry->second.get();
+        if (entry != peers_.end()) pp = entry->second;
 
         int rpc_errs = 0;
         if (pp) {
             pp->inc_rpc_errs();
             rpc_errs = pp->get_rpc_errs();
+
+            check_snapshot_timeout(pp);
         }
 
-        if (rpc_errs < peer::WARNINGS_LIMIT) {
+        if (rpc_errs < raft_server::raft_limits_.warning_limit_) {
             p_wn("peer (%d) response error: %s", peer_id, err->what());
-        } else if (rpc_errs == peer::WARNINGS_LIMIT) {
+        } else if (rpc_errs == raft_server::raft_limits_.warning_limit_) {
             p_wn("too verbose RPC error on peer (%d), "
                  "will suppress it from now", peer_id);
+        }
+
+        if (pp && pp->is_leave_flag_set()) {
+            // If this is to-be-removed server, proceed it without
+            // waiting for the response.
+            handle_join_leave_rpc_err(msg_type::leave_cluster_request, pp);
         }
         return;
     }
@@ -557,7 +814,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
     }
 
     p_db( "Receive a %s message from peer %d with "
-          "Result=%d, Term=%llu, NextIndex=%llu",
+          "Result=%d, Term=%" PRIu64 ", NextIndex=%" PRIu64 "",
           msg_type_to_string(resp->get_type()).c_str(),
           resp->get_src(),
           resp->get_accepted() ? 1 : 0,
@@ -573,7 +830,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         if (entry != peers_.end()) {
             peer* pp = entry->second.get();
             int rpc_errs = pp->get_rpc_errs();
-            if (rpc_errs >= peer::WARNINGS_LIMIT) {
+            if (rpc_errs >= raft_server::raft_limits_.warning_limit_) {
                 p_wn("recovered from RPC failure from peer %d, %d errors",
                      resp->get_src(), rpc_errs);
             }
@@ -616,6 +873,10 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         p_in("got ping response from %d", resp->get_src());
         break;
 
+    case msg_type::custom_notification_response:
+        handle_custom_notification_resp(*resp);
+        break;
+
     default:
         p_er( "received an unexpected response: %s, ignore it",
               msg_type_to_string(resp->get_type()).c_str() );
@@ -643,11 +904,18 @@ void raft_server::send_reconnect_request() {
                                             leader_,
                                             0, 0, 0 );
 
-        p_leader->send_req(p_leader, req, ex_resp_handler_);
+        if (p_leader->make_busy()) {
+            p_leader->send_req(p_leader, req, ex_resp_handler_);
+        } else {
+            p_er("previous message to leader %d hasn't been responded yet",
+                 p_leader->get_id());
+        }
 
     } else {
+        // LCOV_EXCL_START
         p_ft("cannot find leader!");
-        ctx_->state_mgr_->system_exit(-1);
+        ctx_->state_mgr_->system_exit(N22_unrecoverable_isolation);
+        // LCOV_EXCL_STOP
     }
 }
 
@@ -687,52 +955,91 @@ void raft_server::handle_reconnect_resp(resp_msg& resp) {
          resp.get_accepted() ? "accepted" : "rejected");
 }
 
-void raft_server::reconnect_client(peer& p) {
-    if (stopping_) return;
+bool raft_server::reconnect_client(peer& p) {
+    if (stopping_) return false;
 
     ptr<cluster_config> c_config = get_config();
     ptr<srv_config> s_config = c_config->get_server(p.get_id());
+
+    // NOTE: To-be-removed server will not exist in config,
+    //       but we still need to reconnect to it if we can
+    //       send the latest config to the server.
+    if (!s_config && p.is_leave_flag_set()) {
+        s_config = srv_config::deserialize( *p.get_config().serialize() );
+    }
+
     if (s_config) {
         p_db( "reset RPC client for peer %d",
               p.get_id() );
-        p.recreate_rpc(s_config, *ctx_);
-        p.set_free();
-        p.set_manual_free();
+        return p.recreate_rpc(s_config, *ctx_);
     }
+    return false;
 }
 
 void raft_server::become_leader() {
     stop_election_timer();
 
-    role_ = srv_role::leader;
-    leader_ = id_;
-    srv_to_join_.reset();
-    ptr<snapshot> nil_snp;
-    for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        ptr<peer> pp = it->second;
-        ptr<snapshot_sync_ctx> sync_ctx = pp->get_snapshot_sync_ctx();
-        if (sync_ctx) {
-            void*& user_ctx = sync_ctx->get_user_snp_ctx();
-            state_machine_->free_user_snp_ctx(user_ctx);
-            pp->set_snapshot_in_sync(nil_snp);
-        }
-        // Reset RPC client for all peers.
-        // reconnect_client(*pp);
-
-        pp->set_next_log_idx(log_store_->next_slot());
-        pp->set_free();
-        enable_hb_for_peer(*pp);
+    {   auto_lock(commit_ret_elems_lock_);
+        p_in("number of pending commit elements: %zu",
+             commit_ret_elems_.size());
     }
 
-    ptr<cluster_config> cur_config = get_config();
-    cur_config->set_log_idx(log_store_->next_slot());
-    ptr<buffer> conf_buf = cur_config->serialize();
-    ptr<log_entry> entry
-        ( cs_new<log_entry>
-          ( state_->get_term(), conf_buf, log_val_type::conf ) );
-    p_in("[BECOME LEADER] appended new config at %d\n", log_store_->next_slot());
-    store_log_entry(entry);
-    config_changing_ = true;
+    ptr<raft_params> params = ctx_->get_params();
+    {   auto_lock(cli_lock_);
+        role_ = srv_role::leader;
+        leader_ = id_;
+        srv_to_join_.reset();
+        leadership_transfer_timer_.set_duration_ms
+            (params->leadership_transfer_min_wait_time_);
+        leadership_transfer_timer_.reset();
+        precommit_index_ = log_store_->next_slot() - 1;
+        p_in("state machine commit index %" PRIu64 ", "
+             "precommit index %" PRIu64 ", last log index %" PRIu64,
+             sm_commit_index_.load(),
+             precommit_index_.load(),
+             log_store_->next_slot() - 1);
+        ptr<snapshot> nil_snp;
+        for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
+            ptr<peer> pp = it->second;
+            clear_snapshot_sync_ctx(*pp);
+            // Reset RPC client for all peers.
+            // NOTE: Now we don't reset client, as we already did it
+            //       during pre-vote phase.
+            // reconnect_client(*pp);
+
+            pp->set_next_log_idx(log_store_->next_slot());
+            enable_hb_for_peer(*pp);
+        }
+
+        // If there are uncommitted logs, search if conf log exists.
+        ptr<cluster_config> last_config = get_config();
+
+        ulong s_idx = sm_commit_index_ + 1;
+        ulong e_idx = log_store_->next_slot();
+        for (ulong ii = s_idx; ii < e_idx; ++ii) {
+            ptr<log_entry> le = log_store_->entry_at(ii);
+            if (le->get_val_type() != log_val_type::conf) continue;
+
+            p_in("found uncommitted config at %" PRIu64 ", size %zu",
+                 ii, le->get_buf().size());
+            last_config = cluster_config::deserialize(le->get_buf());
+        }
+
+        // WARNING: WE SHOULD NOT CHANGE THE ORIGINAL CONTENTS DIRECTLY!
+        ptr<cluster_config> last_config_cloned =
+            cluster_config::deserialize( *last_config->serialize() );
+        last_config_cloned->set_log_idx(log_store_->next_slot());
+        ptr<buffer> conf_buf = last_config_cloned->serialize();
+        ptr<log_entry> entry
+            ( cs_new<log_entry>
+              ( state_->get_term(),
+                conf_buf,
+                log_val_type::conf,
+                timer_helper::get_timeofday_us() ) );
+        p_in("[BECOME LEADER] appended new config at %" PRIu64, log_store_->next_slot());
+        store_log_entry(entry);
+        config_changing_ = true;
+    }
 
     cb_func::Param param(id_, leader_);
     ulong my_term = state_->get_term();
@@ -740,24 +1047,43 @@ void raft_server::become_leader() {
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
     (void)rc; // nothing to do in this callback.
 
+    write_paused_ = false;
+    next_leader_candidate_ = -1;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
+    pre_vote_.failure_count_ = 0;
     data_fresh_ = true;
 
     request_append_entries();
+
+    if (my_priority_ == 0 && get_num_voting_members() > 1) {
+        // If this member's priority is zero, this node owns a temporary
+        // leadership. Let other node takeover shortly.
+        p_in("[BECOME LEADER] my priority is 0, will resign shortly");
+        yield_leadership();
+    }
 }
 
 bool raft_server::check_leadership_validity() {
     recur_lock(lock_);
 
+    if (role_ != leader)
+        return false;
+
     // Check if quorum is not responding.
     int32 num_voting_members = get_num_voting_members();
+
+    int leadership_expiry = get_leadership_expiry();
     int32 nr_peers = (int32)get_not_responding_peers();
+    if (leadership_expiry < 0) {
+        // Negative expiry: leadership will never expire.
+        nr_peers = 0;
+    }
     int32 min_quorum_size = get_quorum_for_commit() + 1;
     if ( (num_voting_members - nr_peers) < min_quorum_size ) {
-        p_er("%zu nodes (out of %zu, %zu including learners) are not "
-             "responding longer than %zu ms, "
-             "at least %zu nodes (including leader) should be alive "
+        p_er("%d nodes (out of %d, %zu including learners) are not "
+             "responding longer than %d ms, "
+             "at least %d nodes (including leader) should be alive "
              "to proceed commit",
              nr_peers,
              num_voting_members,
@@ -765,47 +1091,275 @@ bool raft_server::check_leadership_validity() {
              get_leadership_expiry(),
              min_quorum_size);
 
+        // NOTE:
+        //   For a cluster where the number of members is the same
+        //   as the size of quorum, we should not expire leadership,
+        //   since it will block the cluster doing any further actions.
+        if (num_voting_members <= min_quorum_size) {
+            p_wn("we cannot yield the leadership of this small cluster");
+            return true;
+        }
+
         p_er("will yield the leadership of this node");
-        yield_leadership();
+        yield_leadership(true);
         return false;
     }
     return true;
 }
 
-void raft_server::yield_leadership() {
+void raft_server::check_leadership_transfer() {
+    ptr<raft_params> params = ctx_->get_params();
+    if (!params->leadership_transfer_min_wait_time_) {
+        // Transferring leadership is disabled.
+        return;
+    }
+    if (!leadership_transfer_timer_.timeout()) {
+        // Leadership period is too short.
+        return;
+    }
+
+    size_t hb_interval_ms = ctx_->get_params()->heart_beat_interval_;
+
     recur_lock(lock_);
+
+    int32 successor_id = -1;
+    int32 max_priority = my_priority_;
+    ulong cur_commit_idx = quick_commit_index_;
+    for (auto& entry: peers_) {
+        ptr<peer> peer_elem = entry.second;
+        const srv_config& s_conf = peer_elem->get_config();
+        int32 cur_priority = s_conf.get_priority();
+        if (cur_priority > max_priority) {
+            max_priority = cur_priority;
+            successor_id = s_conf.get_id();
+        }
+
+        if (peer_elem->get_matched_idx() + params->stale_log_gap_ <
+                cur_commit_idx) {
+            // This peer is lagging behind.
+            return;
+        }
+
+        uint64_t last_resp_ms = peer_elem->get_resp_timer_us() / 1000;
+        if (last_resp_ms > hb_interval_ms) {
+            // This replica is not responding.
+            return;
+        }
+    }
+
+    if (my_priority_ >= max_priority || successor_id == -1) {
+        // This leader already has the highest priority.
+        return;
+    }
+
+    if (!state_machine_->allow_leadership_transfer()) {
+        // Although all conditions are met,
+        // user does not want to transfer the leadership.
+        return;
+    }
+
+    p_in( "going to transfer leadership to %d, "
+          "my priority %d, max priority %d, "
+          "has been leader for %" PRIu64 " sec",
+          successor_id, my_priority_, max_priority,
+          leadership_transfer_timer_.get_sec() );
+    yield_leadership(false, successor_id);
+}
+
+void raft_server::yield_leadership(bool immediate_yield,
+                                   int successor_id)
+{
+    // Leader reelection is already happening.
+    if (write_paused_) return;
+
     // Not a leader, do nothing.
     if (id_ != leader_) return;
-    leader_ = -1;
-    become_follower();
+
+    // This node is the only node, do nothing.
+    if (get_num_voting_members() <= 1) {
+        p_er("this node is the only node in the cluster, will do nothing");
+        return;
+    }
+
+    recur_lock(lock_);
+
+    if (immediate_yield) {
+        p_in("got immediate re-elect request, resign now");
+        leader_ = -1;
+        become_follower();
+        // Clear live flag to avoid pre-vote rejection.
+        hb_alive_ = false;
+        return;
+    }
+
+    // Not immediate yield, nominate the successor.
+    int max_priority = 0;
+    int candidate_id = -1;
+    uint64_t last_resp_ms = 0;
+    std::string candidate_endpoint;
+    size_t hb_interval_ms = ctx_->get_params()->heart_beat_interval_;
+    if (successor_id >= 0) {
+        // If successor is given, find that one.
+        auto entry = peers_.find(successor_id);
+        if (entry != peers_.end()) {
+            int32 srv_id = entry->first;
+            ptr<peer>& pp = entry->second;
+            max_priority = pp->get_config().get_priority();
+            candidate_id = srv_id;
+            candidate_endpoint = pp->get_config().get_endpoint();
+            last_resp_ms = pp->get_resp_timer_us() / 1000;
+        }
+    }
+
+    // Successor is not given or the given successor is incorrect,
+    // find the highest priority node whose response time is not expired.
+    if (candidate_id == -1) {
+        for (auto& entry: peers_) {
+            int32 srv_id = entry.first;
+            ptr<peer>& pp = entry.second;
+            uint64_t pp_last_resp_ms = pp->get_resp_timer_us() / 1000;
+
+            if ( srv_id != id_ &&
+                 pp_last_resp_ms <= hb_interval_ms &&
+                 pp->get_config().get_priority() > max_priority ) {
+                max_priority = pp->get_config().get_priority();
+                candidate_id = srv_id;
+                candidate_endpoint = pp->get_config().get_endpoint();
+                last_resp_ms = pp_last_resp_ms;
+            }
+        }
+    }
+
+    if (successor_id >= 0) {
+        p_in("got graceful re-elect request (designated successor %d), "
+             "pause write from now",
+             successor_id);
+
+        if ( successor_id >= 0 &&
+             successor_id != candidate_id ) {
+            p_wn("could not find given successor %d", successor_id);
+        }
+
+    } else {
+        p_in("got graceful re-elect request, pause write from now");
+    }
+
+    if (candidate_id > -1) {
+        p_in("next leader candidate: id %d endpoint %s priority %d "
+             "last response %" PRIu64 " ms ago",
+             candidate_id, candidate_endpoint.c_str(), max_priority,
+             last_resp_ms);
+        next_leader_candidate_ = candidate_id;;
+    } else {
+        p_wn("cannot find valid candidate for next leader, will proceed anyway");
+    }
+
+    // Reset reelection timer, and pause write.
+    write_paused_ = true;
+
+    // Wait until election timeout upper bound.
+    reelection_timer_.set_duration_ms
+                      ( ctx_->get_params()->election_timeout_upper_bound_ );
+    reelection_timer_.reset();
+}
+
+bool raft_server::request_leadership() {
+    // If this server is already a leader, do nothing.
+    if (id_ == leader_ || is_leader()) {
+        p_er("cannot request leadership: this server is already a leader");
+        return false;
+    }
+    if (leader_ == -1) {
+        p_er("cannot request leadership: cannot find leader");
+        return false;
+    }
+
+    recur_lock(lock_);
+    auto entry = peers_.find(leader_);
+    if (entry == peers_.end()) {
+        p_er("cannot request leadership: cannot find peer for "
+             "leader id %d", leader_.load());
+        return false;
+    }
+    ptr<peer> pp = entry->second;
+
+    // Send resignation message to the follower.
+    ptr<req_msg> req = cs_new<req_msg>
+                       ( state_->get_term(),
+                         msg_type::custom_notification_request,
+                         id_, leader_,
+                         term_for_log(log_store_->next_slot() - 1),
+                         log_store_->next_slot() - 1,
+                         quick_commit_index_.load() );
+
+    // Create a notification.
+    ptr<custom_notification_msg> custom_noti =
+        cs_new<custom_notification_msg>
+        ( custom_notification_msg::request_resignation );
+
+    // Wrap it using log_entry.
+    ptr<log_entry> custom_noti_le =
+        cs_new<log_entry>(0, custom_noti->serialize(), log_val_type::custom);
+
+    req->log_entries().push_back(custom_noti_le);
+    pp->send_req(pp, req, resp_handler_);
+    p_in("sent leadership request to leader %d", leader_.load());
+    return true;
 }
 
 void raft_server::become_follower() {
     // stop hb for all peers
-    p_tr("  FOLLOWER\n");
-    for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        it->second->enable_hb(false);
+    p_in("[BECOME FOLLOWER] term %" PRIu64 "", state_->get_term());
+    {   std::lock_guard<std::mutex> ll(cli_lock_);
+        for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
+            it->second->enable_hb(false);
+        }
+
+        srv_to_join_.reset();
+        role_ = srv_role::follower;
+
+        cb_func::Param param(id_, leader_);
+        uint64_t my_term = state_->get_term();
+        param.ctx = &my_term;
+        (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
+
+        write_paused_ = false;
+        next_leader_candidate_ = -1;
+        initialized_ = true;
+        uncommitted_config_.reset();
+        pre_vote_.quorum_reject_count_ = 0;
+        pre_vote_.failure_count_ = 0;
+
+        // Drain all pending callback functions.
+        drop_all_pending_commit_elems();
     }
-
-    srv_to_join_.reset();
-    role_ = srv_role::follower;
-
-    cb_func::Param param(id_, leader_);
-    (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
-
-    initialized_ = true;
-    pre_vote_.quorum_reject_count_ = 0;
-
-    // Drain all pending callback functions.
-    drop_all_pending_commit_elems();
 
     restart_election_timer();
 }
 
 bool raft_server::update_term(ulong term) {
     if (term > state_->get_term()) {
-        state_->set_term(term);
+        {
+            // NOTE:
+            //   There could be a race between `update_term` (let's say T1) and
+            //   `handle_cli_req` (let's say T2) as follows:
+            //
+            //     * The server was a leader at term X
+            //     [T1] call `state_->set_term(Y)`
+            //     [T2] call `state_->get_term()`
+            //     [T2] write a log with term Y (which should be X).
+            //     [T1] call `become_follower()`
+            //          => now this server becomes a follower at term Y,
+            //             but it still has the incorrect log with term Y.
+            //
+            //   To avoid this issue, we acquire `cli_lock_`,
+            //   and change `role_` first before setting the term.
+            std::lock_guard<std::mutex> ll(cli_lock_);
+            role_ = srv_role::follower;
+            state_->set_term(term);
+        }
         state_->set_voted_for(-1);
+        state_->allow_election_timer(true);
         election_completed_ = false;
         votes_granted_ = 0;
         votes_responded_ = 0;
@@ -813,7 +1367,6 @@ bool raft_server::update_term(ulong term) {
         become_follower();
         return true;
     }
-
     return false;
 }
 
@@ -840,6 +1393,9 @@ ptr<resp_msg> raft_server::handle_ext_msg(req_msg& req) {
     case msg_type::reconnect_request:
         return handle_reconnect_req(req);
 
+    case msg_type::custom_notification_request:
+        return handle_custom_notification_req(req);
+
     default:
         p_er( "received request: %s, ignore it",
               msg_type_to_string(req.get_type()).c_str() );
@@ -858,7 +1414,7 @@ void raft_server::handle_ext_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err) 
     p_db("type: %d, err %p\n", (int)resp->get_type(), err.get());
 
     p_db( "Receive an extended %s message from peer %d with Result=%d, "
-          "Term=%llu, NextIndex=%llu",
+          "Term=%" PRIu64 ", NextIndex=%" PRIu64 "",
           msg_type_to_string(resp->get_type()).c_str(),
           resp->get_src(),
           resp->get_accepted() ? 1 : 0,
@@ -895,8 +1451,23 @@ void raft_server::handle_ext_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err) 
 }
 
 void raft_server::handle_ext_resp_err(rpc_exception& err) {
-    p_db( "receive an rpc error response from peer server, %s", err.what() );
     ptr<req_msg> req = err.req();
+    p_in( "receive an rpc error response from peer server, %s %d",
+          err.what(), req->get_type() );
+
+    if ( req->get_type() == msg_type::install_snapshot_request ) {
+        if (srv_to_join_ && srv_to_join_->get_id() == req->get_dst()) {
+            bool timed_out = check_snapshot_timeout(srv_to_join_);
+            if (!timed_out) {
+                // Enable temp HB to retry snapshot.
+                p_wn("sending snapshot to joining server %d failed, "
+                     "retry with temp heartbeat", srv_to_join_->get_id());
+                srv_to_join_snp_retry_required_ = true;
+                enable_hb_for_peer(*srv_to_join_);
+            }
+        }
+    }
+
     if ( req->get_type() != msg_type::sync_log_request     &&
          req->get_type() != msg_type::join_cluster_request &&
          req->get_type() != msg_type::leave_cluster_request ) {
@@ -935,7 +1506,12 @@ void raft_server::handle_ext_resp_err(rpc_exception& err) {
 void raft_server::on_retryable_req_err(ptr<peer>& p, ptr<req_msg>& req) {
     p_db( "retry the request %s for %d",
           msg_type_to_string(req->get_type()).c_str(), p->get_id() );
-    p->send_req(p, req, ex_resp_handler_);
+    if (p->make_busy()) {
+        p->send_req(p, req, ex_resp_handler_);
+    } else {
+        p_er("retry request %d failed: peer %d is busy",
+             req->get_type(), p->get_id());
+    }
 }
 
 ulong raft_server::term_for_log(ulong log_idx) {
@@ -949,13 +1525,13 @@ ulong raft_server::term_for_log(ulong log_idx) {
 
     ptr<snapshot> last_snapshot(state_machine_->last_snapshot());
     if ( !last_snapshot || log_idx != last_snapshot->get_last_log_idx() ) {
-        p_er("bad log_idx %llu for retrieving the term value, "
+        p_er("bad log_idx %" PRIu64 " for retrieving the term value, "
              "will ignore this log req", log_idx);
         if (last_snapshot) {
-            p_er("last snapshot %p, log_idx %llu, snapshot last_log_idx %llu\n",
+            p_er("last snapshot %p, log_idx %" PRIu64 ", snapshot last_log_idx %" PRIu64 "\n",
                  last_snapshot.get(), log_idx, last_snapshot->get_last_log_idx());
         }
-        p_er("log_store_->start_index() %ld\n", log_store_->start_index());
+        p_er("log_store_->start_index() %" PRIu64, log_store_->start_index());
         //ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
         //::exit(-1);
         return 0L;
@@ -978,7 +1554,8 @@ void raft_server::set_user_ctx(const std::string& ctx) {
     ptr<log_entry> entry = cs_new<log_entry>
                            ( state_->get_term(),
                              new_conf_buf,
-                             log_val_type::conf);
+                             log_val_type::conf,
+                             timer_helper::get_timeofday_us() );
     store_log_entry(entry);
     request_append_entries();
 }
@@ -1017,6 +1594,37 @@ void raft_server::get_srv_config_all
     for (auto& entry: servers) configs_out.push_back(entry);
 }
 
+raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
+    if (!is_leader()) return peer_info();
+
+    recur_lock(lock_);
+    auto entry = peers_.find(srv_id);
+    if (entry == peers_.end()) return peer_info();
+
+    peer_info ret;
+    ptr<peer> pp = entry->second;
+    ret.id_ = pp->get_id();
+    ret.last_log_idx_ = pp->get_last_accepted_log_idx();
+    ret.last_succ_resp_us_ = pp->get_resp_timer_us();
+    return ret;
+}
+
+std::vector<raft_server::peer_info> raft_server::get_peer_info_all() const {
+    std::vector<raft_server::peer_info> ret;
+    if (!is_leader()) return ret;
+
+    recur_lock(lock_);
+    for (auto entry: peers_) {
+        peer_info pi;
+        ptr<peer> pp = entry.second;
+        pi.id_ = pp->get_id();
+        pi.last_log_idx_ = pp->get_last_accepted_log_idx();
+        pi.last_succ_resp_us_ = pp->get_resp_timer_us();
+        ret.push_back(pi);
+    }
+    return ret;
+}
+
 ptr<cluster_config> raft_server::get_config() const {
     std::lock_guard<std::mutex> l(config_lock_);
     ptr<cluster_config> ret = config_;
@@ -1048,15 +1656,49 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
         log_store_->write_at(log_index, entry);
     }
 
-    // Force persistence of config_change logs to guarantee the durability of
-    // cluster membership change log entries.  Losing cluster membership log
-    // entries may lead to split brain.
-    if ( entry->get_val_type() == log_val_type::conf && !log_store_->flush() ) {
-        p_ft("log store flush failed");
-        ctx_->state_mgr_->system_exit(N21_log_flush_failed);
+    if ( entry->get_val_type() == log_val_type::conf ) {
+        // Force persistence of config_change logs to guarantee the durability of
+        // cluster membership change log entries.  Losing cluster membership log
+        // entries may lead to split brain.
+        if ( !log_store_->flush() ) {
+            // LCOV_EXCL_START
+            p_ft("log store flush failed");
+            ctx_->state_mgr_->system_exit(N21_log_flush_failed);
+            // LCOV_EXCL_STOP
+        }
+
+        if ( role_ == srv_role::leader ) {
+            // Need to progress precommit index for config.
+            try_update_precommit_index(log_index);
+        }
     }
 
     return log_index;
+}
+
+CbReturnCode raft_server::invoke_callback( cb_func::Type type,
+                                           cb_func::Param* param )
+{
+    CbReturnCode rc = ctx_->cb_func_.call(type, param);
+    return rc;
+}
+
+void raft_server::set_inc_term_func(srv_state::inc_term_func func) {
+    recur_lock(lock_);
+    if (!state_) return;
+    state_->set_inc_term_func(func);
+}
+
+raft_server::limits raft_server::get_raft_limits() {
+    return raft_limits_;
+}
+
+void raft_server::set_raft_limits(const raft_server::limits& new_limits) {
+    raft_limits_ = new_limits;
+}
+
+void raft_server::check_overall_status() {
+    check_leadership_transfer();
 }
 
 } // namespace nuraft;

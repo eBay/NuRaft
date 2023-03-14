@@ -36,27 +36,6 @@ namespace nuraft {
 class snapshot;
 class peer {
 public:
-    // Max number of warnings before suppressing it.
-    static const int32 WARNINGS_LIMIT   = 20;
-
-    // If a node is not responding more than this limit,
-    // we treat that node as dead.
-    static const int32 RESPONSE_LIMIT   = 20;
-
-    // If connection is silent longer than this limit
-    // (multiplied by heartbeat interval), temporarily
-    // reset busy flag to poke that connection.
-    static const int32 BUSY_FLAG_LIMIT  = 20;
-
-    // If connection is silent longer than this limit
-    // (multiplied by heartbeat interval), re-establish
-    // the connection.
-    static const int32 RECONNECT_LIMIT  = 50;
-
-    // If removed node is not responding more than this limit,
-    // just force remove it from server list.
-    static const int32 LEAVE_LIMIT      = 5;
-
     peer( ptr<srv_config>& config,
           const context& ctx,
           timer_task<int32>::executor& hb_exec,
@@ -69,6 +48,8 @@ public:
         , rpc_backoff_( ctx.get_params()->rpc_failure_backoff_ )
         , max_hb_interval_( ctx.get_params()->max_hb_interval() )
         , next_log_idx_(0)
+        , last_accepted_log_idx_(0)
+        , next_batch_size_hint_in_bytes_(0)
         , matched_idx_(0)
         , busy_flag_(false)
         , pending_commit_flag_(false)
@@ -93,6 +74,8 @@ public:
         , reconn_backoff_(0)
         , suppress_following_error_(false)
         , abandoned_(false)
+        , rsv_msg_(nullptr)
+        , rsv_msg_handler_(nullptr)
         , l_(logger)
     {
         reset_ls_timer();
@@ -169,6 +152,22 @@ public:
         next_log_idx_ = idx;
     }
 
+    uint64_t get_last_accepted_log_idx() const {
+        return last_accepted_log_idx_;
+    }
+
+    void set_last_accepted_log_idx(uint64_t to) {
+        last_accepted_log_idx_ = to;
+    }
+
+    int64 get_next_batch_size_hint_in_bytes() const {
+        return next_batch_size_hint_in_bytes_;
+    }
+
+    void set_next_batch_size_hint_in_bytes(int64 batch_size) {
+        next_batch_size_hint_in_bytes_ = batch_size;
+    }
+
     ulong get_matched_idx() const {
         return matched_idx_;
     }
@@ -186,16 +185,19 @@ public:
         return pending_commit_flag_.compare_exchange_strong(t, false);
     }
 
-    void set_snapshot_in_sync(const ptr<snapshot>& s) {
+    void set_snapshot_in_sync(const ptr<snapshot>& s,
+                              ulong timeout_ms = 10 * 1000) {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         if (s == nilptr) {
             snp_sync_ctx_.reset();
         }
         else {
-            snp_sync_ctx_ = cs_new<snapshot_sync_ctx>(s);
+            snp_sync_ctx_ = cs_new<snapshot_sync_ctx>(s, get_id(), timeout_ms);
         }
     }
 
     ptr<snapshot_sync_ctx> get_snapshot_sync_ctx() const {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         return snp_sync_ctx_;
     }
 
@@ -242,7 +244,7 @@ public:
     void set_manual_free()      { manual_free_ = true; }
     bool is_manual_free()       { return manual_free_; }
 
-    void recreate_rpc(ptr<srv_config>& config,
+    bool recreate_rpc(ptr<srv_config>& config,
                       context& ctx);
 
     void reset_rpc_errs()   { rpc_errs_ = 0; }
@@ -275,9 +277,13 @@ public:
     bool need_to_reconnect() {
         if (abandoned_) return false;
 
-        if (reconn_scheduled_ && reconn_timer_.timeout()) return true;
+        if (reconn_scheduled_ && reconn_timer_.timeout()) {
+            return true;
+        }
         {   std::lock_guard<std::mutex> l(rpc_protector_);
-            if (!rpc_.get()) return true;
+            if (!rpc_.get()) {
+                return true;
+            }
         }
         return false;
     }
@@ -288,6 +294,14 @@ public:
         return suppress_following_error_.compare_exchange_strong(exp, desired);
     }
 
+    void set_rsv_msg(const ptr<req_msg>& m, const rpc_handler& h) {
+        rsv_msg_ = m;
+        rsv_msg_handler_ = h;
+    }
+
+    ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
+    rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
+
 private:
     void handle_rpc_result(ptr<peer> myself,
                            ptr<rpc_client> my_rpc_client,
@@ -296,114 +310,207 @@ private:
                            ptr<resp_msg>& resp,
                            ptr<rpc_exception>& err);
 
-    // Information (config) of this server.
+    /**
+     * Information (config) of this server.
+     */
     ptr<srv_config> config_;
 
-    // Heartbeat scheduler for this server.
+    /**
+     * Heartbeat scheduler for this server.
+     */
     ptr<delayed_task_scheduler> scheduler_;
 
-    // RPC client to this server.
+    /**
+     * RPC client to this server.
+     */
     ptr<rpc_client> rpc_;
 
-    // Guard of `rpc_`.
+    /**
+     * Guard of `rpc_`.
+     */
     std::mutex rpc_protector_;
 
-    // Current heartbeat interval after adding back-off.
+    /**
+     * Current heartbeat interval after adding back-off.
+     */
     std::atomic<int32> current_hb_interval_;
 
-    // Original heartbeat interval.
+    /**
+     * Original heartbeat interval.
+     */
     int32 hb_interval_;
 
-    // RPC backoff.
+    /**
+     * RPC backoff.
+     */
     int32 rpc_backoff_;
 
-    // Upper limit of heartbeat interval.
+    /**
+     * Upper limit of heartbeat interval.
+     */
     int32 max_hb_interval_;
 
-    // Next log index of this server.
+    /**
+     * Next log index of this server.
+     */
     std::atomic<ulong> next_log_idx_;
 
-    // The last log index whose term matches up with the leader.
+    /**
+     * The last log index accepted by this server.
+     */
+    std::atomic<uint64_t> last_accepted_log_idx_;
+
+    /**
+     * Hint of the next log batch size in bytes.
+     */
+    std::atomic<int64> next_batch_size_hint_in_bytes_;
+
+    /**
+     * The last log index whose term matches up with the leader.
+     */
     ulong matched_idx_;
 
-    // `true` if we sent message to this server and waiting for
-    // the response.
+    /**
+     * `true` if we sent message to this server and waiting for
+     * the response.
+     */
     std::atomic<bool> busy_flag_;
 
-    // `true` if we need to send follow-up request immediately
-    // for commiting logs.
+    /**
+     * `true` if we need to send follow-up request immediately
+     * for commiting logs.
+     */
     std::atomic<bool> pending_commit_flag_;
 
-    // `true` if heartbeat is enabled.
+    /**
+     * `true` if heartbeat is enabled.
+     */
     bool hb_enabled_;
 
-    // Heartbeat task.
+    /**
+     * Heartbeat task.
+     */
     ptr<delayed_task> hb_task_;
 
-    // Snapshot context if snapshot transmission is in progress.
+    /**
+     * Snapshot context if snapshot transmission is in progress.
+     */
     ptr<snapshot_sync_ctx> snp_sync_ctx_;
 
-    // Lock for this peer.
+    /**
+     * Lock for `snp_sync_ctx_`.
+     */
+    mutable std::mutex snp_sync_ctx_lock_;
+
+    /**
+     * Lock for this peer.
+     */
     std::mutex lock_;
 
     // --- For tracking long pause ---
-    // Timestamp when the last request was sent.
+    /**
+     * Timestamp when the last request was sent.
+     */
     timer_helper last_sent_timer_;
 
-    // Timestamp when the last (successful) response was received.
+    /**
+     * Timestamp when the last (successful) response was received.
+     */
     timer_helper last_resp_timer_;
 
-    // Timestamp when the last active network activity was detected.
+    /**
+     * Timestamp when the last active network activity was detected.
+     */
     timer_helper last_active_timer_;
 
-    // Counter of long pause warnings.
+    /**
+     * Counter of long pause warnings.
+     */
     std::atomic<int32> long_pause_warnings_;
 
-    // Counter of recoveries after long pause.
+    /**
+     * Counter of recoveries after long pause.
+     */
     std::atomic<int32> network_recoveries_;
 
-    // `true` if user manually clear the `busy_flag_` before
-    // getting response from this server.
+    /**
+     * `true` if user manually clear the `busy_flag_` before
+     * getting response from this server.
+     */
     std::atomic<bool> manual_free_;
 
-    // For tracking RPC error.
+    /**
+     * For tracking RPC error.
+     */
     std::atomic<int32> rpc_errs_;
 
-    // Start log index of the last sent append entries request.
+    /**
+     * Start log index of the last sent append entries request.
+     */
     std::atomic<ulong> last_sent_idx_;
 
-    // Number of count where start log index is the same as previous.
+    /**
+     * Number of count where start log index is the same as previous.
+     */
     std::atomic<int32> cnt_not_applied_;
 
-    // True if leave request has been sent to this peer.
+    /**
+     * `true` if leave request has been sent to this peer.
+     */
     std::atomic<bool> leave_requested_;
 
-    // Number of HB timeout after leave requested.
+    /**
+     * Number of HB timeout after leave requested.
+     */
     std::atomic<int32> hb_cnt_since_leave_;
 
-    // True if this peer responded to leave request so that
-    // will be removed from cluster soon.
-    // To avoid HB timer trying to do something with this peer.
+    /**
+     * `true` if this peer responded to leave request so that
+     * will be removed from cluster soon.
+     * To avoid HB timer trying to do something with this peer.
+     */
     std::atomic<bool> stepping_down_;
 
-    // For re-connection.
+    /**
+     * For re-connection.
+     */
     std::atomic<bool> reconn_scheduled_;
 
-    // Back-off timer to avoid superfluous reconnection.
+    /**
+     * Back-off timer to avoid superfluous reconnection.
+     */
     timer_helper reconn_timer_;
 
-    // For exp backoff of reconnection.
+    /**
+     * For exp backoff of reconnection.
+     */
     timer_helper reconn_backoff_;
 
-    // If `true`, we will lower the log level of the RPC error
-    // from this server.
+    /**
+     * If `true`, we will lower the log level of the RPC error
+     * from this server.
+     */
     std::atomic<bool> suppress_following_error_;
 
-    // if `true`, this peer is removed and shut down.
-    // All operations on this peer should be rejected.
+    /**
+     * if `true`, this peer is removed and shut down.
+     * All operations on this peer should be rejected.
+     */
     std::atomic<bool> abandoned_;
 
-    // Logger instance.
+    /**
+     * Reserved message that should be sent next time.
+     */
+    ptr<req_msg> rsv_msg_;
+
+    /**
+     * Handler for reserved message.
+     */
+    rpc_handler rsv_msg_handler_;
+
+    /**
+     * Logger instance.
+     */
     ptr<logger> l_;
 };
 

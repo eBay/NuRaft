@@ -27,8 +27,11 @@ limitations under the License.
 #include "pp_util.hxx"
 #include "ptr.hxx"
 
+#include <unordered_map>
+
 namespace nuraft {
 
+class cluster_config;
 class snapshot;
 class state_machine {
     __interface_body__(state_machine);
@@ -70,6 +73,15 @@ public:
      */
     virtual ptr<buffer> commit_ext(const ext_op_params& params)
     {   return commit(params.log_idx, *params.data);    }
+
+    /**
+     * (Optional)
+     * Handler on the commit of a configuration change.
+     *
+     * @param log_idx Raft log number of the configuration change.
+     * @param new_conf New cluster configuration.
+     */
+    virtual void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) { }
 
     /**
      * Pre-commit the given Raft log.
@@ -117,6 +129,22 @@ public:
      */
     virtual void rollback_ext(const ext_op_params& params)
     {   rollback(params.log_idx, *params.data);  }
+
+    /**
+     * (Optional)
+     * Return a hint about the preferred size (in number of bytes)
+     * of the next batch of logs to be sent from the leader.
+     *
+     * Only applicable on followers.
+     *
+     * @return The preferred size of the next log batch.
+     *         `0` indicates no preferred size (any size is good).
+     *         `positive value` indicates at least one log can be sent,
+     *         (the size of that log may be bigger than this hint size).
+     *         `negative value` indicates no log should be sent since this
+     *         follower is busy handling pending logs.
+     */
+    virtual int64 get_next_batch_size_hint_in_bytes() { return 0; }
 
     /**
      * (Deprecated)
@@ -210,13 +238,17 @@ public:
      * @param obj_id Object ID to read.
      * @param[out] data Buffer where the read object will be stored.
      * @param[out] is_last_obj Set `true` if this is the last object.
-     * @return 0 if failed.
+     * @return Negative number if failed.
      */
     virtual int read_logical_snp_obj(snapshot& s,
                                      void*& user_snp_ctx,
                                      ulong obj_id,
                                      ptr<buffer>& data_out,
-                                     bool& is_last_obj) { return 0; }
+                                     bool& is_last_obj) {
+        data_out = buffer::alloc(4); // A dummy buffer.
+        is_last_obj = true;
+        return 0;
+    }
 
     /**
      * Free user-defined instance that is allocated by
@@ -271,6 +303,57 @@ public:
      *         `false` if does not want to create snapshot.
      */
     virtual bool chk_create_snapshot() { return true; }
+
+    /**
+     * Decide to transfer leadership.
+     * Once the other conditions are met, Raft core will invoke
+     * this function to ask if it is allowed to transfer the
+     * leadership to other member.
+     *
+     * @return `true` if wants to transfer leadership.
+     *         `false` if not.
+     */
+    virtual bool allow_leadership_transfer() { return true; }
+
+    /**
+     * Parameters for `adjust_commit_index` API.
+     */
+    struct adjust_commit_index_params {
+        adjust_commit_index_params()
+            : current_commit_index_(0)
+            , expected_commit_index_(0)
+            {}
+
+        /**
+         * The current committed index.
+         */
+        uint64_t current_commit_index_;
+
+        /**
+         * The new target commit index determined by Raft.
+         */
+        uint64_t expected_commit_index_;
+
+        /**
+         * A map of <peer ID, peer's log index>, including the
+         * leader and learners.
+         */
+        std::unordered_map<int, uint64_t> peer_index_map_;
+    };
+
+    /**
+     * This function will be called when Raft succeeds in replicating logs
+     * to an arbitrary follower and attempts to commit logs. Users can manually
+     * adjust the commit index. The adjusted commit index should be equal to
+     * or greater than the given `current_commit_index`. Otherwise, no log
+     * will be committed.
+     *
+     * @param params Parameters.
+     * @return Adjusted commit index.
+     */
+    virtual uint64_t adjust_commit_index(const adjust_commit_index_params& params) {
+        return params.expected_commit_index_;
+    }
 };
 
 }

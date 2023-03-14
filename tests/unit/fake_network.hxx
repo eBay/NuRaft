@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "nuraft.hxx"
 
+#include "raft_server_handler.hxx"
+
 #include <map>
 #include <unordered_map>
 
@@ -29,7 +31,8 @@ namespace nuraft {
 class FakeClient;
 class FakeNetworkBase;
 class FakeNetwork
-    : public rpc_client_factory
+    : public raft_server_handler
+    , public rpc_client_factory
     , public rpc_listener
     , public std::enable_shared_from_this<FakeNetwork>
 {
@@ -86,6 +89,12 @@ public:
 
     size_t getNumPendingResps(const std::string& endpoint);
 
+    void goesOffline() { online = false; }
+
+    void goesOnline() { online =  true; }
+
+    bool isOnline() const { return online; }
+
     void stop();
 
     void shutdown();
@@ -94,9 +103,13 @@ private:
     std::string myEndpoint;
     ptr<FakeNetworkBase> base;
     ptr<msg_handler> handler;
-    std::unordered_map< std::string, ptr<FakeClient> > clients;
+    // NOTE: We don't use `unordered_map` as the order of traversal
+    //       will be different according to platforms. We should make
+    //       the test deterministic.
+    std::map< std::string, ptr<FakeClient> > clients;
     std::mutex clientsLock;
     std::list< ptr<FakeClient> > staleClients;
+    bool online;
 };
 
 class FakeNetworkBase {
@@ -130,11 +143,18 @@ public:
 
     ~FakeClient();
 
-    void send(ptr<req_msg>& req, rpc_handler& when_done);
+    void send(ptr<req_msg>& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0);
 
     void dropPackets();
 
+    bool isDstOnline();
+
+    uint64_t get_id() const;
+
+    bool is_abandoned() const;
+
 private:
+    uint64_t myId;
     FakeNetwork* motherNet;
     FakeNetwork* dstNet;
     std::list<FakeNetwork::ReqPkg> pendingReqs;

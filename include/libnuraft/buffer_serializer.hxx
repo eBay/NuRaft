@@ -21,6 +21,7 @@ limitations under the License.
 #include "ptr.hxx"
 
 #include <cstdint>
+#include <string>
 
 namespace nuraft {
 
@@ -47,6 +48,13 @@ public:
      * @return Position of cursor.
      */
     inline size_t pos() const { return pos_; }
+
+    /**
+     * Get the size of given buffer.
+     *
+     * @return Size of buffer.
+     */
+    size_t size() const;
 
     /**
      * Set the position of cursor.

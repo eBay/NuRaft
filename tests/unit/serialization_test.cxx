@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "handle_custom_notification.hxx"
 #include "nuraft.hxx"
 #include "strfmt.hxx"
 
@@ -220,6 +221,47 @@ int log_entry_test() {
     return 0;
 }
 
+int custom_notification_msg_test(bool empty_context) {
+    custom_notification_msg orig_msg;
+    orig_msg.type_ = custom_notification_msg::out_of_log_range_warning;
+
+    const std::string MSG_STR = "test_message";
+    if (empty_context) {
+        orig_msg.ctx_ = nullptr;
+    } else {
+        ptr<buffer> ctx = buffer::alloc(sizeof(uint32_t) + MSG_STR.size());
+        buffer_serializer bs(ctx);
+        bs.put_str(MSG_STR);
+        orig_msg.ctx_ = ctx;
+    }
+
+    ptr<buffer> enc_msg = orig_msg.serialize();
+    ptr<custom_notification_msg> dec_msg =
+        custom_notification_msg::deserialize(*enc_msg);
+
+    CHK_EQ( orig_msg.type_ , dec_msg->type_ );
+    if (empty_context) {
+        CHK_NULL( dec_msg->ctx_.get() );
+    } else {
+        buffer_serializer bs(dec_msg->ctx_);
+        std::string result_str = bs.get_str();
+        CHK_EQ(MSG_STR, result_str);
+    }
+
+    return 0;
+}
+
+int out_of_log_msg_test() {
+    out_of_log_msg orig_msg;
+    orig_msg.start_idx_of_leader_ = 1234;
+
+    ptr<buffer> enc_msg = orig_msg.serialize();
+    ptr<out_of_log_msg> dec_msg = out_of_log_msg::deserialize(*enc_msg);
+
+    CHK_EQ( orig_msg.start_idx_of_leader_, dec_msg->start_idx_of_leader_ );
+    return 0;
+}
+
 }  // namespace serialization_test;
 using namespace serialization_test;
 
@@ -238,6 +280,10 @@ int main(int argc, char** argv) {
                snapshot_sync_req_zero_buffer_test,
                TestRange<bool>( {true, false} ) );
     ts.doTest( "log_entry test", log_entry_test );
+    ts.doTest( "custom_notification_msg test",
+               custom_notification_msg_test,
+               TestRange<bool>( {true, false} ) );
+    ts.doTest( "out_of_log_msg test", out_of_log_msg_test );
 
     return 0;
 }

@@ -17,11 +17,16 @@ limitations under the License.
 
 #pragma once
 
+#include "fix_format.hxx"
 #include "logger.hxx"
 
 #include <string>
 
 #include <stdarg.h>
+
+static inline std::string msg_if_given(const char* format, ...)
+    __attribute__((format(printf, 1, 2)));
+
 
 static inline std::string msg_if_given
                           ( const char* format,
@@ -29,6 +34,7 @@ static inline std::string msg_if_given
     if (format[0] == 0x0) {
         return "";
     } else {
+        _fix_format(format);
         size_t len = 0;
         char msg[2048];
         va_list args;

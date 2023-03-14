@@ -19,6 +19,7 @@ limitations under the License.
 **************************************************************************/
 
 #include "buffer.hxx"
+#include "stat_mgr.hxx"
 
 #include <cstring>
 #include <iostream>
@@ -73,29 +74,55 @@ limitations under the License.
 namespace nuraft {
 
 static void free_buffer(buffer* buf) {
+    static stat_elem& num_active = *stat_mgr::get_instance()->create_stat
+        (stat_elem::COUNTER, "num_active_buffers");
+    static stat_elem& amount_active = *stat_mgr::get_instance()->create_stat
+        (stat_elem::COUNTER, "amount_active_buffers");
+
+    num_active--;
+    amount_active -= buf->container_size();
+
     delete[] reinterpret_cast<char*>(buf);
 }
 
 ptr<buffer> buffer::alloc(const size_t size) {
+    static stat_elem& num_allocs = *stat_mgr::get_instance()->create_stat
+        (stat_elem::COUNTER, "num_buffer_allocs");
+    static stat_elem& amount_allocs = *stat_mgr::get_instance()->create_stat
+        (stat_elem::COUNTER, "amount_buffer_allocs");
+    static stat_elem& num_active = *stat_mgr::get_instance()->create_stat
+        (stat_elem::COUNTER, "num_active_buffers");
+    static stat_elem& amount_active = *stat_mgr::get_instance()->create_stat
+        (stat_elem::COUNTER, "amount_active_buffers");
+
     if (size >= 0x80000000) {
         throw std::out_of_range( "size exceed the max size that "
-                                 "cornrestone::buffer could support" );
+                                 "nuraft::buffer could support" );
     }
+    num_allocs++;
+    num_active++;
 
     if (size >= 0x8000) {
-        ptr<buffer> buf( reinterpret_cast<buffer*>
-                             ( new char[size + sizeof(uint) * 2] ),
+        size_t len = size + sizeof(uint) * 2;
+        ptr<buffer> buf( reinterpret_cast<buffer*>(new char[len]),
                          &free_buffer );
+        amount_allocs += len;
+        amount_active += len;
+
         any_ptr ptr = reinterpret_cast<any_ptr>( buf.get() );
         __init_b_block(ptr, size);
         return buf;
     }
 
-    ptr<buffer> buf( reinterpret_cast<buffer*>
-                         ( new char[size + sizeof(ushort) * 2] ),
+    size_t len = size + sizeof(ushort) * 2;
+    ptr<buffer> buf( reinterpret_cast<buffer*>(new char[len]),
                      &free_buffer );
+    amount_allocs += len;
+    amount_active += len;
+
     any_ptr ptr = reinterpret_cast<any_ptr>( buf.get() );
     __init_s_block(ptr, size);
+
     return buf;
 }
 
@@ -114,6 +141,24 @@ ptr<buffer> buffer::clone(const buffer& buf) {
     ::memcpy(dst, src, buf.size());
 
     other->pos(0);
+    return other;
+}
+
+ptr<buffer> buffer::expand(const buffer& buf, uint32_t new_size) {
+     if (new_size >= 0x80000000) {
+        throw std::out_of_range( "size exceed the max size that "
+                                 "nuraft::buffer could support" );
+    }
+
+    if (new_size < buf.size()) {
+        throw std::out_of_range( "realloc() new_size is less than "
+                                 "old size" );
+    }
+    ptr<buffer> other = alloc(new_size);
+    byte* dst = other->data_begin();
+    byte* src = buf.data_begin();
+    ::memcpy(dst, src, buf.size());
+    other->pos(buf.pos());
     return other;
 }
 

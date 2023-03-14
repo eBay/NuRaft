@@ -18,10 +18,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "internal_timer.hxx"
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "peer.hxx"
 #include "tracer.hxx"
 
@@ -58,6 +59,16 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
 
     // Clone current cluster config.
     ptr<cluster_config> cur_config = get_config();
+
+    // NOTE: Need to honor uncommitted config,
+    //       refer to comment in `sync_log_to_new_srv()`
+    if (uncommitted_config_) {
+        p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64,
+             uncommitted_config_->get_log_idx(),
+             uncommitted_config_->get_prev_log_idx());
+        cur_config = uncommitted_config_;
+    }
+
     ptr<buffer> enc_conf = cur_config->serialize();
     ptr<cluster_config> cloned_config = cluster_config::deserialize(*enc_conf);
 
@@ -78,7 +89,12 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
     ptr<log_entry> entry( cs_new<log_entry>
                           ( state_->get_term(),
                             new_conf_buf,
-                            log_val_type::conf ) );
+                            log_val_type::conf,
+                            timer_helper::get_timeofday_us() ) );
+
+    config_changing_ = true;
+    uncommitted_config_ = cloned_config;
+
     store_log_entry(entry);
     request_append_entries();
 }
@@ -123,7 +139,12 @@ void raft_server::broadcast_priority_change(const int srv_id,
         v.push_back(le);
 
         ptr<peer> pp = it->second;
-        pp->send_req(pp, req, resp_handler_);
+        if (pp->make_busy()) {
+            pp->send_req(pp, req, resp_handler_);
+        } else {
+            p_er("peer %d is currently busy, cannot send request",
+                 pp->get_id());
+        }
     }
 }
 
@@ -191,6 +212,10 @@ void raft_server::decay_target_priority() {
     target_priority_ = std::max(1, target_priority_ - gap);
     p_in("[PRIORITY] decay, target %d -> %d, mine %d",
          prev_priority, target_priority_, my_priority_);
+
+    // Once `target_priority_` becomes 1,
+    // `priority_change_timer_` starts ticking.
+    if (prev_priority > 1) priority_change_timer_.reset();
 }
 
 void raft_server::update_target_priority() {
@@ -207,6 +232,7 @@ void raft_server::update_target_priority() {
     } else {
         target_priority_ = srv_config::INIT_PRIORITY;
     }
+    priority_change_timer_.reset();
 
     hb_alive_ = true;
     pre_vote_.reset(state_->get_term());

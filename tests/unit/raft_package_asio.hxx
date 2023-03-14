@@ -15,6 +15,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "asio_service_options.hxx"
 #include "raft_functional_common.hxx"
 #include "internal_timer.hxx"
 
@@ -51,6 +52,8 @@ public:
         , readReqMeta(nullptr)
         , writeReqMeta(nullptr)
         , alwaysInvokeCb(true)
+        , useCustomResolver(false)
+        , useLogTimestamp(false)
         , myLogWrapper(nullptr)
         , myLog(nullptr)
         {}
@@ -79,7 +82,10 @@ public:
         return false;
     }
 
-    void initServer(bool enable_ssl = false) {
+    void initServer(bool enable_ssl = false,
+                    bool use_global_asio = false,
+                    bool use_bg_snapshot_io = true,
+                    const raft_server::init_options& opt = raft_server::init_options()) {
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
         myLogWrapper = cs_new<logger_wrapper>(log_file_name);
         myLog = myLogWrapper;
@@ -97,6 +103,23 @@ public:
             asio_opt.server_key_file_   = "./key.pem";
         }
 
+        if (useCustomResolver) {
+            asio_opt.custom_resolver_ =
+                []( const std::string& host,
+                    const std::string& port,
+                    asio_service_custom_resolver_response when_done ) {
+                    if (host.substr(0, 2) == "S1") {
+                        when_done("127.0.0.1", "20010", std::error_code());
+                    } else if (host.substr(0, 2) == "S2") {
+                        when_done("127.0.0.1", "20020", std::error_code());
+                    } else {
+                        when_done("127.0.0.1", "20030", std::error_code());
+                    }
+                };
+        }
+
+        asio_opt.replicate_log_timestamp_ = useLogTimestamp;
+
         if (readReqMeta) asio_opt.read_req_meta_ = readReqMeta;
         if (writeReqMeta) asio_opt.write_req_meta_ = writeReqMeta;
 
@@ -106,7 +129,9 @@ public:
         asio_opt.invoke_req_cb_on_empty_meta_ = alwaysInvokeCb;
         asio_opt.invoke_resp_cb_on_empty_meta_ = alwaysInvokeCb;
 
-        asioSvc = cs_new<asio_service>(asio_opt, myLog);
+        asioSvc = use_global_asio
+                  ? nuraft_global_mgr::init_asio_service(asio_opt, myLog)
+                  : cs_new<asio_service>(asio_opt, myLog);
 
         int raft_port = 20000 + myId * 10;
         ptr<rpc_listener> listener
@@ -121,9 +146,58 @@ public:
         params.with_reserved_log_items(10);
         params.with_snapshot_enabled(5);
         params.with_client_req_timeout(10000);
+        params.use_bg_thread_for_snapshot_io_ = use_bg_snapshot_io;
         context* ctx( new context( sMgr, sm, listener, myLog,
                                    rpc_cli_factory, scheduler, params ) );
-        raftServer = cs_new<raft_server>(ctx);
+        raftServer = cs_new<raft_server>(ctx, opt);
+
+        // Listen.
+        asioListener = listener;
+        asioListener->listen(raftServer);
+    }
+
+    /**
+     * Re-init Raft server without changing internal data including state machine.
+     */
+    void restartServer(
+            raft_params* custom_params = nullptr,
+            bool enable_ssl = false,
+            bool use_global_asio = false,
+            const raft_server::init_options& opt = raft_server::init_options()) {
+        asio_service::options asio_opt;
+        asio_opt.thread_pool_size_  = 4;
+        if (enable_ssl) {
+            asio_opt.enable_ssl_        = enable_ssl;
+            asio_opt.verify_sn_         = RaftAsioPkg::verifySn;
+            asio_opt.server_cert_file_  = "./cert.pem";
+            asio_opt.root_cert_file_    = "./cert.pem"; // self-signed.
+            asio_opt.server_key_file_   = "./key.pem";
+        }
+
+        asioSvc = use_global_asio
+                  ? nuraft_global_mgr::init_asio_service(asio_opt, myLog)
+                  : cs_new<asio_service>(asio_opt, myLog);
+
+        int raft_port = 20000 + myId * 10;
+        ptr<rpc_listener> listener
+                          ( asioSvc->create_rpc_listener(raft_port, myLog) );
+        ptr<delayed_task_scheduler> scheduler = asioSvc;
+        ptr<rpc_client_factory> rpc_cli_factory = asioSvc;
+
+        raft_params params;
+        if (custom_params) {
+            params = *custom_params;
+        } else {
+            params.with_hb_interval(HEARTBEAT_MS);
+            params.with_election_timeout_lower(HEARTBEAT_MS * 2);
+            params.with_election_timeout_upper(HEARTBEAT_MS * 4);
+            params.with_reserved_log_items(10);
+            params.with_snapshot_enabled(5);
+            params.with_client_req_timeout(10000);
+        }
+        context* ctx( new context( sMgr, sm, listener, myLog,
+                                   rpc_cli_factory, scheduler, params ) );
+        raftServer = cs_new<raft_server>(ctx, opt);
 
         // Listen.
         asioListener = listener;
@@ -178,6 +252,10 @@ public:
     WRITE_META_FUNC writeRespMeta;
 
     bool alwaysInvokeCb;
+
+    bool useCustomResolver;
+
+    bool useLogTimestamp;
 
     ptr<logger_wrapper> myLogWrapper;
     ptr<logger> myLog;

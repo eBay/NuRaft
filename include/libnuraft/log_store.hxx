@@ -67,6 +67,9 @@ public:
 
     /**
      * Overwrite a log entry at the given `index`.
+     * This API should make sure that all log entries
+     * after the given `index` should be truncated (if exist),
+     * as a result of this function call.
      *
      * @param index Log index number to overwrite.
      * @param entry New log entry to overwrite.
@@ -85,11 +88,36 @@ public:
     /**
      * Get log entries with index [start, end).
      *
+     * Return nullptr to indicate error if any log entry within the requested range
+     * could not be retrieved (e.g. due to external log truncation).
+     *
      * @param start The start log index number (inclusive).
      * @param end The end log index number (exclusive).
      * @return The log entries between [start, end).
      */
     virtual ptr<std::vector<ptr<log_entry>>> log_entries(ulong start, ulong end) = 0;
+
+    /**
+     * (Optional)
+     * Get log entries with index [start, end).
+     *
+     * The total size of the returned entries is limited by batch_size_hint.
+     *
+     * Return nullptr to indicate error if any log entry within the requested range
+     * could not be retrieved (e.g. due to external log truncation).
+     *
+     * @param start The start log index number (inclusive).
+     * @param end The end log index number (exclusive).
+     * @param batch_size_hint_in_bytes Total size (in bytes) of the returned entries,
+     *        see the detailed comment at
+     *        `state_machine::get_next_batch_size_hint_in_bytes()`.
+     * @return The log entries between [start, end) and limited by the total size
+     *         given by the batch_size_hint_in_bytes.
+     */
+    virtual ptr<std::vector<ptr<log_entry>>> log_entries_ext(
+            ulong start, ulong end, int64 batch_size_hint_in_bytes = 0) {
+        return log_entries(start, end);
+    }
 
     /**
      * Get the log entry at the specified log index number.
@@ -145,6 +173,15 @@ public:
      * @return `true` on success.
      */
     virtual bool flush() = 0;
+
+    /**
+     * (Experimental)
+     * This API is used only when `raft_params::parallel_log_appending_` flag is set.
+     * Please refer to the comment of the flag.
+     *
+     * @return The last durable log index.
+     */
+    virtual ulong last_durable_index() { return next_slot() - 1; }
 };
 
 }

@@ -1,13 +1,13 @@
 Asynchronous Replication
 ------------------------
 
-The original Raft's commit happens after reaching quorum, which means that network communication is always involved in users' operation path.
+The original Raft's commit happens after reaching the quorum, which means that network communication is always involved in users' operation paths.
 
-However, there are some loosened cases that we want to achieve low latency by sacrificing consistency and resolving conflicts manually. Then waiting for the acknowledges from a majority of servers is a waste of time.
+However, there are some loosened cases where we want to achieve low latency by sacrificing consistency and resolving conflicts manually. Then waiting for the acknowledgment from a majority of servers is a waste of time.
 
-To support such cases, we provide `async_replication_` flag in [`cluster_config`](../include/cluster_config.hxx). If that flag is set, `append_entries()` API immediately returns with the result of `state_machine::pre_commit()`, and replication is done in background later.
+To support such cases, we provide `async_replication_` flag in [`cluster_config`](../include/libnuraft/cluster_config.hxx). If that flag is set, `append_entries()` API immediately returns with the result of `state_machine::pre_commit()`, and replication is done in background later.
 
-Below diagram shows the overall flow. You can compare it with [original sequence](replication_flow.md):
+The below diagram shows the overall flow. You can compare it with [original sequence](replication_flow.md):
 ```
 User    Leader  Follower(s)
 |       |       |
@@ -29,11 +29,11 @@ X------>|       |   raft_server::append_entries()
 
 To enable asynchronous replication, `state_machine::pre_commit()` function should do the actual execution, instead of `state_machine::commit()`. In addition to that, you also should implement `state_machine::rollback()` correctly, to revert any changes done by `pre_commit()`.
 
-In synchronous replication mode, we provide another option: `async_handler` in [`raft_params`](../include/raft_params.hxx). Here are the differences between asynchronous replication mode and synchronous replication with `async_handler` mode:
+In synchronous replication mode, we provide another option: `async_handler` in [`raft_params`](../include/libnuraft/raft_params.hxx). Here are the differences between asynchronous replication mode and synchronous replication with `async_handler` mode:
 
 * Synchronous replication with `async_handler` mode:
-    * The actual execution in state machine happens after reaching consensus.
-    * Although `append_entries()` API returns immediately, the given data is not committed yet. The result of `commit()` will be set later, by invoking user-defined handler as a notification.
+    * The actual execution in the state machine happens after reaching consensus.
+    * Although `append_entries()` API returns immediately, the given data is not committed yet. The result of `commit()` will be set later by invoking a user-defined handler as a notification.
 * Asynchronous replication mode:
-    * The actual execution in state machine happens before replication.
-    * `append_entries()` API returns immediately, which already contains the result of state machine execution. There is no later notification.
+    * The actual execution in the state machine happens before replication.
+    * `append_entries()` API returns immediately, which already contains the result of state machine execution. Hence, there will be no later notification.

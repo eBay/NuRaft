@@ -25,11 +25,16 @@ limitations under the License.
 namespace nuraft {
 
 ptr<snapshot> snapshot::deserialize(buffer& buf) {
-    type snp_type = static_cast<type>(buf.get_byte());
-    ulong last_log_idx = buf.get_ulong();
-    ulong last_log_term = buf.get_ulong();
-    ulong size = buf.get_ulong();
-    ptr<cluster_config> conf(cluster_config::deserialize(buf));
+    buffer_serializer bs(buf);
+    return deserialize(bs);
+}
+
+ptr<snapshot> snapshot::deserialize(buffer_serializer& bs) {
+    type snp_type = static_cast<type>(bs.get_u8());
+    ulong last_log_idx = bs.get_u64();
+    ulong last_log_term = bs.get_u64();
+    ulong size = bs.get_u64();
+    ptr<cluster_config> conf( cluster_config::deserialize(bs) );
     return cs_new<snapshot>(last_log_idx, last_log_term, conf, size, snp_type);
 }
 

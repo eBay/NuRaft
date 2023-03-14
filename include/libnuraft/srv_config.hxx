@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "basic_types.hxx"
 #include "buffer.hxx"
+#include "buffer_serializer.hxx"
 #include "pp_util.hxx"
 #include "ptr.hxx"
 
@@ -62,6 +63,8 @@ public:
 public:
     static ptr<srv_config> deserialize(buffer& buf);
 
+    static ptr<srv_config> deserialize(buffer_serializer& bs);
+
     int32 get_id() const { return id_; }
 
     int32 get_dc_id() const { return dc_id_; }
@@ -79,27 +82,39 @@ public:
     ptr<buffer> serialize() const;
 
 private:
-    // ID of this server, should be positive number.
+    /**
+     * ID of this server, should be positive number.
+     */
     int32 id_;
 
-    // ID of datacenter where this server is located.
-    // 0 if not used.
+    /**
+     * ID of datacenter where this server is located.
+     * 0 if not used.
+     */
     int32 dc_id_;
 
-    // Endpoint (address + port).
+    /**
+     * Endpoint (address + port).
+     */
     std::string endpoint_;
 
-    // Custom string given by user.
-    // WARNING: It SHOULD NOT contain NULL character,
-    //          as it will be stored as a C-style string.
+    /**
+     * Custom string given by user.
+     * WARNING: It SHOULD NOT contain NULL character,
+     *          as it will be stored as a C-style string.
+     */
     std::string aux_;
 
-    // `true` if this node is learner.
-    // Learner will not initiate or participate in leader election.
+    /**
+     * `true` if this node is learner.
+     * Learner will not initiate or participate in leader election.
+     */
     bool learner_;
 
-    // Priority of this node.
-    // 0 will never be a leader.
+    /**
+     * Priority of this node.
+     * 0 will never be a leader.
+     */
     int32 priority_;
 };
 

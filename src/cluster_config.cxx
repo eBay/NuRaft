@@ -49,21 +49,25 @@ ptr<buffer> cluster_config::serialize() const {
 }
 
 ptr<cluster_config> cluster_config::deserialize(buffer& buf) {
-    ulong log_idx = buf.get_ulong();
+    buffer_serializer bs(buf);
+    return deserialize(bs);
+}
 
-    ulong prev_log_idx = buf.get_ulong();
+ptr<cluster_config> cluster_config::deserialize(buffer_serializer& bs) {
+    ulong log_idx = bs.get_u64();
+    ulong prev_log_idx = bs.get_u64();
 
-    byte ec_byte = buf.get_byte();
+    byte ec_byte = bs.get_u8();
     bool ec = ec_byte ? true : false;
 
     size_t ctx_len;
-    const byte* ctx_data = buf.get_bytes(ctx_len);
+    const byte* ctx_data = (const byte*)bs.get_bytes(ctx_len);
     std::string user_ctx = std::string((const char*)ctx_data, ctx_len);
 
-    int32 cnt = buf.get_int();
+    int32 cnt = bs.get_i32();
     ptr<cluster_config> conf = cs_new<cluster_config>(log_idx, prev_log_idx, ec);
     while (cnt -- > 0) {
-        conf->get_servers().push_back(srv_config::deserialize(buf));
+        conf->get_servers().push_back(srv_config::deserialize(bs));
     }
 
     conf->set_user_ctx(user_ctx);

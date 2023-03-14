@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "basic_types.hxx"
 #include "buffer.hxx"
+#include "buffer_serializer.hxx"
 #include "pp_util.hxx"
 #include "ptr.hxx"
 
@@ -83,6 +84,8 @@ public:
     }
 
     static ptr<snapshot> deserialize(buffer& buf);
+
+    static ptr<snapshot> deserialize(buffer_serializer& bs);
 
     ptr<buffer> serialize();
 

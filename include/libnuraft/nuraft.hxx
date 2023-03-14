@@ -31,6 +31,7 @@ limitations under the License.
 #include "delayed_task_scheduler.hxx"
 #include "delayed_task.hxx"
 #include "error_code.hxx"
+#include "global_mgr.hxx"
 #include "log_entry.hxx"
 #include "log_store.hxx"
 #include "logger.hxx"

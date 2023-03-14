@@ -32,9 +32,11 @@ using namespace nuraft;
 
 namespace calc_server {
 
-static const raft_params::return_method_type CALL_TYPE
+static raft_params::return_method_type CALL_TYPE
     = raft_params::blocking;
 //  = raft_params::async_handler;
+
+static bool ASYNC_SNAPSHOT_CREATION = false;
 
 #include "example_common.hxx"
 
@@ -132,14 +134,29 @@ void print_status(const std::string& cmd,
                   const std::vector<std::string>& tokens)
 {
     ptr<log_store> ls = stuff.smgr_->load_log_store();
+
     std::cout
         << "my server id: " << stuff.server_id_ << std::endl
         << "leader id: " << stuff.raft_instance_->get_leader() << std::endl
-        << "Raft log range: "
-            << ls->start_index()
-            << " - " << (ls->next_slot() - 1) << std::endl
+        << "Raft log range: ";
+    if (ls->start_index() >= ls->next_slot()) {
+        // Start index can be the same as next slot when the log store is empty.
+        std::cout << "(empty)" << std::endl;
+    } else {
+        std::cout << ls->start_index()
+                  << " - " << (ls->next_slot() - 1) << std::endl;
+    }
+    std::cout
         << "last committed index: "
             << stuff.raft_instance_->get_committed_log_idx() << std::endl
+        << "current term: "
+            << stuff.raft_instance_->get_term() << std::endl
+        << "last snapshot log index: "
+            << (stuff.sm_->last_snapshot()
+                ? stuff.sm_->last_snapshot()->get_last_log_idx() : 0) << std::endl
+        << "last snapshot log term: "
+            << (stuff.sm_->last_snapshot()
+                ? stuff.sm_->last_snapshot()->get_last_log_term() : 0) << std::endl
         << "state machine value: "
             << get_sm()->get_current_value() << std::endl;
 }
@@ -171,6 +188,7 @@ bool do_cmd(const std::vector<std::string>& tokens) {
 
     if (cmd == "q" || cmd == "exit") {
         stuff.launcher_.shutdown(5);
+        stuff.reset();
         return false;
 
     } else if ( cmd[0] == '+' ||
@@ -196,19 +214,50 @@ bool do_cmd(const std::vector<std::string>& tokens) {
     return true;
 }
 
+void check_additional_flags(int argc, char** argv) {
+    for (int ii = 1; ii < argc; ++ii) {
+        if (strcmp(argv[ii], "--async-handler") == 0) {
+            CALL_TYPE = raft_params::async_handler;
+        } else if (strcmp(argv[ii], "--async-snapshot-creation") == 0) {
+            ASYNC_SNAPSHOT_CREATION = true;
+        }
+    }
+}
+
+void calc_usage(int argc, char** argv) {
+    std::stringstream ss;
+    ss << "Usage: \n";
+    ss << "    " << argv[0] << " <server id> <IP address and port> [<options>]";
+    ss << std::endl << std::endl;
+    ss << "    options:" << std::endl;
+    ss << "      --async-handler: use async type handler." << std::endl;
+    ss << "      --async-snapshot-creation: create snapshots asynchronously."
+       << std::endl << std::endl;
+
+    std::cout << ss.str();
+    exit(0);
+}
+
 }; // namespace calc_server;
 using namespace calc_server;
 
 int main(int argc, char** argv) {
-    if (argc < 3) usage(argc, argv);
+    if (argc < 3) calc_usage(argc, argv);
 
     set_server_info(argc, argv);
+    check_additional_flags(argc, argv);
 
     std::cout << "    -- Replicated Calculator with Raft --" << std::endl;
     std::cout << "                         Version 0.1.0" << std::endl;
     std::cout << "    Server ID:    " << stuff.server_id_ << std::endl;
     std::cout << "    Endpoint:     " << stuff.endpoint_ << std::endl;
-    init_raft( cs_new<calc_state_machine>() );
+    if (CALL_TYPE == raft_params::async_handler) {
+        std::cout << "    async handler is enabled" << std::endl;
+    }
+    if (ASYNC_SNAPSHOT_CREATION) {
+        std::cout << "    snapshots are created asynchronously" << std::endl;
+    }
+    init_raft( cs_new<calc_state_machine>(ASYNC_SNAPSHOT_CREATION) );
     loop();
 
     return 0;

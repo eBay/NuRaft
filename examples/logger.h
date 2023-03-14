@@ -1,10 +1,10 @@
 /************************************************************************
-Modifications Copyright 2017-2019 eBay Inc.
+Modifications Copyright 2017-present eBay Inc.
 Author/Developer(s): Jung-Sang Ahn
 
 Original Copyright 2017 Jung-Sang Ahn
 See URL: https://github.com/greensky00/simple_logger
-         (v0.3.21)
+         (v0.3.28)
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ limitations under the License.
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <fstream>
 #include <list>
@@ -79,6 +80,55 @@ limitations under the License.
 #define _s_trace(l) _stream_(SimpleLogger::TRACE,   l)
 
 
+// Do printf style log, but print logs in `lv1` level during normal time,
+// once in given `interval_ms` interval, print a log in `lv2` level.
+// The very first log will be printed in `lv2` level.
+//
+// This function is global throughout the process, so that
+// multiple threads will share the interval.
+#define _timed_log_g(l, interval_ms, lv1, lv2, ...)                     \
+{                                                                       \
+    _timed_log_definition(static);                                      \
+    _timed_log_body(l, interval_ms, lv1, lv2, __VA_ARGS__);             \
+}
+
+// Same as `_timed_log_g` but per-thread level.
+#define _timed_log_t(l, interval_ms, lv1, lv2, ...)                     \
+{                                                                       \
+    _timed_log_definition(thread_local);                                \
+    _timed_log_body(l, interval_ms, lv1, lv2, __VA_ARGS__);             \
+}
+
+#define _timed_log_definition(prefix)                                   \
+    prefix std::mutex timer_lock;                                       \
+    prefix bool first_event_fired = false;                              \
+    prefix std::chrono::system_clock::time_point last_timeout =         \
+        std::chrono::system_clock::now();                               \
+
+#define _timed_log_body(l, interval_ms, lv1, lv2, ...)                  \
+    std::chrono::system_clock::time_point cur =                         \
+        std::chrono::system_clock::now();                               \
+    bool timeout = false;                                               \
+    {   std::lock_guard<std::mutex> l(timer_lock);                      \
+        std::chrono::duration<double> elapsed = cur - last_timeout;     \
+        if ( elapsed.count() * 1000 > interval_ms ||                    \
+             !first_event_fired ) {                                     \
+            cur = std::chrono::system_clock::now();                     \
+            elapsed = cur - last_timeout;                               \
+            if ( elapsed.count() * 1000 > interval_ms ||                \
+                 !first_event_fired ) {                                 \
+                timeout = first_event_fired = true;                     \
+                last_timeout = cur;                                     \
+            }                                                           \
+        }                                                               \
+    }                                                                   \
+    if (timeout) {                                                      \
+        _log_(lv2, l, __VA_ARGS__);                                     \
+    } else {                                                            \
+        _log_(lv1, l, __VA_ARGS__);                                     \
+    }
+
+
 class SimpleLoggerMgr;
 class SimpleLogger {
     friend class SimpleLoggerMgr;
@@ -94,6 +144,7 @@ public:
         INFO        = 4,
         DEBUG       = 5,
         TRACE       = 6,
+        UNKNOWN     = 99,
     };
 
     class LoggerStream : public std::ostream {
@@ -187,10 +238,6 @@ private:
         int write(size_t _len, char* msg);
         int flush(std::ofstream& fs);
 
-#ifdef SUPPRESS_TSAN_FALSE_ALARMS
-        // To avoid false alarm by TSan.
-        std::mutex ctxLock;
-#endif
         size_t len;
         char ctx[MSG_SIZE];
         std::atomic<Status> status;
@@ -222,6 +269,7 @@ public:
 
     void setLogLevel(int level);
     void setDispLevel(int level);
+    void setMaxLogFiles(size_t max_log_files);
 
     inline int getLogLevel()  const { return curLogLevel.load(MOR); }
     inline int getDispLevel() const { return curDispLevel.load(MOR); }
@@ -250,7 +298,7 @@ private:
     std::string filePath;
     size_t minRevnum;
     size_t curRevnum;
-    size_t maxLogFiles;
+    std::atomic<size_t> maxLogFiles;
     std::ofstream fs;
 
     uint64_t maxLogFileSize;
@@ -432,4 +480,3 @@ private:
     // Assume that only one thread is updating this.
     std::vector<RawStackInfo> crashDumpThreadStacks;
 };
-

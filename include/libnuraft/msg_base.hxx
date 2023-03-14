@@ -22,6 +22,7 @@ limitations under the License.
 #define _MSG_BASE_HXX_
 
 #include "basic_types.hxx"
+#include "msg_type.hxx"
 #include "pp_util.hxx"
 
 namespace nuraft {

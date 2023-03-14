@@ -24,8 +24,9 @@ limitations under the License.
 namespace nuraft {
 
 struct timer_helper {
-    timer_helper(size_t duration_us = 0)
+    timer_helper(size_t duration_us = 0, bool fire_first_event = false)
         : duration_us_(duration_us)
+        , first_event_fired_(!fire_first_event)
     {
         reset();
     }
@@ -48,10 +49,12 @@ struct timer_helper {
     }
 
     size_t get_duration_us() const {
+        std::lock_guard<std::mutex> l(lock_);
         return duration_us_;
     }
 
     void set_duration_us(size_t us) {
+        std::lock_guard<std::mutex> l(lock_);
         duration_us_ = us;
     }
 
@@ -85,13 +88,48 @@ struct timer_helper {
     }
 
     bool timeout() {
-        if (get_us() >= duration_us_) return true;
+        auto cur = std::chrono::system_clock::now();
+
+        std::lock_guard<std::mutex> l(lock_);
+        if (!first_event_fired_) {
+            // First event, return `true` immediately.
+            first_event_fired_ = true;
+            return true;
+        }
+
+        std::chrono::duration<double> elapsed = cur - t_created_;
+        return (duration_us_ < elapsed.count() * 1000000);
+    }
+
+    bool timeout_and_reset() {
+        auto cur = std::chrono::system_clock::now();
+
+        std::lock_guard<std::mutex> l(lock_);
+        if (!first_event_fired_) {
+            // First event, return `true` immediately.
+            first_event_fired_ = true;
+            return true;
+        }
+
+        std::chrono::duration<double> elapsed = cur - t_created_;
+        if (duration_us_ < elapsed.count() * 1000000) {
+            t_created_ = cur;
+            return true;
+        }
         return false;
+    }
+
+    static uint64_t get_timeofday_us() {
+        namespace sc = std::chrono;
+        sc::system_clock::duration const d = sc::system_clock::now().time_since_epoch();
+        uint64_t const s = sc::duration_cast<sc::microseconds>(d).count();
+        return s;
     }
 
     std::chrono::time_point<std::chrono::system_clock> t_created_;
     size_t duration_us_;
-    std::mutex lock_;
+    mutable bool first_event_fired_;
+    mutable std::mutex lock_;
 };
 
 }
