@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "async.hxx"
 #include "buffer.hxx"
+#include "msg_base.hxx"
 
 namespace nuraft {
 
