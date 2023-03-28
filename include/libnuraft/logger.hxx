@@ -21,6 +21,10 @@ limitations under the License.
 #ifndef _LOGGER_HXX_
 #define _LOGGER_HXX_
 
+#include "pp_util.hxx"
+
+#include <string>
+
 namespace nuraft {
 
 class logger {
