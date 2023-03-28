@@ -29,9 +29,13 @@ static inline std::string msg_if_given
                           ( _Printf_format_string_ const char* format,
                             ... ) {
 #else
+static inline std::string msg_if_given(const char* format, ...)
+    __attribute__((format(printf, 1, 2)));
+
+
 static inline std::string msg_if_given
                           ( const char* format,
-                            ... ) __attribute__((format(printf, 1, 2))) {
+                            ... ) {
 #endif
     if (format[0] == 0x0) {
         return "";
