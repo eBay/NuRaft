@@ -256,9 +256,9 @@ std::string test_write_req_meta( std::atomic<size_t>* count,
     std::lock_guard<std::mutex> l(lock);
 
     char key[256];
-    sprintf(key, "%2d, %2d -> %2d, %4zu",
-            params.msg_type_, params.src_id_, params.dst_id_,
-            (size_t)params.log_idx_);
+    snprintf(key, 256, "%2d, %2d -> %2d, %4zu",
+             params.msg_type_, params.src_id_, params.dst_id_,
+             (size_t)params.log_idx_);
 
     std::string value = "req_" + std::to_string( std::rand() );
     {   std::lock_guard<std::mutex> l(req_map_lock);
@@ -282,9 +282,9 @@ bool test_read_req_meta( std::atomic<size_t>* count,
     std::lock_guard<std::mutex> l(lock);
 
     char key[256];
-    sprintf(key, "%2d, %2d -> %2d, %4zu",
-            params.msg_type_, params.src_id_, params.dst_id_,
-            (size_t)params.log_idx_);
+    snprintf(key, 256, "%2d, %2d -> %2d, %4zu",
+             params.msg_type_, params.src_id_, params.dst_id_,
+             (size_t)params.log_idx_);
 
     if (dbg_print_ctx) {
         _msg("%10s %s %20s\n", "read req", key, meta.c_str());
@@ -309,9 +309,9 @@ std::string test_write_resp_meta( std::atomic<size_t>* count,
     std::lock_guard<std::mutex> l(lock);
 
     char key[256];
-    sprintf(key, "%2d, %2d -> %2d, %4zu",
-            params.msg_type_, params.src_id_, params.dst_id_,
-            (size_t)params.log_idx_);
+    snprintf(key, 256, "%2d, %2d -> %2d, %4zu",
+             params.msg_type_, params.src_id_, params.dst_id_,
+             (size_t)params.log_idx_);
 
     std::string value = "resp_" + std::to_string( std::rand() );
     {   std::lock_guard<std::mutex> l(resp_map_lock);
@@ -334,9 +334,9 @@ bool test_read_resp_meta( std::atomic<size_t>* count,
     std::lock_guard<std::mutex> l(lock);
 
     char key[256];
-    sprintf(key, "%2d, %2d -> %2d, %4zu",
-            params.msg_type_, params.src_id_, params.dst_id_,
-            (size_t)params.log_idx_);
+    snprintf(key, 256, "%2d, %2d -> %2d, %4zu",
+             params.msg_type_, params.src_id_, params.dst_id_,
+             (size_t)params.log_idx_);
 
     if (dbg_print_ctx) {
         _msg("%10s %s %20s\n", "read resp", key, meta.c_str());
