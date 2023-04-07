@@ -21,6 +21,9 @@ limitations under the License.
 #include <string>
 #include <system_error>
 
+
+typedef struct ssl_ctx_st SSL_CTX;
+
 namespace nuraft {
 
 /**
@@ -169,6 +172,20 @@ struct asio_service_options {
      * If not given, subject name will not be verified.
      */
     std::function< bool(const std::string&) > verify_sn_;
+
+    /**
+     * Callback function that provides pre-configured SSL_CTX.
+     * Asio takes ownership of the provided object
+     * and disposes it later with SSL_CTX_free.
+     *
+     * No configuration changes are applied to the provided context,
+     * so callback must return properly configured and operational SSL_CTX.
+     *
+     * Note that it might be unsafe to share SSL_CTX with other threads,
+     * consult with your OpenSSL library documentation/guidelines.
+     */
+    std::function<SSL_CTX* (void)> ssl_context_provider_server_;
+    std::function<SSL_CTX* (void)> ssl_context_provider_client_;
 
     /**
      * Custom IP address resolver. If given, it will be invoked
