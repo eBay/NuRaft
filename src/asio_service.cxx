@@ -1625,12 +1625,23 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     }
 }
 
+namespace {
+
+ssl_context get_or_create_ssl_context(auto ctx_provider_func, ssl_context::method method) {
+    if (ctx_provider_func)
+        return ssl_context(ctx_provider_func());
+    else
+        return ssl_context(method);
+}
+
+}
+
 asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                                      ptr<logger> l)
     : io_svc_()
 #if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
-    , ssl_server_ctx_(ssl_context::tlsv12_server)
-    , ssl_client_ctx_(ssl_context::tlsv12_client)
+    , ssl_server_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_server_, ssl_context::tlsv12_server))
+    , ssl_client_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_client_, ssl_context::tlsv12_client))
 #else
     , ssl_server_ctx_(ssl_context::sslv23)  // Any version
     , ssl_client_ctx_(ssl_context::sslv23)
@@ -1651,27 +1662,33 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
 #ifdef SSL_LIBRARY_NOT_FOUND
         assert(0); // Should not reach here.
 #else
-        // For server (listener)
-        ssl_server_ctx_.set_options( ssl_context::default_workarounds |
-                                     ssl_context::no_sslv2 |
-                                     ssl_context::single_dh_use );
-        ssl_server_ctx_.set_password_callback
-                        ( std::bind( &asio_service_impl::get_password,
-                                     this,
-                                     std::placeholders::_1,
-                                     std::placeholders::_2 ) );
-        ssl_server_ctx_.use_certificate_chain_file
-                        ( _opt.server_cert_file_ );
-        ssl_server_ctx_.use_private_key_file( _opt.server_key_file_,
-                                              ssl_context::pem );
-
-        if (!_opt.root_cert_file_.empty()) {
-            // For client
-            ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+        // We assume that provider gives properly configured context
+        if (!_opt.ssl_context_provider_server_) {
+            // For server (listener)
+            ssl_server_ctx_.set_options( ssl_context::default_workarounds |
+                                         ssl_context::no_sslv2 |
+                                         ssl_context::single_dh_use );
+            ssl_server_ctx_.set_password_callback
+                            ( std::bind( &asio_service_impl::get_password,
+                                         this,
+                                         std::placeholders::_1,
+                                         std::placeholders::_2 ) );
+            ssl_server_ctx_.use_certificate_chain_file
+                            ( _opt.server_cert_file_ );
+            ssl_server_ctx_.use_private_key_file( _opt.server_key_file_,
+                                                  ssl_context::pem );
         }
 
-        if (_opt.load_default_ca_file_) {
-            ssl_client_ctx_.set_default_verify_paths();
+        // We assume that provider gives properly configured context
+        if (!_opt.ssl_context_provider_client_) {
+            if (!_opt.root_cert_file_.empty()) {
+                // For client
+                ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+            }
+
+            if (_opt.load_default_ca_file_) {
+                ssl_client_ctx_.set_default_verify_paths();
+            }
         }
 #endif
     }

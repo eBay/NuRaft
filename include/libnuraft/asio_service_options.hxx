@@ -21,6 +21,9 @@ limitations under the License.
 #include <string>
 #include <system_error>
 
+
+typedef struct ssl_ctx_st SSL_CTX;
+
 namespace nuraft {
 
 /**
@@ -172,6 +175,10 @@ struct asio_service_options {
     // If true will try to load CA from default path
     // call (SSL_CTX_set_default_verify_paths)
     bool load_default_ca_file_;
+
+    // If set, will use SSL_CTX povided by callback
+    std::function<SSL_CTX* (void)> ssl_context_provider_server_;
+    std::function<SSL_CTX* (void)> ssl_context_provider_client_;
 
     /**
      * Custom IP address resolver. If given, it will be invoked
