@@ -14,6 +14,13 @@ env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Debug
 
+permissions:
+  # Setting token permissions to read-only follows the principle of least privilege. This 
+  # is important because attackers may use a compromised token with write access to push 
+  # malicious code into the project.
+  # See https://github.com/ossf/scorecard/blob/e42af756609b2cde6d757fd45ea05ddf0016ff62/docs/checks.md#token-permissions
+  contents: read
+
 jobs:
   build:
     # The CMake configure and build commands are platform agnostic and should work equally
@@ -24,16 +31,21 @@ jobs:
     timeout-minutes: 30
 
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # pin@v2
 
-    - name: Dependency Install
-      shell: bash
-      # Some projects don't allow in-source building, so create a separate build directory
-      # We'll use this as our working directory for all subsequent commands
-      run: sudo apt update; sudo apt install -y openssl libssl-dev lcov; ./prepare.sh
+      - name: Dependency Install
+        shell: bash
+        # Some projects don't allow in-source building, so create a separate build directory
+        # We'll use this as our working directory for all subsequent commands
+        run: sudo apt update; sudo apt install -y openssl libssl-dev lcov; ./prepare.sh
 
-    - name: Build and Test
-      shell: bash
-      # Execute tests defined by the CMake configuration.  
-      # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
-      run: ./github_action_build.sh
+      - name: Build and Test
+        shell: bash
+        # Execute tests defined by the CMake configuration.  
+        # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
+        run: ./github_action_build.sh
+
+      - name: Code Coverage Metrics
+        uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # pin@v3
+        with:
+          verbose: true
