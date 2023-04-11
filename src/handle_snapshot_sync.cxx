@@ -454,6 +454,12 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
 }
 
 bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
+ const auto handle_install_failure = [&]
+ {
+    ctx_->state_mgr_->system_exit(raft_err::N13_snapshot_install_failed);
+    ::exit(-1);
+ };
+
  try {
     // if offset == 0, it is the first object.
     bool is_first_obj = (req.get_offset()) ? false : true;
@@ -597,11 +603,16 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
         }
     }
 
+ } catch (const std::exception & e) {
+    // LCOV_EXCL_START
+    p_er("failed to handle snapshot installation due to error: %s", e.what());
+    handle_install_failure();
+    return false;
+    // LCOV_EXCL_STOP
  } catch (...) {
     // LCOV_EXCL_START
     p_er("failed to handle snapshot installation due to system errors");
-    ctx_->state_mgr_->system_exit(raft_err::N13_snapshot_install_failed);
-    ::exit(-1);
+    handle_install_failure();
     return false;
     // LCOV_EXCL_STOP
  }
