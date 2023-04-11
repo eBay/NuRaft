@@ -23,7 +23,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "context.hxx"
 #include "error_code.hxx"
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
@@ -107,6 +107,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                                                 std::placeholders::_2 ) )
     , last_snapshot_(ctx->state_machine_->last_snapshot())
     , ea_follower_log_append_(new EventAwaiter())
+    , test_mode_flag_(opt.test_mode_flag_)
 {
     char temp_buf[4096];
     std::string print_msg;
@@ -136,7 +137,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                                     params->snapshot_distance_ - 1 ) );
 
         first_snapshot_distance_ = distribution(engine);
-        p_in("First snapshot creation log distance %llu", first_snapshot_distance_);
+        p_in("First snapshot creation log distance %u", first_snapshot_distance_);
     }
 
     apply_and_log_current_params();
@@ -204,7 +205,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
         ptr<log_entry> entry(log_store_->entry_at(i));
         if (entry->get_val_type() == log_val_type::conf) {
             p_in( "detect a configuration change "
-                  "that is not committed yet at index %llu", i );
+                  "that is not committed yet at index %" PRIu64 "", i );
             config_changing_ = true;
             break;
         }
@@ -261,7 +262,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     print_msg += temp_buf;
     sprintf(temp_buf, "num peers: %d\n", (int)peers_.size());
     print_msg += temp_buf;
-    p_in(print_msg.c_str());
+    p_in("%s", print_msg.c_str());
 
     if (opt.start_server_in_constructor_) {
         start_server(opt.skip_initial_election_timeout_);
@@ -372,6 +373,22 @@ void raft_server::update_params(const raft_params& new_params) {
 
 void raft_server::apply_and_log_current_params() {
     ptr<raft_params> params = ctx_->get_params();
+
+    if (!test_mode_flag_) {
+        if (params->heart_beat_interval_ >= params->election_timeout_lower_bound_) {
+            params->election_timeout_lower_bound_ = params->heart_beat_interval_ * 2;
+            p_wn("invalid election timeout lower bound detected, adjusted to %d",
+                 params->election_timeout_lower_bound_);
+        }
+        if (params->election_timeout_lower_bound_
+            >= params->election_timeout_upper_bound_) {
+            params->election_timeout_upper_bound_ =
+                params->election_timeout_lower_bound_ * 2;
+            p_wn("invalid election timeout upper bound detected, adjusted to %d",
+                 params->election_timeout_upper_bound_);
+        }
+    }
+
     p_in( "parameters: "
           "election timeout range %d - %d, heartbeat %d, "
           "leadership expiry %d, "
@@ -642,8 +659,8 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
         return nullptr;
     }
 
-    p_db( "Receive a %s message from %d with LastLogIndex=%llu, "
-          "LastLogTerm=%llu, EntriesLength=%d, CommitIndex=%llu and Term=%llu",
+    p_db( "Receive a %s message from %d with LastLogIndex=%" PRIu64 ", "
+          "LastLogTerm %" PRIu64 ", EntriesLength=%zu, CommitIndex=%" PRIu64 " and Term=%" PRIu64 "",
           msg_type_to_string(req.get_type()).c_str(),
           req.get_src(),
           req.get_last_log_idx(),
@@ -719,7 +736,7 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
 
     if (resp) {
         p_db( "Response back a %s message to %d with Accepted=%d, "
-              "Term=%llu, NextIndex=%llu",
+              "Term=%" PRIu64 ", NextIndex=%" PRIu64 "",
               msg_type_to_string(resp->get_type()).c_str(),
               resp->get_dst(),
               resp->get_accepted() ? 1 : 0,
@@ -801,7 +818,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
     }
 
     p_db( "Receive a %s message from peer %d with "
-          "Result=%d, Term=%llu, NextIndex=%llu",
+          "Result=%d, Term=%" PRIu64 ", NextIndex=%" PRIu64 "",
           msg_type_to_string(resp->get_type()).c_str(),
           resp->get_src(),
           resp->get_accepted() ? 1 : 0,
@@ -980,8 +997,8 @@ void raft_server::become_leader() {
             (params->leadership_transfer_min_wait_time_);
         leadership_transfer_timer_.reset();
         precommit_index_ = log_store_->next_slot() - 1;
-        p_in("state machine commit index %zu, "
-             "precommit index %zu, last log index %zu",
+        p_in("state machine commit index %" PRIu64 ", "
+             "precommit index %" PRIu64 ", last log index %" PRIu64,
              sm_commit_index_.load(),
              precommit_index_.load(),
              log_store_->next_slot() - 1);
@@ -1009,13 +1026,13 @@ void raft_server::become_leader() {
 
             if (last_config->get_log_idx() > ii)
             {
-                p_wn("Currently assigned config is newer than some "
+                p_in("Currently assigned config is newer than some "
                      "uncomitted config. This can only happen during startup or "
                      "force recovery. If that is not the case, this is a bug.");
                 break;
             }
 
-            p_in("found uncommitted config at %zu, size %zu",
+            p_in("found uncommitted config at %" PRIu64 ", size %zu",
                  ii, le->get_buf().size());
             last_config = cluster_config::deserialize(le->get_buf());
         }
@@ -1031,7 +1048,7 @@ void raft_server::become_leader() {
                 conf_buf,
                 log_val_type::conf,
                 timer_helper::get_timeofday_us() ) );
-        p_in("[BECOME LEADER] appended new config at %zu\n", log_store_->next_slot());
+        p_in("[BECOME LEADER] appended new config at %" PRIu64, log_store_->next_slot());
         store_log_entry(entry);
         config_changing_ = true;
     }
@@ -1155,7 +1172,7 @@ void raft_server::check_leadership_transfer() {
 
     p_in( "going to transfer leadership to %d, "
           "my priority %d, max priority %d, "
-          "has been leader for %zu sec",
+          "has been leader for %" PRIu64 " sec",
           successor_id, my_priority_, max_priority,
           leadership_transfer_timer_.get_sec() );
     yield_leadership(false, successor_id);
@@ -1241,7 +1258,7 @@ void raft_server::yield_leadership(bool immediate_yield,
 
     if (candidate_id > -1) {
         p_in("next leader candidate: id %d endpoint %s priority %d "
-             "last response %zu ms ago",
+             "last response %" PRIu64 " ms ago",
              candidate_id, candidate_endpoint.c_str(), max_priority,
              last_resp_ms);
         next_leader_candidate_ = candidate_id;;
@@ -1304,7 +1321,7 @@ bool raft_server::request_leadership() {
 
 void raft_server::become_follower() {
     // stop hb for all peers
-    p_in("[BECOME FOLLOWER] term %lu", state_->get_term());
+    p_in("[BECOME FOLLOWER] term %" PRIu64 "", state_->get_term());
     {   std::lock_guard<std::mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
@@ -1409,7 +1426,7 @@ void raft_server::handle_ext_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err) 
     p_db("type: %d, err %p\n", (int)resp->get_type(), err.get());
 
     p_db( "Receive an extended %s message from peer %d with Result=%d, "
-          "Term=%llu, NextIndex=%llu",
+          "Term=%" PRIu64 ", NextIndex=%" PRIu64 "",
           msg_type_to_string(resp->get_type()).c_str(),
           resp->get_src(),
           resp->get_accepted() ? 1 : 0,
@@ -1520,13 +1537,13 @@ ulong raft_server::term_for_log(ulong log_idx) {
 
     ptr<snapshot> last_snapshot(state_machine_->last_snapshot());
     if ( !last_snapshot || log_idx != last_snapshot->get_last_log_idx() ) {
-        p_er("bad log_idx %llu for retrieving the term value, "
+        p_er("bad log_idx %" PRIu64 " for retrieving the term value, "
              "will ignore this log req", log_idx);
         if (last_snapshot) {
-            p_er("last snapshot %p, log_idx %llu, snapshot last_log_idx %llu\n",
+            p_er("last snapshot %p, log_idx %" PRIu64 ", snapshot last_log_idx %" PRIu64 "\n",
                  last_snapshot.get(), log_idx, last_snapshot->get_last_log_idx());
         }
-        p_er("log_store_->start_index() %ld\n", log_store_->start_index());
+        p_er("log_store_->start_index() %" PRIu64, log_store_->start_index());
         //ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
         //::exit(-1);
         return 0L;

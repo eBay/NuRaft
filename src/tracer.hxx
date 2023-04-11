@@ -24,6 +24,10 @@ limitations under the License.
 
 #include <stdarg.h>
 
+static inline std::string msg_if_given(const char* format, ...)
+    __attribute__((format(printf, 1, 2)));
+
+
 static inline std::string msg_if_given
                           ( const char* format,
                             ... ) {

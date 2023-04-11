@@ -95,6 +95,24 @@ ptr<buffer> buffer::clone(const buffer& buf) {
     return other;
 }
 
+ptr<buffer> buffer::expand(const buffer& buf, uint32_t new_size) {
+     if (new_size >= 0x80000000) {
+        throw std::out_of_range( "size exceed the max size that "
+                                 "nuraft::buffer could support" );
+    }
+
+    if (new_size < buf.size()) {
+        throw std::out_of_range( "realloc() new_size is less than "
+                                 "old size" );
+    }
+    ptr<buffer> other = alloc(new_size);
+    byte* dst = other->data_begin();
+    byte* src = buf.data_begin();
+    ::memcpy(dst, src, buf.size());
+    other->pos(buf.pos());
+    return other;
+}
+
 size_t buffer::container_size() const {
     return (size_t)( __size_of_block(this) + sizeof(ulong) * 2);
 }

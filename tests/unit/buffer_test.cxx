@@ -117,6 +117,20 @@ int buffer_basic_test(size_t buf_size) {
     ulong long_val_copy = lbuf1->get_ulong();
     CHK_EQ( long_val, long_val_copy );
 
+    ptr<buffer> buf4(buffer::alloc(sz_int * 100));
+    buf4->pos(0);
+    for (int i = 0; i < 100; ++i) {
+        buf4->put(i);
+    }
+    buf4 = buffer::expand(*buf4, sz_int * 200);
+    for (int i = 0; i < 100; ++i) {
+        buf4->put(i + 100);
+    }
+    buf4->pos(0);
+    for (int i = 0; i < 200; ++i) {
+        int32 val = buf4->get_int();
+        CHK_EQ( i, val );
+    }
     return 0;
 }
 

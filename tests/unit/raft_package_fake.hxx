@@ -18,7 +18,7 @@ limitations under the License.
 #include "fake_network.hxx"
 #include "raft_functional_common.hxx"
 
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 
 using namespace nuraft;
 using namespace raft_functional_common;
@@ -54,7 +54,7 @@ public:
 
     void initServer(raft_params* given_params = nullptr,
                     const raft_server::init_options& opt =
-                        raft_server::init_options())
+                        raft_server::init_options(false, true, true))
     {
         fNet = cs_new<FakeNetwork>( myEndpoint, fBase );
         fBase->addNetwork(fNet);
@@ -95,7 +95,7 @@ public:
      */
     void restartServer(raft_params* given_params = nullptr,
                        const raft_server::init_options& opt =
-                           raft_server::init_options())
+                           raft_server::init_options(false, true, true))
     {
         if (!given_params) {
             params.with_election_timeout_lower(0);
@@ -234,7 +234,7 @@ static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
-    raft_server::init_options opt;
+    raft_server::init_options opt(false, true, true);
     opt.raft_callback_ = cb_default;
 
     for (size_t ii = 0; ii < num_srvs; ++ii) {

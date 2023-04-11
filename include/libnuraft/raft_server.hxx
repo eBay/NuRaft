@@ -38,8 +38,6 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
-class EventAwaiter;
-
 namespace nuraft {
 
 using CbReturnCode = cb_func::ReturnCode;
@@ -47,6 +45,7 @@ using CbReturnCode = cb_func::ReturnCode;
 class cluster_config;
 class custom_notification_msg;
 class delayed_task_scheduler;
+class EventAwaiter;
 class logger;
 class peer;
 class rpc_client;
@@ -68,6 +67,15 @@ public:
         init_options()
             : skip_initial_election_timeout_(false)
             , start_server_in_constructor_(true)
+            , test_mode_flag_(false)
+            {}
+
+        init_options(bool skip_initial_election_timeout,
+                     bool start_server_in_constructor,
+                     bool test_mode_flag)
+            : skip_initial_election_timeout_(skip_initial_election_timeout)
+            , start_server_in_constructor_(start_server_in_constructor)
+            , test_mode_flag_(test_mode_flag)
             {}
 
         /**
@@ -91,6 +99,11 @@ public:
          * in constructor. Initialize election timer.
          */
         bool start_server_in_constructor_;
+
+        /**
+          * If `true`, test mode is enabled.
+         */
+        bool test_mode_flag_;
     };
 
     struct limits {
@@ -246,6 +259,11 @@ public:
          * Raft log term number.
          */
         uint64_t log_term;
+
+        /**
+         * Opaque cookie which was passed in the req_ext_params
+         */
+        void* context{nullptr};
     };
 
     /**
@@ -270,6 +288,11 @@ public:
          * server's term does not match the given term.
          */
         uint64_t expected_term_;
+
+        /**
+         * Opaque cookie which will be passed as is to the req_ext_cb
+         */
+        void* context_{nullptr};
     };
 
     /**
@@ -1469,6 +1492,11 @@ protected:
      *          awaiter at a time, by the help of `lock_`.
      */
     EventAwaiter* ea_follower_log_append_;
+
+    /**
+     * If `true`, test mode is enabled.
+     */
+    std::atomic<bool> test_mode_flag_;
 };
 
 } // namespace nuraft;

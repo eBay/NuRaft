@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "cluster_config.hxx"
 #include "error_code.hxx"
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
@@ -150,12 +150,12 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             // We should not re-establish the connection to
             // to-be-removed server, as it will block removing it
             // from `peers_` list.
-            p_wn( "connection to peer %d is not active long time: %zu ms, "
+            p_wn( "connection to peer %d is not active long time: %d ms, "
                   "but this peer should be removed. do nothing",
                   p->get_id(),
                   last_active_time_ms );
         } else {
-            p_wn( "connection to peer %d is not active long time: %zu ms, "
+            p_wn( "connection to peer %d is not active long time: %d ms, "
                   "force re-connect",
                   p->get_id(),
                   last_active_time_ms );
@@ -187,7 +187,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             //   re-adding the peer.
             //
             p_tr("new rpc for peer %d is created, "
-                 "reset next log idx (%lu) and matched log idx (%lu)",
+                 "reset next log idx (%" PRIu64 ") and matched log idx (%" PRIu64 ")",
                  p->get_id(), p_next_log_idx, p->get_matched_idx());
             p->set_next_log_idx(0);
             p->set_matched_idx(0);
@@ -275,7 +275,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             // as soon as we get the corresponding response.
             srv_to_leave_->step_down();
             p_in("srv_to_leave_ %d is safe to be erased from peer list, "
-                 "log idx %zu commit idx %zu, set flag",
+                 "log idx %" PRIu64 " commit idx %" PRIu64 ", set flag",
                  srv_to_leave_->get_id(),
                  msg->get_last_log_idx(),
                  msg->get_commit_idx());
@@ -333,7 +333,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
 
     if (last_log_idx >= cur_nxt_idx) {
         // LCOV_EXCL_START
-        p_er( "Peer's lastLogIndex is too large %llu v.s. %llu, ",
+        p_er( "Peer's lastLogIndex is too large %" PRIu64 " v.s. %" PRIu64 ", ",
               last_log_idx, cur_nxt_idx );
         ctx_->state_mgr_->system_exit(raft_err::N8_peer_last_log_idx_too_large);
         ::exit(-1);
@@ -346,7 +346,8 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
     // last_log_idx: last log index of replica (follower).
     // end_idx: if (cur_nxt_idx - last_log_idx) > max_append_size, limit it.
 
-    p_tr("last_log_idx: %d, starting_idx: %d, cur_nxt_idx: %d\n",
+    p_tr("last_log_idx: %" PRIu64 ", starting_idx: %" PRIu64
+         ", cur_nxt_idx: %" PRIu64 "\n",
          last_log_idx, starting_idx, cur_nxt_idx);
 
     // Verify log index range.
@@ -366,12 +367,12 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
     if ( last_log_idx + 1 == peer_last_sent_idx &&
          last_log_idx + 2 < end_idx ) {
         int32 cur_cnt = p.inc_cnt_not_applied();
-        p_db("last sent log (%zu) to peer %d is not applied, cnt %d",
+        p_db("last sent log (%" PRIu64 ") to peer %d is not applied, cnt %d",
              peer_last_sent_idx, p.get_id(), cur_cnt);
         if (cur_cnt >= 5) {
             ulong prev_end_idx = end_idx;
             end_idx = std::min( cur_nxt_idx, last_log_idx + 1 + 1 );
-            p_db("reduce end_idx %zu -> %zu", prev_end_idx, end_idx);
+            p_db("reduce end_idx %" PRIu64 " -> %" PRIu64, prev_end_idx, end_idx);
         }
     } else {
         p.reset_cnt_not_applied();
@@ -384,7 +385,8 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
         log_entries = log_store_->log_entries_ext(last_log_idx + 1, end_idx,
                                                   p.get_next_batch_size_hint_in_bytes());
         if (log_entries == nullptr) {
-            p_wn("failed to retrieve log entries: %zu - %zu", last_log_idx + 1, end_idx);
+            p_wn("failed to retrieve log entries: %" PRIu64 " - %" PRIu64,
+                 last_log_idx + 1, end_idx);
             entries_valid = false;
         }
     }
@@ -401,8 +403,9 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
         if ( snp_local &&
              last_log_idx < starting_idx &&
              last_log_idx < snp_local->get_last_log_idx() ) {
-            p_db( "send snapshot peer %d, peer log idx: %zu, my starting idx: %zu, "
-                  "my log idx: %zu, last_snapshot_log_idx: %zu\n",
+            p_db( "send snapshot peer %d, peer log idx: %" PRIu64
+                  ", my starting idx: %" PRIu64 ", "
+                  "my log idx: %" PRIu64 ", last_snapshot_log_idx: %" PRIu64,
                   p.get_id(),
                   last_log_idx, starting_idx, cur_nxt_idx,
                   snp_local->get_last_log_idx() );
@@ -416,8 +419,8 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
         static timer_helper msg_timer(5000000);
         int log_lv = msg_timer.timeout_and_reset() ? L_ERROR : L_TRACE;
         p_lv(log_lv,
-             "neither snapshot nor log exists, peer %d, last log %zu, "
-             "leader's start log %zu",
+             "neither snapshot nor log exists, peer %d, last log %" PRIu64 ", "
+             "leader's start log %" PRIu64,
              p.get_id(), last_log_idx, starting_idx);
 
         // Send out-of-log-range notification to this follower.
@@ -447,22 +450,22 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
     ulong adjusted_end_idx = end_idx;
     if (log_entries) adjusted_end_idx = last_log_idx + 1 + log_entries->size();
     if (adjusted_end_idx != end_idx) {
-        p_tr("adjusted end_idx due to batch size hint: %zu -> %zu",
+        p_tr("adjusted end_idx due to batch size hint: %" PRIu64 " -> %" PRIu64,
              end_idx, adjusted_end_idx);
     }
 
-    p_db( "append_entries for %d with LastLogIndex=%llu, "
-          "LastLogTerm=%llu, EntriesLength=%d, CommitIndex=%llu, "
-          "Term=%llu, peer_last_sent_idx %zu",
+    p_db( "append_entries for %d with LastLogIndex=%" PRIu64 ", "
+          "LastLogTerm=%" PRIu64 ", EntriesLength=%zu, CommitIndex=%" PRIu64 ", "
+          "Term=%" PRIu64 ", peer_last_sent_idx %" PRIu64,
           p.get_id(), last_log_idx, last_log_term,
           ( log_entries ? log_entries->size() : 0 ), commit_idx, term,
           peer_last_sent_idx );
     if (last_log_idx+1 == adjusted_end_idx) {
         p_tr( "EMPTY PAYLOAD" );
     } else if (last_log_idx+1 + 1 == adjusted_end_idx) {
-        p_db( "idx: %zu", last_log_idx+1 );
+        p_db( "idx: %" PRIu64, last_log_idx+1 );
     } else {
-        p_db( "idx range: %zu-%zu", last_log_idx+1, adjusted_end_idx-1 );
+        p_db( "idx range: %" PRIu64 "-%" PRIu64, last_log_idx+1, adjusted_end_idx-1 );
     }
 
     ptr<req_msg> req
@@ -507,9 +510,9 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     } _s_req(&serving_req_);
     timer_helper tt;
 
-    p_tr("from peer %d, req type: %d, req term: %ld, "
-         "req l idx: %ld (%zu), req c idx: %ld, "
-         "my term: %ld, my role: %d\n",
+    p_tr("from peer %d, req type: %d, req term: %" PRIu64 ", "
+         "req l idx: %" PRIu64 " (%zu), req c idx: %" PRIu64 ", "
+         "my term: %" PRIu64 ", my role: %d\n",
          req.get_src(), (int)req.get_type(), req.get_term(),
          req.get_last_log_idx(), req.log_entries().size(), req.get_commit_idx(),
          state_->get_term(), (int)role_);
@@ -568,8 +571,9 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         }
     }
     p_lv( log_lv,
-          "[LOG %s] req log idx: %zu, req log term: %zu, my last log idx: %zu, "
-          "my log (%zu) term: %zu",
+          "[LOG %s] req log idx: %" PRIu64 ", req log term: %" PRIu64
+          ", my last log idx: %" PRIu64 ", "
+          "my log (%" PRIu64 ") term: %" PRIu64,
           (log_okay ? "OK" : "XX"),
           req.get_last_log_idx(),
           req.get_last_log_term(),
@@ -580,11 +584,12 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     if ( req.get_term() < state_->get_term() ||
          log_okay == false ) {
         p_lv( log_lv,
-              "deny, req term %zu, my term %zu, req log idx %zu, my log idx %zu",
+              "deny, req term %" PRIu64 ", my term %" PRIu64
+              ", req log idx %" PRIu64 ", my log idx %" PRIu64,
               req.get_term(), state_->get_term(),
               req.get_last_log_idx(), log_store_->next_slot() - 1 );
         if (local_snp) {
-            p_lv( log_lv, "snp idx %zu term %zu",
+            p_lv( log_lv, "snp idx %" PRIu64 " term %" PRIu64,
                   local_snp->get_last_log_idx(),
                   local_snp->get_last_log_term() );
         }
@@ -613,8 +618,9 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         // Local counter for iterating req.log_entries().
         size_t cnt = 0;
 
-        p_db("[INIT] log_idx: %ld, count: %ld, log_store_->next_slot(): %ld, "
-             "req.log_entries().size(): %ld\n",
+        p_db("[INIT] log_idx: %" PRIu64 ", count: %zu, "
+             "log_store_->next_slot(): %" PRIu64 ", "
+             "req.log_entries().size(): %zu",
              log_idx, cnt, log_store_->next_slot(), req.log_entries().size());
 
         // Skipping already existing (with the same term) logs.
@@ -629,7 +635,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 break;
             }
         }
-        p_db("[after SKIP] log_idx: %ld, count: %ld\n", log_idx, cnt);
+        p_db("[after SKIP] log_idx: %" PRIu64 ", count: %zu", log_idx, cnt);
 
         // Rollback (only if necessary).
         // WARNING:
@@ -641,7 +647,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         bool rollback_in_progress = false;
         if ( my_last_log_idx >= log_idx &&
              cnt < req.log_entries().size() ) {
-            p_in( "rollback logs: %zu - %zu, commit idx req %zu, quick %zu, sm %zu, "
+            p_in( "rollback logs: %" PRIu64 " - %" PRIu64
+                  ", commit idx req %" PRIu64 ", quick %" PRIu64 ", sm %" PRIu64 ", "
                   "num log entries %zu, current count %zu",
                   log_idx,
                   my_last_log_idx,
@@ -655,13 +662,13 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
             // should rollback commit index as well
             // (should not happen in Raft though).
             if ( quick_commit_index_ >= log_idx ) {
-                p_wn( "rollback quick commit index from %zu to %zu",
+                p_wn( "rollback quick commit index from %" PRIu64 " to %" PRIu64,
                       quick_commit_index_.load(),
                       log_idx - 1 );
                 quick_commit_index_ = log_idx - 1;
             }
             if ( sm_commit_index_ >= log_idx ) {
-                p_er( "rollback sm commit index from %zu to %zu, "
+                p_er( "rollback sm commit index from %" PRIu64 " to %" PRIu64 ", "
                       "it shouldn't happen and may indicate data loss",
                       sm_commit_index_.load(),
                       log_idx - 1 );
@@ -676,10 +683,11 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                     buf->pos(0);
                     state_machine_->rollback_ext
                         ( state_machine::ext_op_params( idx, buf ) );
-                    p_in( "rollback log %zu, term %zu", idx, old_entry->get_term() );
+                    p_in( "rollback log %" PRIu64 ", term %" PRIu64,
+                          idx, old_entry->get_term() );
 
                 } else if (old_entry->get_val_type() == log_val_type::conf) {
-                    p_in( "revert from a prev config change to config at %llu",
+                    p_in( "revert from a prev config change to config at %" PRIu64,
                           get_config()->get_log_idx() );
                     config_changing_ = false;
                 }
@@ -691,7 +699,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 cnt < req.log_entries().size() )
         {
             ptr<log_entry> entry = req.log_entries().at(cnt);
-            p_in("overwrite at %lu, term %lu, timestamp %lu\n",
+            p_in("overwrite at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n",
                  log_idx, entry->get_term(), entry->get_timestamp());
             store_log_entry(entry, log_idx);
 
@@ -702,7 +710,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                     ( state_machine::ext_op_params( log_idx, buf ) );
 
             } else if(entry->get_val_type() == log_val_type::conf) {
-                p_in("receive a config change from leader at %llu", log_idx);
+                p_in("receive a config change from leader at %" PRIu64, log_idx);
                 config_changing_ = true;
             }
 
@@ -711,21 +719,21 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
             if (stopping_) return resp;
         }
-        p_db("[after OVWR] log_idx: %ld, count: %ld\n", log_idx, cnt);
+        p_db("[after OVWR] log_idx: %" PRIu64 ", count: %zu", log_idx, cnt);
 
         if (rollback_in_progress) {
-            p_in("last log index after rollback and overwrite: %zu",
+            p_in("last log index after rollback and overwrite: %" PRIu64,
                  log_store_->next_slot() - 1);
         }
 
         // Append new log entries
         while (cnt < req.log_entries().size()) {
             ptr<log_entry> entry = req.log_entries().at( cnt++ );
-            p_tr("append at %lu, term %lu, timestamp %lu\n",
+            p_tr("append at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n",
                  log_store_->next_slot(), entry->get_term(), entry->get_timestamp());
             ulong idx_for_entry = store_log_entry(entry);
             if (entry->get_val_type() == log_val_type::conf) {
-                p_in( "receive a config change from leader at %llu",
+                p_in( "receive a config change from leader at %" PRIu64,
                       idx_for_entry );
                 config_changing_ = true;
 
@@ -751,7 +759,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 if (stopping_) return resp;
 
                 // Some logs are not durable yet, wait here and block the thread.
-                p_tr( "durable idnex %lu, sleep and wait for log appending completion",
+                p_tr( "durable index %" PRIu64
+                      ", sleep and wait for log appending completion",
                       last_durable_index );
                 ea_follower_log_append_->wait_ms(params->heart_beat_interval_);
 
@@ -759,7 +768,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
                 ea_follower_log_append_->reset();
                 last_durable_index = log_store_->last_durable_index();
-                p_tr( "wake up, durable index %lu", last_durable_index );
+                p_tr( "wake up, durable index %" PRIu64, last_durable_index );
             }
         }
     }
@@ -818,9 +827,9 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     if (time_ms >= ctx_->get_params()->heart_beat_interval_) {
         // Append entries took longer than HB interval. Warning.
         p_wn("appending entries from peer %d took long time (%d ms)\n"
-             "req type: %d, req term: %ld, "
-             "req l idx: %ld (%zu), req c idx: %ld, "
-             "my term: %ld, my role: %d\n",
+             "req type: %d, req term: %" PRIu64 ", "
+             "req l idx: %" PRIu64 " (%zu), req c idx: %" PRIu64 ", "
+             "my term: %" PRIu64 ", my role: %d",
              req.get_src(), time_ms, (int)req.get_type(), req.get_term(),
              req.get_last_log_idx(), req.log_entries().size(), req.get_commit_idx(),
              state_->get_term(), (int)role_);
@@ -835,7 +844,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
     int64 bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
-    p_tr("batch size hint: %ld bytes", bs_hint);
+    p_tr("batch size hint: %" PRId64 " bytes", bs_hint);
 
     out_of_log_range_ = false;
 
@@ -860,7 +869,7 @@ bool raft_server::try_update_precommit_index(ulong desired, const size_t MAX_ATT
         return true;
     }
     p_er("updating precommit_index_ failed after %zu/%zu attempts, "
-         "last seen precommit_index_ %zu, target %zu",
+         "last seen precommit_index_ %" PRIu64 ", target %" PRIu64,
          num_attempts, MAX_ATTEMPTS, prev_precommit_index, desired);
     return false;
 }
@@ -879,7 +888,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
          resp.get_next_idx() > srv_to_leave_target_idx_ ) {
         // Catch-up is done.
         p_in("server to be removed %d fully caught up the "
-             "target config log %zu",
+             "target config log %" PRIu64,
              srv_to_leave_->get_id(),
              srv_to_leave_target_idx_);
         remove_peer_from_peers(srv_to_leave_);
@@ -892,22 +901,22 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     bool need_to_catchup = true;
 
     ptr<peer> p = it->second;
-    p_tr("handle append entries resp (from %d), resp.get_next_idx(): %zu\n",
+    p_tr("handle append entries resp (from %d), resp.get_next_idx(): %" PRIu64,
          (int)p->get_id(), resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
-    p_tr("peer %d batch size hint: %ld bytes", p->get_id(), bs_hint);
+    p_tr("peer %d batch size hint: %" PRId64 " bytes", p->get_id(), bs_hint);
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {
         uint64_t prev_matched_idx = 0;
         uint64_t new_matched_idx = 0;
         {
-            std::lock_guard<std::mutex>(p->get_lock());
+            std::lock_guard<std::mutex> l(p->get_lock());
             p->set_next_log_idx(resp.get_next_idx());
             prev_matched_idx = p->get_matched_idx();
             new_matched_idx = resp.get_next_idx() - 1;
-            p_tr("peer %d, prev matched idx: %ld, new matched idx: %ld",
+            p_tr("peer %d, prev matched idx: %" PRIu64 ", new matched idx: %" PRIu64,
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
             p->set_last_accepted_log_idx(new_matched_idx);
@@ -948,8 +957,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             }
         }
         p_lv( log_lv,
-              "declined append: peer %d, prev next log idx %zu, "
-              "resp next %zu, new next log idx %zu",
+              "declined append: peer %d, prev next log idx %" PRIu64 ", "
+              "resp next %" PRIu64 ", new next log idx %" PRIu64,
               p->get_id(), prev_next_log,
               resp.get_next_idx(), p->get_next_log_idx() );
     }
@@ -969,8 +978,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         //   response handler (of heartbeat, append_entries ..) will
         //   retry this.
         p_in("ready to resign, server id %d, "
-             "latest log index %zu, "
-             "%zu us elapsed, resign now",
+             "latest log index %" PRIu64 ", "
+             "%" PRIu64 " us elapsed, resign now",
              next_leader_candidate_.load(),
              p_matched_idx,
              reelection_timer_.get_us());
@@ -1040,7 +1049,7 @@ uint64_t raft_server::get_current_leader_index() {
     if (params->parallel_log_appending_) {
         // For parallel appending, take the smaller one.
         uint64_t durable_index = log_store_->last_durable_index();
-        p_tr("last durable index %lu, precommit index %lu",
+        p_tr("last durable index %" PRIu64 ", precommit index %" PRIu64,
              durable_index, precommit_index_.load());
         leader_index = std::min(precommit_index_.load(), durable_index);
     }
@@ -1107,7 +1116,7 @@ ulong raft_server::get_expected_committed_log_idx() {
     aci_params.expected_commit_index_ = matched_indexes[quorum_idx];
     uint64_t adjusted_commit_index = state_machine_->adjust_commit_index(aci_params);
     if (aci_params.expected_commit_index_ != adjusted_commit_index) {
-        p_tr( "commit index adjusted: %lu -> %lu",
+        p_tr( "commit index adjusted: %" PRIu64 " -> %" PRIu64,
               aci_params.expected_commit_index_, adjusted_commit_index );
     }
     return adjusted_commit_index;

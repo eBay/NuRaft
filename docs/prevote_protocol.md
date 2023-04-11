@@ -14,17 +14,17 @@ S1----S4
 S2----S5
 ```
 
-Since `S5` cannot receive heartbeat from `S1`, it will initiate leader election with newer term. `S5` can reach quorum so that it may become next leader. After that, `S1` cannot receive heartbeat from the new leader `S5`, thus it attempts to initiate another leader election. This series of events will eventually disrupt each other continuously.
+Since `S5` cannot receive heartbeat from `S1`, it will initiate leader election with a newer term. `S5` can reach quorum so that it may become the next leader. After that, `S1` cannot receive heartbeats from the new leader `S5`; thus, it attempts to initiate another leader election. This series of events will eventually disrupt each other continuously.
 
-Note that even though `S2, S3, and S4` reject the vote request from either `S1` or `S5`, it is still problematic since vote request increases their terms which causes the denial of `append_entries` request from current leader. Once leader realizes that newer term exists, it immediately becomes follower which results in another leader election.
+Note that even though `S2, S3, and S4` reject the vote request from either `S1` or `S5`, it is still problematic since the vote request increases their terms which causes the denial of `append_entries` requests from the current leader. Once the leader realizes that a newer term exists, it immediately becomes a follower, which results in another leader election.
 
 Pre-Vote Overview
 -----------------
-To address above issue, before initiating actual vote, each node sends "pre-vote" request first. The goal of pre-vote request is simple: to check if voters are currently seeing live leader. If a voter has received heartbeat from the leader recently before its election timer expires, that means the leader is possibly alive. Then the node rejects the pre-vote request and the vote initiator will not move forward. As a result, the term of the node will remain the same.
+To address the above issue, each node sends "pre-vote" request before initiating an actual vote. The goal of the pre-vote request is simple: to check if voters are currently seeing a live leader. If a voter has recently received heartbeats from the leader before its election timer expires, that means the leader is possibly alive. Then the node rejects the pre-vote request, and the vote initiator will not move forward. As a result, the term of the node will remain the same.
 
-Otherwise, the election timer of a voter has been expired, then the voter treats it as the death of the leader so that it accepts the pre-vote request. Once the vote initiator receives acceptance from a majority of servers, it finally increases its term and initiates the actual vote.
+Otherwise, the election timer of a voter has already expired, then the voter treats it as the leader's death so that it accepts the pre-vote request. Once the vote initiator receives acceptance from a majority of servers, it finally increases its term and initiates the actual vote.
 
-Now let's re-visit above issue. `S5` will initiate pre-vote first. Since `S2`, `S3`, and `S4` keep receiving heartbeat from `S1`, they will always reject pre-vote requests, and there will be no disruption.
+Now let's re-visit the above issue. `S5` will initiate pre-vote first. Since `S2`, `S3`, and `S4` keep receiving heartbeat from `S1`, they will always reject pre-vote requests, and there will be no disruption.
 
 The overall process in this library is as follows:
 ```
