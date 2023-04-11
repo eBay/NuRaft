@@ -152,9 +152,11 @@ void print_status(const std::string& cmd,
         << "current term: "
             << stuff.raft_instance_->get_term() << std::endl
         << "last snapshot log index: "
-            << stuff.sm_->last_snapshot()->get_last_log_idx() << std::endl
+            << (stuff.sm_->last_snapshot()
+                ? stuff.sm_->last_snapshot()->get_last_log_idx() : 0) << std::endl
         << "last snapshot log term: "
-            << stuff.sm_->last_snapshot()->get_last_log_term() << std::endl
+            << (stuff.sm_->last_snapshot()
+                ? stuff.sm_->last_snapshot()->get_last_log_term() : 0) << std::endl
         << "state machine value: "
             << get_sm()->get_current_value() << std::endl;
 }

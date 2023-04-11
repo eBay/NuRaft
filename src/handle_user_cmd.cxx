@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "cluster_config.hxx"
 #include "context.hxx"
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "rpc_cli_factory.hxx"
 #include "tracer.hxx"
 

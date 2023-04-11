@@ -25,6 +25,8 @@ limitations under the License.
 #include <condition_variable>
 #include <mutex>
 
+namespace nuraft {
+
 class EventAwaiter {
 private:
     enum class AS {
@@ -95,4 +97,4 @@ private:
     std::condition_variable cv;
 };
 
-
+}

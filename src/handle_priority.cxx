@@ -22,7 +22,7 @@ limitations under the License.
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "peer.hxx"
 #include "tracer.hxx"
 
@@ -63,7 +63,7 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
     // NOTE: Need to honor uncommitted config,
     //       refer to comment in `sync_log_to_new_srv()`
     if (uncommitted_config_) {
-        p_in("uncommitted config exists at log %zu, prev log %zu",
+        p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64,
              uncommitted_config_->get_log_idx(),
              uncommitted_config_->get_prev_log_idx());
         cur_config = uncommitted_config_;

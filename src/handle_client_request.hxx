@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "async.hxx"
 #include "buffer.hxx"
-#include "event_awaiter.h"
+#include "event_awaiter.hxx"
 #include "internal_timer.hxx"
 #include "ptr.hxx"
 #include "raft_server.hxx"

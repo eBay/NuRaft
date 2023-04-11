@@ -122,8 +122,6 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
         entry->set_timestamp(timestamp_us);
         ulong next_slot = 0;
 
-        p_db("append at log_idx %lu, timestamp %lu\n", next_slot, timestamp_us);
-
         try
         {
             cb_func::Param param(id_, leader_);
@@ -135,6 +133,8 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
             entry->set_term(cur_term);
 
             next_slot = store_log_entry(entry);
+            p_db("append at log_idx %" PRIu64 ", timestamp %" PRIu64,
+                 next_slot, timestamp_us);
         }
         catch (const std::exception & e)
         {
@@ -149,7 +149,6 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
             throw;
         }
 
-        p_db("append at log_idx %zu\n", next_slot);
         last_idx = next_slot;
 
         ptr<buffer> buf = entry->get_buf_ptr();
@@ -161,6 +160,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
             req_ext_cb_params cb_params;
             cb_params.log_idx = last_idx;
             cb_params.log_term = cur_term;
+            cb_params.context = ext_params.context_;
             ext_params.after_precommit_(cb_params);
         }
     }
@@ -226,7 +226,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
     } else {
         // Async replication:
         //   Immediately return with the result of pre-commit.
-        p_dv( "asynchronously replicated %ld, return value %p\n",
+        p_dv( "asynchronously replicated %" PRIu64 ", return value %p",
               last_idx, ret_value.get() );
         resp->set_ctx(ret_value);
     }
@@ -237,7 +237,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
 
 ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
                                                    ptr<resp_msg> resp) {
-    p_dv("commit_ret_cv %lu %p sleep\n", elem->idx_, &elem->awaiter_);
+    p_dv("commit_ret_cv %" PRIu64 " %p sleep", elem->idx_, &elem->awaiter_);
 
     // Will wake up after timeout.
     elem->awaiter_.wait_ms(ctx_->get_params()->client_req_timeout_);
@@ -253,18 +253,19 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
         if (elem->result_code_ != cmd_result_code::TIMEOUT) {
             commit_ret_elems_.erase(elem->idx_);
         } else {
-            p_dv("Client timeout leave commit thread to remove commit_ret_elem %zu", idx);
+            p_dv("Client timeout leave commit thread to remove commit_ret_elem %" PRIu64,
+                 idx);
         }
-        p_dv("remaining elems in waiting queue: %zu\n", commit_ret_elems_.size());
+        p_dv("remaining elems in waiting queue: %zu", commit_ret_elems_.size());
     }
 
     if (elem->result_code_ == cmd_result_code::OK) {
-        p_dv( "[OK] commit_ret_cv %lu wake up (%zu us), return value %p\n",
+        p_dv( "[OK] commit_ret_cv %" PRIu64 " wake up (%" PRIu64 " us), return value %p",
               idx, elapsed_us, ret_value.get() );
     } else {
         // Null `ret_value`, most likely timeout.
-        p_wn( "[NOT OK] commit_ret_cv %lu wake up (%zu us), "
-              "return value %p, result code %d\n",
+        p_wn( "[NOT OK] commit_ret_cv %" PRIu64 " wake up (%" PRIu64 " us), "
+              "return value %p, result code %d",
               idx, elapsed_us, ret_value.get(), elem->result_code_ );
         bool valid_leader = check_leadership_validity();
         if (valid_leader) {
@@ -304,11 +305,12 @@ void raft_server::drop_all_pending_commit_elems() {
             if (max_idx < elem->idx_) {
                 max_idx = elem->idx_;
             }
-            p_db("cancelled blocking client request %zu, waited %zu us",
+            p_db("cancelled blocking client request %" PRIu64 ", waited %" PRIu64 " us",
                  elem->idx_, elem->timer_.get_us());
         }
         if (!commit_ret_elems_.empty()) {
-            p_wn("cancelled %zu blocking client requests from %zu to %zu.",
+            p_wn("cancelled %zu blocking client requests from %" PRIu64
+                 " to %" PRIu64 ".",
                  commit_ret_elems_.size(), min_idx, max_idx);
         }
         commit_ret_elems_.clear();
@@ -330,7 +332,7 @@ void raft_server::drop_all_pending_commit_elems() {
     // Calling handler should be done outside the mutex.
     for (auto& entry: elems) {
         ptr<commit_ret_elem>&ee = entry;
-        p_wn("cancelled non-blocking client request %zu", ee->idx_);
+        p_wn("cancelled non-blocking client request %" PRIu64, ee->idx_);
 
         ptr<buffer> result = nullptr;
         ptr<std::exception> err =
