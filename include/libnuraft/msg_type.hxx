@@ -60,6 +60,8 @@ enum msg_type {
     reconnect_response              = 27,
     custom_notification_request     = 28,
     custom_notification_response    = 29,
+    leader_status_request           = 30,
+    leader_status_response          = 31,
 };
 
 static bool ATTR_UNUSED is_valid_msg(msg_type type) {
@@ -103,6 +105,8 @@ static std::string ATTR_UNUSED msg_type_to_string(msg_type type)
     case reconnect_response:            return "reconnect_response";
     case custom_notification_request:   return "custom_notification_request";
     case custom_notification_response:  return "custom_notification_response";
+    case leader_status_request:   return "leader_status_request";
+    case leader_status_response:  return "leader_status_response";
     default:
         return "unknown (" + std::to_string(static_cast<int>(type)) + ")";
     }

@@ -39,11 +39,14 @@ class state_machine {
 public:
     struct ext_op_params {
         ext_op_params(ulong _log_idx,
-                      ptr<buffer>& _data)
+                      ptr<buffer>& _data,
+                      ulong _log_term = 0)
             : log_idx(_log_idx)
+            , log_term(_log_term)
             , data(_data)
             {}
         ulong log_idx;
+        ulong log_term;
         ptr<buffer>& data;
         // May add more parameters in the future.
     };

@@ -35,6 +35,44 @@ limitations under the License.
 
 namespace nuraft {
 
+ptr<resp_msg> raft_server::handle_leader_status_req(req_msg& req) {
+    const auto get_leader_status = [&, this] {
+        ulong cur_term = state_->get_term();
+
+        auto resp = cs_new<resp_msg>( cur_term,
+                                 msg_type::leader_status_response,
+                                 id_,
+                                 req.get_src(),
+                                 0,
+                                 true );
+        if (role_ != srv_role::leader || write_paused_) {
+            resp->set_result_code( cmd_result_code::NOT_LEADER );
+            return resp;
+        }
+
+        auto ctx = buffer::alloc(8 + 8);
+        ctx->put(cur_term);
+        ctx->put(sm_commit_index_.load());
+        ctx->pos(0);
+        resp->set_ctx(std::move(ctx));
+        return resp;
+    };
+
+    ptr<raft_params> params = ctx_->get_params();
+    switch (params->locking_method_type_) {
+        case raft_params::single_mutex: {
+            recur_lock(lock_);
+            return get_leader_status();
+        }
+        case raft_params::dual_mutex:
+        default: {
+            // TODO: Use RW lock here.
+            auto_lock(cli_lock_);
+            return get_leader_status();
+        }
+    }
+}
+
 ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
                                                   const req_ext_params& ext_params)
 {

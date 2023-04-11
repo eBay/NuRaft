@@ -77,7 +77,7 @@ public:
     }
 
     void set_ctx(ptr<buffer> src) {
-        ctx_ = src;
+        ctx_ = std::move(src);
     }
 
     ptr<buffer> get_ctx() const {

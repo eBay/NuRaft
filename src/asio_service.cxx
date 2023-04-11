@@ -841,7 +841,7 @@ public:
     }
 
 private:
-    void start(std::lock_guard<std::mutex> & listener_lock) {
+    void start(std::lock_guard<std::mutex> & listener_lock_) {
         if (!acceptor_.is_open()) {
             return;
         }

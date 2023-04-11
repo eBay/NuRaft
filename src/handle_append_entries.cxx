@@ -1121,6 +1121,8 @@ ulong raft_server::get_expected_committed_log_idx() {
 }
 
 void raft_server::notify_log_append_completion(bool ok) {
+    if (stopping_) return;
+
     p_tr("got log append completion notification: %s", ok ? "OK" : "FAILED");
 
     if (role_ == srv_role::leader) {

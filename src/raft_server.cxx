@@ -680,6 +680,10 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
         return handle_cli_req_prelock(req, ext_params);
     }
 
+    if ( req.get_type() == msg_type::leader_status_request ) {
+        return handle_leader_status_req(req);
+    }
+
     recur_lock(lock_);
     if ( req.get_type() == msg_type::append_entries_request ||
          req.get_type() == msg_type::request_vote_request ||
