@@ -756,6 +756,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
             uint64_t last_durable_index = log_store_->last_durable_index();
             while ( last_durable_index <
                     req.get_last_log_idx() + req.log_entries().size() ) {
+                if (stopping_) return resp;
+
                 // Some logs are not durable yet, wait here and block the thread.
                 p_tr( "durable index %" PRIu64
                       ", sleep and wait for log appending completion",
@@ -1125,19 +1127,17 @@ void raft_server::notify_log_append_completion(bool ok) {
 
     p_tr("got log append completion notification: %s", ok ? "OK" : "FAILED");
 
+    if (!ok) {
+        // If log appending fails for follower, there is no way to proceed it.
+        // We should stop the server immediately.
+        p_ft("log appending failed, stop this server");
+        stopping_ = true;
+        ctx_->state_mgr_->system_exit(N21_log_flush_failed);
+        return;
+    }
+
     if (role_ == srv_role::leader) {
         recur_lock(lock_);
-        if (!ok) {
-            // If log appending fails, leader should resign immediately.
-            p_er("log appending failed, resign immediately");
-            leader_ = -1;
-            become_follower();
-
-            // Clear this flag to avoid pre-vote rejection.
-            hb_alive_ = false;
-            return;
-        }
-
         // Leader: commit the log and send append_entries request, if needed.
         uint64_t prev_committed_index = quick_commit_index_.load();
         uint64_t committed_index = get_expected_committed_log_idx();
@@ -1149,14 +1149,6 @@ void raft_server::notify_log_append_completion(bool ok) {
             request_append_entries_for_all();
         }
     } else {
-        if (!ok) {
-            // If log appending fails for follower, there is no way to proceed it.
-            // We should stop the server immediately.
-            recur_lock(lock_);
-            p_ft("log appending failed, stop this server");
-            ctx_->state_mgr_->system_exit(N21_log_flush_failed);
-            return;
-        }
 
         // Follower: wake up the waiting thread.
         ea_follower_log_append_->invoke();
