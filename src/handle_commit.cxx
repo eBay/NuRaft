@@ -665,8 +665,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
           new_config->get_prev_log_idx(),
           new_config->get_log_idx() );
 
-    thread_local char temp_buf[1024];
-    std::string str_buf;
+    std::stringstream str_buf;
 
     // Compare old and new configs, to check if
     // the configuration change is for adding this node.
@@ -725,12 +724,10 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
                             ( srv_added, *ctx_, exec, l_ );
         p->set_next_log_idx(log_store_->next_slot());
 
-        sprintf(temp_buf,
-                "add peer %d, %s, %s\n",
-                (int)srv_added->get_id(),
-                srv_added->get_endpoint().c_str(),
-                srv_added->is_learner() ? "learner" : "voting member");
-        str_buf += temp_buf;
+        str_buf << "add peer " << srv_added->get_id()
+                << ", " << srv_added->get_endpoint()
+                << ", " << (srv_added->is_learner() ? "learner" : "voting member")
+                << std::endl;
 
         peers_.insert(std::make_pair(srv_added->get_id(), p));
         p_in("server %d is added to cluster", srv_added->get_id());
@@ -823,16 +820,16 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
                          pp->get_id());
                 }
                 remove_peer_from_peers(pp);
-                sprintf(temp_buf, "remove peer %d\n", srv_removed);
-                str_buf += temp_buf;
+
+                str_buf << "remove peer " << srv_removed << std::endl;
             }
         } else {
             p_in("peer %d cannot be found, no action for removing", srv_removed);
         }
     }
 
-    if (!str_buf.empty()) {
-        p_in("%s", str_buf.c_str());
+    if (!str_buf.str().empty()) {
+        p_in("%s", str_buf.str().c_str());
     }
 
     set_config(new_config);
@@ -854,7 +851,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         (void)rc;
     }
 
-    str_buf = "";
+    std::stringstream str_buf2;
     for (auto& entry: new_config->get_servers()) {
         srv_config* s_conf = entry.get();
 
@@ -867,18 +864,17 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             }
         }
 
-        sprintf(temp_buf, "peer %d, DC ID %d, %s, %s, %d\n",
-                (int)s_conf->get_id(),
-                (int)s_conf->get_dc_id(),
-                s_conf->get_endpoint().c_str(),
-                s_conf->is_learner() ? "learner" : "voting member",
-                s_conf->get_priority());
-        str_buf += temp_buf;
+        str_buf2 << "peer " << s_conf->get_id()
+                 << ", DC ID " << s_conf->get_dc_id()
+                 << ", " << s_conf->get_endpoint()
+                 << ", " << (s_conf->is_learner() ? "learner" : "voting member")
+                 << ", " << s_conf->get_priority()
+                 << std::endl;
     }
     p_in("new configuration: log idx %" PRIu64 ", prev log idx %" PRIu64 "\n"
          "%smy id: %d, leader: %d, term: %" PRIu64,
          new_config->get_log_idx(), new_config->get_prev_log_idx(),
-         str_buf.c_str(), id_, leader_.load(), state_->get_term());
+         str_buf2.str().c_str(), id_, leader_.load(), state_->get_term());
 
     update_target_priority();
 }

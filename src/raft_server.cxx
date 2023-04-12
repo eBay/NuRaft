@@ -109,9 +109,6 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , ea_follower_log_append_(new EventAwaiter())
     , test_mode_flag_(opt.test_mode_flag_)
 {
-    char temp_buf[4096];
-    std::string print_msg;
-
     if (opt.raft_callback_) {
         ctx->set_cb_func(opt.raft_callback_);
     }
@@ -152,24 +149,21 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     }
     vote_init_timer_term_ = state_->get_term();
 
-    print_msg.clear();
-
     ptr<cluster_config> c_conf = get_config();
-    std::stringstream ss;
-    ss << "   === INIT RAFT SERVER ===\n"
-       << "commit index " << sm_commit_index_ << "\n"
-       << "term " << state_->get_term() << "\n"
-       << "election timer " << ( state_->is_election_timer_allowed()
-                                 ? "allowed" : "not allowed" ) << "\n"
-       << "log store start " << log_store_->start_index()
-       << ", end " << log_store_->next_slot() - 1 << "\n"
-       << "config log idx " << c_conf->get_log_idx()
-       << ", prev log idx " << c_conf->get_prev_log_idx() << "\n";
+    std::stringstream init_msg;
+    init_msg << "   === INIT RAFT SERVER ===\n"
+             << "commit index " << sm_commit_index_ << "\n"
+             << "term " << state_->get_term() << "\n"
+             << "election timer " << ( state_->is_election_timer_allowed()
+                                       ? "allowed" : "not allowed" ) << "\n"
+             << "log store start " << log_store_->start_index()
+             << ", end " << log_store_->next_slot() - 1 << "\n"
+             << "config log idx " << c_conf->get_log_idx()
+             << ", prev log idx " << c_conf->get_prev_log_idx() << "\n";
     if (c_conf->is_async_replication()) {
-        ss << " -- ASYNC REPLICATION --\n";
+        init_msg << " -- ASYNC REPLICATION --\n";
     }
-    print_msg = ss.str();
-    p_in("%s", print_msg.c_str());
+    p_in("%s", init_msg.str().c_str());
 
     /**
      * I found this implementation is also a victim of bug
@@ -211,7 +205,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
         }
     }
 
-    print_msg.clear();
+    std::stringstream peer_info_msg;
     std::list< ptr<srv_config> >& srvs = c_conf->get_servers();
     for (cluster_config::srv_itor it = srvs.begin(); it != srvs.end(); ++it) {
         ptr<srv_config> cur_srv = *it;
@@ -247,22 +241,20 @@ raft_server::raft_server(context* ctx, const init_options& opt)
         // target_priority_ = std::max( target_priority_,
         //                              cur_srv->get_priority() );
 
-        sprintf( temp_buf,
-                 "peer %d: DC ID %d, %s, %s, %d\n",
-                 (int)cur_srv->get_id(),
-                 (int)cur_srv->get_dc_id(),
-                 cur_srv->get_endpoint().c_str(),
-                 cur_srv->is_learner() ? "learner" : "voting member",
-                 cur_srv->get_priority() );
-        print_msg += temp_buf;
+        peer_info_msg
+            << "peer " << cur_srv->get_id()
+            << ": DC ID " << cur_srv->get_dc_id()
+            << ", " << cur_srv->get_endpoint()
+            << ", " << (cur_srv->is_learner() ? "learner" : "voting member")
+            << ", " << cur_srv->get_priority()
+            << std::endl;
     }
 
-    sprintf(temp_buf, "my id: %d, %s\n",
-            id_, (im_learner_)?"learner":"voting_member");
-    print_msg += temp_buf;
-    sprintf(temp_buf, "num peers: %d\n", (int)peers_.size());
-    print_msg += temp_buf;
-    p_in("%s", print_msg.c_str());
+    peer_info_msg << "my id: " << id_
+                  << ", " << ((im_learner_) ? "learner" : "voting_member")
+                  << std::endl;
+    peer_info_msg << "num peers: " << peers_.size() << std::endl;
+    p_in("%s", peer_info_msg.str().c_str());
 
     if (opt.start_server_in_constructor_) {
         start_server(opt.skip_initial_election_timeout_);
