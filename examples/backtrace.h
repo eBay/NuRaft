@@ -182,9 +182,9 @@ static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr,
                     stack_msg[i][upto] != 0x0 ) {
                 upto++;
             }
-            sprintf( addr_str, "%.*s",
-                     upto - fname_len - 2,
-                     &stack_msg[i][fname_len + 2] );
+            snprintf( addr_str, 256, "%.*s",
+                      upto - fname_len - 2,
+                      &stack_msg[i][fname_len + 2] );
 
             // Convert hex string -> integer address.
             std::stringstream ss;
@@ -193,7 +193,7 @@ static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr,
 
         } else {
             actual_addr = (uintptr_t)stack_ptr[i];
-            sprintf(addr_str, "%" PRIxPTR, actual_addr);
+            snprintf(addr_str, 256, "%" PRIxPTR, actual_addr);
         }
 
         char cmd[1024];

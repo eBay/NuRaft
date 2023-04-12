@@ -236,7 +236,7 @@ void SimpleLoggerMgr::_flushStackTraceBuffer(size_t buffer_len,
 {
     std::string msg;
     char temp_buf[256];
-    sprintf(temp_buf, "\nThread %04x", tid_hash);
+    snprintf(temp_buf, 256, "\nThread %04x", tid_hash);
     msg += temp_buf;
     if (kernel_tid) {
         msg += " (" + std::to_string(kernel_tid) + ")";
@@ -370,7 +370,7 @@ void SimpleLoggerMgr::logStackBacktrace(size_t timeout_ms) {
         int tz_gap_abs = (tz_gap < 0) ? (tz_gap * -1) : (tz_gap);
 
         char filename[128];
-        sprintf(filename, "dump_%04d%02d%02d_%02d%02d%02d%c%02d%02d.txt",
+        snprintf(filename, 128, "dump_%04d%02d%02d_%02d%02d%02d%c%02d%02d.txt",
                 lt.year, lt.month, lt.day,
                 lt.hour, lt.min, lt.sec,
                 (tz_gap >= 0) ? '+' : '-',
@@ -379,7 +379,7 @@ void SimpleLoggerMgr::logStackBacktrace(size_t timeout_ms) {
         crashDumpFile.open(path);
 
         char time_fmt[64];
-        sprintf(time_fmt, "%04d-%02d-%02dT%02d:%02d:%02d.%03d%03d%c%02d:%02d",
+        snprintf(time_fmt, 64, "%04d-%02d-%02dT%02d:%02d:%02d.%03d%03d%c%02d:%02d",
                 lt.year, lt.month, lt.day,
                 lt.hour, lt.min, lt.sec, lt.msec, lt.usec,
                 (tz_gap >= 0) ? '+' : '-',

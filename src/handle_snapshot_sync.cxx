@@ -284,11 +284,11 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req) {
 
     ptr<snapshot_sync_req> sync_req =
         snapshot_sync_req::deserialize(entries[0]->get_buf());
-    if (sync_req->get_snapshot().get_last_log_idx() <= sm_commit_index_) {
+    if (sync_req->get_snapshot().get_last_log_idx() <= quick_commit_index_) {
         p_wn( "received a snapshot (%" PRIu64 ") that is older than "
               "current commit idx (%" PRIu64 "), last log idx %" PRIu64,
               sync_req->get_snapshot().get_last_log_idx(),
-              sm_commit_index_.load(),
+              quick_commit_index_.load(),
               log_store_->next_slot() - 1);
         // Put dummy CTX to end the snapshot sync.
         ptr<buffer> done_ctx = buffer::alloc(1);

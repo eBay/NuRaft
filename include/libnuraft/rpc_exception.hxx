@@ -21,6 +21,9 @@ limitations under the License.
 #ifndef _RPC_EXCEPTION_HXX_
 #define _RPC_EXCEPTION_HXX_
 
+#include "pp_util.hxx"
+#include "ptr.hxx"
+
 #include <exception>
 #include <string>
 

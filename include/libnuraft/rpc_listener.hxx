@@ -21,6 +21,9 @@ limitations under the License.
 #ifndef _RPC_LISTENER_HXX_
 #define _RPC_LISTENER_HXX_
 
+#include "pp_util.hxx"
+#include "ptr.hxx"
+
 namespace nuraft {
 
 // for backward compatibility
