@@ -42,13 +42,9 @@ public:
      * @return Raft server instance.
      *         `nullptr` on any errors.
      */
-    ptr<raft_server> init(ptr<state_machine> sm,
-                          ptr<state_mgr> smgr,
-                          ptr<logger> lg,
-                          int port_number,
-                          const asio_service::options& asio_options,
-                          const raft_params& params,
-                          const raft_server::init_options& opt = raft_server::init_options());
+    ptr< raft_server > init(ptr< state_machine > sm, ptr< state_mgr > smgr, ptr< logger > lg, int port_number,
+                            const asio_service::options& asio_options, const raft_params& params,
+                            const raft_server::init_options& opt = raft_server::init_options());
 
     /**
      * Shutdown Raft server and ASIO service.
@@ -65,27 +61,26 @@ public:
      *
      * @return ASIO service instance.
      */
-    ptr<asio_service> get_asio_service() const { return asio_svc_; }
+    ptr< asio_service > get_asio_service() const { return asio_svc_; }
 
     /**
      * Get ASIO listener.
      *
      * @return ASIO listener.
      */
-    ptr<rpc_listener> get_rpc_listener() const { return asio_listener_; }
+    ptr< rpc_listener > get_rpc_listener() const { return asio_listener_; }
 
     /**
      * Get Raft server instance.
      *
      * @return Raft server instance.
      */
-    ptr<raft_server> get_raft_server() const { return raft_instance_; }
+    ptr< raft_server > get_raft_server() const { return raft_instance_; }
 
 private:
-    ptr<asio_service> asio_svc_;
-    ptr<rpc_listener> asio_listener_;
-    ptr<raft_server> raft_instance_;
+    ptr< asio_service > asio_svc_;
+    ptr< rpc_listener > asio_listener_;
+    ptr< raft_server > raft_instance_;
 };
 
-}
-
+} // namespace nuraft

@@ -37,26 +37,25 @@ limitations under the License.
 namespace nuraft {
 
 enum cmd_result_code {
-    OK                              =  0,
-    CANCELLED                       = -1,
-    TIMEOUT                         = -2,
-    NOT_LEADER                      = -3,
-    BAD_REQUEST                     = -4,
-    SERVER_ALREADY_EXISTS           = -5,
-    CONFIG_CHANGING                 = -6,
-    SERVER_IS_JOINING               = -7,
-    SERVER_NOT_FOUND                = -8,
-    CANNOT_REMOVE_LEADER            = -9,
-    SERVER_IS_LEAVING               = -10,
-    TERM_MISMATCH                   = -11,
+    OK = 0,
+    CANCELLED = -1,
+    TIMEOUT = -2,
+    NOT_LEADER = -3,
+    BAD_REQUEST = -4,
+    SERVER_ALREADY_EXISTS = -5,
+    CONFIG_CHANGING = -6,
+    SERVER_IS_JOINING = -7,
+    SERVER_NOT_FOUND = -8,
+    CANNOT_REMOVE_LEADER = -9,
+    SERVER_IS_LEAVING = -10,
+    TERM_MISMATCH = -11,
 
-    RESULT_NOT_EXIST_YET            = -10000,
+    RESULT_NOT_EXIST_YET = -10000,
 
-    FAILED                          = -32768,
+    FAILED = -32768,
 };
 
-template< typename T,
-          typename TE = ptr<std::exception> >
+template < typename T, typename TE = ptr< std::exception > >
 class cmd_result {
 public:
     /**
@@ -68,60 +67,52 @@ public:
      * This handler will be invoked with this instance.
      * User can get more detailed info from this.
      */
-    using handler_type2 = std::function< void( cmd_result<T, TE>&, TE& ) >;
+    using handler_type2 = std::function< void(cmd_result< T, TE >&, TE&) >;
 
-    cmd_result()
-        : err_()
-        , code_(cmd_result_code::OK)
-        , has_result_(false)
-        , accepted_(false)
-        , handler_(nullptr)
-        , handler2_(nullptr)
-        {}
+    cmd_result() :
+            err_(),
+            code_(cmd_result_code::OK),
+            has_result_(false),
+            accepted_(false),
+            handler_(nullptr),
+            handler2_(nullptr) {}
 
-    explicit cmd_result(T& result,
-                        cmd_result_code code = cmd_result_code::OK)
-        : result_(result)
-        , err_()
-        , code_(code)
-        , has_result_(true)
-        , accepted_(false)
-        , handler_(nullptr)
-        , handler2_(nullptr)
-        {}
+    explicit cmd_result(T& result, cmd_result_code code = cmd_result_code::OK) :
+            result_(result),
+            err_(),
+            code_(code),
+            has_result_(true),
+            accepted_(false),
+            handler_(nullptr),
+            handler2_(nullptr) {}
 
-    explicit cmd_result(T& result,
-                        bool _accepted,
-                        cmd_result_code code = cmd_result_code::OK)
-        : result_(result)
-        , err_()
-        , code_(code)
-        , has_result_(true)
-        , accepted_(_accepted)
-        , handler_(nullptr)
-        , handler2_(nullptr)
-        {}
+    explicit cmd_result(T& result, bool _accepted, cmd_result_code code = cmd_result_code::OK) :
+            result_(result),
+            err_(),
+            code_(code),
+            has_result_(true),
+            accepted_(_accepted),
+            handler_(nullptr),
+            handler2_(nullptr) {}
 
-    explicit cmd_result(const handler_type& handler)
-        : err_()
-        , code_(cmd_result_code::OK)
-        , has_result_(true)
-        , accepted_(false)
-        , handler_(handler)
-        , handler2_(nullptr)
-        {}
+    explicit cmd_result(const handler_type& handler) :
+            err_(),
+            code_(cmd_result_code::OK),
+            has_result_(true),
+            accepted_(false),
+            handler_(handler),
+            handler2_(nullptr) {}
 
     ~cmd_result() {}
 
     __nocopy__(cmd_result);
 
 public:
-
     /**
      * Clear all internal data.
      */
     void reset() {
-        std::lock_guard<std::mutex> guard(lock_);
+        std::lock_guard< std::mutex > guard(lock_);
         err_ = TE();
         code_ = cmd_result_code::OK;
         has_result_ = false;
@@ -140,9 +131,12 @@ public:
      */
     void when_ready(const handler_type& handler) {
         bool call_handler = false;
-        {   std::lock_guard<std::mutex> guard(lock_);
-            if (has_result_) call_handler = true;
-            else handler_ = handler;
+        {
+            std::lock_guard< std::mutex > guard(lock_);
+            if (has_result_)
+                call_handler = true;
+            else
+                handler_ = handler;
         }
         if (call_handler) handler(result_, err_);
     }
@@ -156,9 +150,12 @@ public:
      */
     void when_ready(const handler_type2& handler) {
         bool call_handler = false;
-        {   std::lock_guard<std::mutex> guard(lock_);
-            if (has_result_) call_handler = true;
-            else handler2_ = handler;
+        {
+            std::lock_guard< std::mutex > guard(lock_);
+            if (has_result_)
+                call_handler = true;
+            else
+                handler2_ = handler;
         }
         if (call_handler) handler(*this, err_);
     }
@@ -173,15 +170,18 @@ public:
     void set_result(T& result, TE& err, cmd_result_code code = cmd_result_code::OK) {
         bool call_handler = false;
         code_ = code;
-        {   std::lock_guard<std::mutex> guard(lock_);
+        {
+            std::lock_guard< std::mutex > guard(lock_);
             result_ = result;
             err_ = err;
             has_result_ = true;
             if (handler_ || handler2_) call_handler = true;
         }
         if (call_handler) {
-            if (handler2_) handler2_(*this, err);
-            else if (handler_) handler_(result, err);
+            if (handler2_)
+                handler2_(*this, err);
+            else if (handler_)
+                handler_(result, err);
         }
         cv_.notify_all();
     }
@@ -191,18 +191,14 @@ public:
      *
      * @return void.
      */
-    void accept() {
-        accepted_ = true;
-    }
+    void accept() { accepted_ = true; }
 
     /**
      * Return `true` if accepted.
      *
      * @return `true` if accepted.
      */
-    bool get_accepted() const {
-        return accepted_;
-    }
+    bool get_accepted() const { return accepted_; }
 
     /**
      * Set result code.
@@ -211,7 +207,7 @@ public:
      * @return void.
      */
     void set_result_code(cmd_result_code ec) {
-        std::lock_guard<std::mutex> guard(lock_);
+        std::lock_guard< std::mutex > guard(lock_);
         code_ = ec;
     }
 
@@ -221,7 +217,7 @@ public:
      * @return Result code.
      */
     cmd_result_code get_result_code() const {
-        std::lock_guard<std::mutex> guard(lock_);
+        std::lock_guard< std::mutex > guard(lock_);
         if (has_result_) {
             return code_;
         } else {
@@ -230,7 +226,7 @@ public:
     }
 
     bool has_result() const {
-        std::lock_guard<std::mutex> guard(lock_);
+        std::lock_guard< std::mutex > guard(lock_);
         return has_result_;
     }
 
@@ -242,39 +238,22 @@ public:
     std::string get_result_str() const {
         cmd_result_code code = get_result_code();
 
-        static std::unordered_map<int, std::string>
-            code_str_map
-            ( { {cmd_result_code::OK,
-                 "Ok."},
-                {cmd_result_code::CANCELLED,
-                 "Request cancelled."},
-                {cmd_result_code::TIMEOUT,
-                 "Request timeout."},
-                {cmd_result_code::NOT_LEADER,
-                 "This node is not a leader."},
-                {cmd_result_code::BAD_REQUEST,
-                 "Invalid request."},
-                {cmd_result_code::SERVER_ALREADY_EXISTS,
-                 "Server already exists in the cluster."},
-                {cmd_result_code::CONFIG_CHANGING,
-                 "Previous configuration change has not been committed yet."},
-                {cmd_result_code::SERVER_IS_JOINING,
-                 "Other server is being added."},
-                {cmd_result_code::SERVER_NOT_FOUND,
-                 "Cannot find server."},
-                {cmd_result_code::CANNOT_REMOVE_LEADER,
-                 "Cannot remove leader."},
-                {cmd_result_code::TERM_MISMATCH,
-                 "The current term does not match the expected term."},
-                {cmd_result_code::RESULT_NOT_EXIST_YET,
-                 "Operation is in progress and the result does not exist yet."},
-                {cmd_result_code::FAILED,
-                 "Failed."}
-            } );
+        static std::unordered_map< int, std::string > code_str_map(
+            {{cmd_result_code::OK, "Ok."},
+             {cmd_result_code::CANCELLED, "Request cancelled."},
+             {cmd_result_code::TIMEOUT, "Request timeout."},
+             {cmd_result_code::NOT_LEADER, "This node is not a leader."},
+             {cmd_result_code::BAD_REQUEST, "Invalid request."},
+             {cmd_result_code::SERVER_ALREADY_EXISTS, "Server already exists in the cluster."},
+             {cmd_result_code::CONFIG_CHANGING, "Previous configuration change has not been committed yet."},
+             {cmd_result_code::SERVER_IS_JOINING, "Other server is being added."},
+             {cmd_result_code::SERVER_NOT_FOUND, "Cannot find server."},
+             {cmd_result_code::CANNOT_REMOVE_LEADER, "Cannot remove leader."},
+             {cmd_result_code::TERM_MISMATCH, "The current term does not match the expected term."},
+             {cmd_result_code::RESULT_NOT_EXIST_YET, "Operation is in progress and the result does not exist yet."},
+             {cmd_result_code::FAILED, "Failed."}});
         auto entry = code_str_map.find((int)code);
-        if (entry == code_str_map.end()) {
-            return "Unknown (" + std::to_string((int)code) + ").";
-        }
+        if (entry == code_str_map.end()) { return "Unknown (" + std::to_string((int)code) + ")."; }
         return entry->second;
     }
 
@@ -284,20 +263,16 @@ public:
      * @return Result value.
      */
     T& get() {
-        std::unique_lock<std::mutex> lock(lock_);
+        std::unique_lock< std::mutex > lock(lock_);
         if (has_result_) {
-            if (err_ == nullptr) {
-                return result_;
-            }
+            if (err_ == nullptr) { return result_; }
             // Return empty result rather than throw exception.
             // Caller should handle it properly.
             return empty_result_;
         }
 
         cv_.wait(lock);
-        if (err_ == nullptr) {
-            return result_;
-        }
+        if (err_ == nullptr) { return result_; }
 
         return empty_result_;
     }
@@ -316,10 +291,9 @@ private:
 };
 
 // For backward compatibility.
-template< typename T,
-          typename TE = ptr<std::exception> >
-using async_result = cmd_result<T, TE>;
+template < typename T, typename TE = ptr< std::exception > >
+using async_result = cmd_result< T, TE >;
 
-}
+} // namespace nuraft
 
 #endif //_ASYNC_HXX_

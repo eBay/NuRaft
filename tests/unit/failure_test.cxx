@@ -31,7 +31,7 @@ namespace failure_test {
 
 int simple_conflict_test() {
     reset_log_files();
-    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+    ptr< FakeNetworkBase > f_base = cs_new< FakeNetworkBase >();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -40,17 +40,17 @@ int simple_conflict_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
 
     raft_params custom_params;
     custom_params.election_timeout_lower_bound_ = 0;
     custom_params.election_timeout_upper_bound_ = 1000;
     custom_params.heart_beat_interval_ = 500;
     custom_params.snapshot_distance_ = 100;
-    CHK_Z( launch_servers( pkgs, &custom_params ) );
-    CHK_Z( make_group( pkgs ) );
+    CHK_Z(launch_servers(pkgs, &custom_params));
+    CHK_Z(make_group(pkgs));
 
-    for (auto& entry: pkgs) {
+    for (auto& entry : pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -60,75 +60,74 @@ int simple_conflict_test() {
     const size_t NUM = 10;
 
     // Append messages asynchronously.
-    for (size_t ii=0; ii<NUM; ++ii) {
+    for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        s1.raftServer->append_entries( {msg} );
+        s1.raftServer->append_entries({msg});
     }
 
     for (size_t ii = 0; ii < NUM; ++ii) {
         s1.fNet->execReqResp();
     }
     // Wait for bg commit.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Check if all messages are committed.
-    for (size_t ii=0; ii<NUM; ++ii) {
+    for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
         uint64_t idx = s1.getTestSm()->isCommitted(test_msg);
         CHK_GT(idx, 0);
     }
 
     // State machine should be identical.
-    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
-    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK(s2.getTestSm()->isSame(*s1.getTestSm()));
+    CHK_OK(s3.getTestSm()->isSame(*s1.getTestSm()));
 
     // Remember last log index before diverging.
     uint64_t idx_before_div = s1.getTestMgr()->load_log_store()->next_slot() - 1;
 
     // Append more messages to S1.
     const size_t MORE1 = 10;
-    for (size_t ii=NUM; ii<NUM+MORE1; ++ii) {
+    for (size_t ii = NUM; ii < NUM + MORE1; ++ii) {
         std::string test_msg = "more" + std::to_string(ii);
-        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        s1.raftServer->append_entries( {msg} );
+        s1.raftServer->append_entries({msg});
     }
 
     // Without replication of above messages,
     // initiate leader election.
     s2.dbgLog(" --- S2 will start leader election ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    s2.fTimer->invoke(timer_task_type::election_timer);
+    s3.fTimer->invoke(timer_task_type::election_timer);
     // Send it to S3 only.
-    s2.fNet->execReqResp( s3_addr );
-    s2.fNet->execReqResp( s3_addr );
-    s2.fNet->execReqResp( s3_addr );
-    s2.fNet->execReqResp( s3_addr );
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    s2.fNet->execReqResp(s3_addr);
+    s2.fNet->execReqResp(s3_addr);
+    s2.fNet->execReqResp(s3_addr);
+    s2.fNet->execReqResp(s3_addr);
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
     // Now S2 should be the new leader.
     s2.dbgLog(" --- Now S2 is leader ---");
 
     // Drop all messages of S2 and S3.
-    s2.fNet->makeReqFailAll( s1_addr );
-    s3.fNet->makeReqFailAll( s1_addr );
-    s3.fNet->makeReqFailAll( s2_addr );
+    s2.fNet->makeReqFailAll(s1_addr);
+    s3.fNet->makeReqFailAll(s1_addr);
+    s3.fNet->makeReqFailAll(s2_addr);
 
     // Append new (diverged) messages to S2 (new leader).
     s2.dbgLog(" --- Append diverged logs to S2 ---");
     const size_t MORE2 = 5;
-    for (size_t ii=NUM; ii<NUM+MORE2; ++ii) {
+    for (size_t ii = NUM; ii < NUM + MORE2; ++ii) {
         std::string test_msg = "diverged" + std::to_string(ii);
-        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        s2.raftServer->append_entries( {msg} );
+        s2.raftServer->append_entries({msg});
     }
 
     // S1's log index should be greater than S2's log index.
     uint64_t idx_after_div = s1.getTestMgr()->load_log_store()->next_slot() - 1;
-    CHK_GT( idx_after_div,
-            s2.getTestMgr()->load_log_store()->next_slot() - 1 );
+    CHK_GT(idx_after_div, s2.getTestMgr()->load_log_store()->next_slot() - 1);
 
     // S1 attempts to replicate messages.
     // It should be rejected.
@@ -140,10 +139,10 @@ int simple_conflict_test() {
     for (size_t ii = 0; ii < 10; ++ii) {
         s2.fNet->execReqResp();
     }
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Check if all messages are committed.
-    for (size_t ii=0; ii<NUM+MORE2; ++ii) {
+    for (size_t ii = 0; ii < NUM + MORE2; ++ii) {
         std::string test_msg;
         if (ii < NUM) {
             test_msg = "test" + std::to_string(ii);
@@ -155,22 +154,20 @@ int simple_conflict_test() {
     }
 
     // State machine should be identical.
-    CHK_OK( s1.getTestSm()->isSame( *s2.getTestSm() ) );
-    CHK_OK( s3.getTestSm()->isSame( *s2.getTestSm() ) );
+    CHK_OK(s1.getTestSm()->isSame(*s2.getTestSm()));
+    CHK_OK(s3.getTestSm()->isSame(*s2.getTestSm()));
 
     // Log store's last index should be identical.
-    CHK_EQ( s1.getTestMgr()->load_log_store()->next_slot(),
-            s2.getTestMgr()->load_log_store()->next_slot() );
-    CHK_EQ( s1.getTestMgr()->load_log_store()->next_slot(),
-            s3.getTestMgr()->load_log_store()->next_slot() );
+    CHK_EQ(s1.getTestMgr()->load_log_store()->next_slot(), s2.getTestMgr()->load_log_store()->next_slot());
+    CHK_EQ(s1.getTestMgr()->load_log_store()->next_slot(), s3.getTestMgr()->load_log_store()->next_slot());
 
     // Rolled back indexes should be
     //   1) from `idx_before_div` (exclusive) to `idx_after_div` (inclusive),
     //   2) descending order, and
     //   3) consecutive.
-    const std::list<uint64_t> r_idxs = s1.getTestSm()->getRollbackIdxs();
+    const std::list< uint64_t > r_idxs = s1.getTestSm()->getRollbackIdxs();
     CHK_EQ(idx_after_div - idx_before_div, r_idxs.size());
-    for (uint64_t idx: r_idxs) {
+    for (uint64_t idx : r_idxs) {
         CHK_EQ(idx_after_div--, idx);
     }
     CHK_EQ(idx_before_div, idx_after_div);
@@ -191,7 +188,7 @@ int rmv_not_resp_srv_wq_test(bool explicit_failure) {
     // * Can reach quorum.
 
     reset_log_files();
-    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+    ptr< FakeNetworkBase > f_base = cs_new< FakeNetworkBase >();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -200,43 +197,37 @@ int rmv_not_resp_srv_wq_test(bool explicit_failure) {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
 
-    CHK_Z( launch_servers( pkgs ) );
-    CHK_Z( make_group( pkgs ) );
+    CHK_Z(launch_servers(pkgs));
+    CHK_Z(make_group(pkgs));
 
     // Remove s3 from leader.
     s1.dbgLog(" --- remove ---");
-    s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+    s1.raftServer->remove_srv(s3.getTestMgr()->get_srv_config()->get_id());
 
     s1.fNet->execReqResp(s2_addr);
     // Fail to send it to S3.
-    if (explicit_failure) {
-        s1.fNet->makeReqFailAll(s3_addr);
-    }
+    if (explicit_failure) { s1.fNet->makeReqFailAll(s3_addr); }
 
     // Heartbeat multiple times.
-    for (size_t ii=0; ii<10; ++ii) {
-        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    for (size_t ii = 0; ii < 10; ++ii) {
+        s1.fTimer->invoke(timer_task_type::heartbeat_timer);
         s1.fNet->execReqResp(s2_addr);
         // Fail to send it to S3.
-        if (explicit_failure) {
-            s1.fNet->makeReqFailAll(s3_addr);
-        }
+        if (explicit_failure) { s1.fNet->makeReqFailAll(s3_addr); }
     }
 
     // Wait for commit.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // For server 1 and 2, only 2 servers should exist.
-    for (auto& entry: pkgs) {
+    for (auto& entry : pkgs) {
         RaftPkg* pkg = entry;
-        std::vector< ptr<srv_config> > configs;
+        std::vector< ptr< srv_config > > configs;
         pkg->raftServer->get_srv_config_all(configs);
 
-        if (pkg != &s3) {
-            CHK_EQ(2, configs.size());
-        }
+        if (pkg != &s3) { CHK_EQ(2, configs.size()); }
     }
 
     print_stats(pkgs);
@@ -250,21 +241,15 @@ int rmv_not_resp_srv_wq_test(bool explicit_failure) {
     return 0;
 }
 
-cb_func::ReturnCode ool_detect_cb(std::atomic<bool>* invoked,
-                                  size_t purge_upto,
-                                  cb_func::Type type,
-                                  cb_func::Param* params)
-{
+cb_func::ReturnCode ool_detect_cb(std::atomic< bool >* invoked, size_t purge_upto, cb_func::Type type,
+                                  cb_func::Param* params) {
     if (type == cb_func::Type::OutOfLogRangeWarning) {
-        cb_func::OutOfLogRangeWarningArgs* ool_args =
-            (cb_func::OutOfLogRangeWarningArgs*)params->ctx;
+        cb_func::OutOfLogRangeWarningArgs* ool_args = (cb_func::OutOfLogRangeWarningArgs*)params->ctx;
         auto chk_func = [purge_upto, ool_args]() -> int {
             CHK_EQ(purge_upto + 1, ool_args->startIdxOfLeader);
             return 0;
         };
-        if (chk_func() == 0) {
-            invoked->store(true);
-        }
+        if (chk_func() == 0) { invoked->store(true); }
     } else {
         return cb_default(type, params);
     }
@@ -274,7 +259,7 @@ cb_func::ReturnCode ool_detect_cb(std::atomic<bool>* invoked,
 
 int force_log_compaction_test() {
     reset_log_files();
-    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+    ptr< FakeNetworkBase > f_base = cs_new< FakeNetworkBase >();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -283,33 +268,30 @@ int force_log_compaction_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
 
     const size_t NUM_APPENDS = 10;
     const size_t PURGE_UPTO = 5;
 
-    std::atomic<bool> invoked(false);
+    std::atomic< bool > invoked(false);
     for (size_t ii = 0; ii < pkgs.size(); ++ii) {
         RaftPkg* ff = pkgs[ii];
         raft_server::init_options opt(false, true, true);
         if (ii < 2) {
-            opt.raft_callback_ = cb_default;
+            opt._raft_callback = cb_default;
             ff->initServer(nullptr, opt);
         } else {
             // S3: set callback function to detect out of log range.
-            opt.raft_callback_ = std::bind( ool_detect_cb,
-                                            &invoked,
-                                            PURGE_UPTO,
-                                            std::placeholders::_1,
-                                            std::placeholders::_2 );
+            opt._raft_callback =
+                std::bind(ool_detect_cb, &invoked, PURGE_UPTO, std::placeholders::_1, std::placeholders::_2);
             ff->initServer(nullptr, opt);
         }
         ff->fNet->listen(ff->raftServer);
-        ff->fTimer->invoke( timer_task_type::election_timer );
+        ff->fTimer->invoke(timer_task_type::election_timer);
     }
-    CHK_Z( make_group( pkgs ) );
+    CHK_Z(make_group(pkgs));
 
-    for (auto& entry: pkgs) {
+    for (auto& entry : pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -319,11 +301,11 @@ int force_log_compaction_test() {
     }
 
     // Append messages asynchronously.
-    for (size_t ii=0; ii<NUM_APPENDS; ++ii) {
+    for (size_t ii = 0; ii < NUM_APPENDS; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        s1.raftServer->append_entries( {msg} );
+        s1.raftServer->append_entries({msg});
     }
 
     // Send it to S2 only.
@@ -332,17 +314,15 @@ int force_log_compaction_test() {
     s1.fNet->makeReqFailAll(s3_addr);
 
     // Wait for commit.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Force log compaction.
     s1.sMgr->load_log_store()->compact(PURGE_UPTO);
 
     // Trigger multiple heartbeats, it should be ok, without any crash.
     for (size_t ii = 0; ii < 5; ++ii) {
-        if (ii) {
-            TestSuite::sleep_ms(100);
-        }
-        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        if (ii) { TestSuite::sleep_ms(100); }
+        s1.fTimer->invoke(timer_task_type::heartbeat_timer);
         s1.fNet->execReqResp();
     }
 
@@ -362,7 +342,7 @@ int force_log_compaction_test() {
 
 int uncommitted_conf_new_leader_test() {
     reset_log_files();
-    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+    ptr< FakeNetworkBase > f_base = cs_new< FakeNetworkBase >();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -376,11 +356,11 @@ int uncommitted_conf_new_leader_test() {
     RaftPkg s4(f_base, 4, s4_addr);
     RaftPkg s5(f_base, 5, s5_addr);
 
-    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4, &s5};
-    CHK_Z( launch_servers( pkgs ) );
-    CHK_Z( make_group( pkgs ) );
+    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3, &s4, &s5};
+    CHK_Z(launch_servers(pkgs));
+    CHK_Z(make_group(pkgs));
 
-    for (auto& entry: pkgs) {
+    for (auto& entry : pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -394,28 +374,28 @@ int uncommitted_conf_new_leader_test() {
     const size_t NUM_APPENDS_2 = 6;
 
     // Append 3 messages.
-    for (size_t ii=0; ii<NUM_APPENDS_1; ++ii) {
+    for (size_t ii = 0; ii < NUM_APPENDS_1; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        s1.raftServer->append_entries( {msg} );
+        s1.raftServer->append_entries({msg});
     }
     // Replicate to all.
-    for (size_t ii=0; ii<=NUM_APPENDS_1; ++ii) {
+    for (size_t ii = 0; ii <= NUM_APPENDS_1; ++ii) {
         s1.fNet->execReqResp();
         s1.fNet->execReqResp();
     }
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Append 3 more messages.
-    for (size_t ii=NUM_APPENDS_1; ii<NUM_APPENDS_2; ++ii) {
+    for (size_t ii = NUM_APPENDS_1; ii < NUM_APPENDS_2; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        s1.raftServer->append_entries( {msg} );
+        s1.raftServer->append_entries({msg});
     }
     // Replicate to S2 and S3 only.
-    for (size_t ii=NUM_APPENDS_1; ii<=NUM_APPENDS_2; ++ii) {
+    for (size_t ii = NUM_APPENDS_1; ii <= NUM_APPENDS_2; ++ii) {
         s1.fNet->execReqResp(s2_addr);
         s1.fNet->execReqResp(s3_addr);
     }
@@ -435,29 +415,29 @@ int uncommitted_conf_new_leader_test() {
     s1.fNet->execReqResp(s3_addr);
 
     // Invoke election timer of S4 and S5 (to make pre-vote of S3 succeed).
-    s4.fTimer->invoke( timer_task_type::election_timer );
+    s4.fTimer->invoke(timer_task_type::election_timer);
     s4.fNet->execReqResp();
-    s5.fTimer->invoke( timer_task_type::election_timer );
+    s5.fTimer->invoke(timer_task_type::election_timer);
     s5.fNet->execReqResp();
 
     // Now S3's vote should succeed.
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    s3.fTimer->invoke(timer_task_type::election_timer);
     for (size_t ii = 0; ii < 10; ++ii) {
         s3.fNet->execReqResp();
     }
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
-    s3.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s3.fTimer->invoke(timer_task_type::heartbeat_timer);
     for (size_t ii = 0; ii < 10; ++ii) {
         s3.fNet->execReqResp();
     }
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Removing S2 should be in the latest config.
-    ptr<cluster_config> c_config = s3.raftServer->get_config();
+    ptr< cluster_config > c_config = s3.raftServer->get_config();
     CHK_NULL(c_config->get_server(2).get());
 
-    print_stats( pkgs );
+    print_stats(pkgs);
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
@@ -472,7 +452,7 @@ int uncommitted_conf_new_leader_test() {
 
 int removed_server_late_step_down_test() {
     reset_log_files();
-    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+    ptr< FakeNetworkBase > f_base = cs_new< FakeNetworkBase >();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -481,13 +461,13 @@ int removed_server_late_step_down_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
 
-    CHK_Z( launch_servers( pkgs ) );
-    CHK_Z( make_group( pkgs ) );
+    CHK_Z(launch_servers(pkgs));
+    CHK_Z(make_group(pkgs));
 
     // Remove s3 from leader.
-    s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+    s1.raftServer->remove_srv(s3.getTestMgr()->get_srv_config()->get_id());
 
     // Leave req/resp.
     s1.fNet->execReqResp();
@@ -496,13 +476,13 @@ int removed_server_late_step_down_test() {
     // Notify new commit.
     s1.fNet->execReqResp(s2_addr);
     // Wait for bg commit for configuration change.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // S1 and S2: should see S1 and S2 only.
     // S3: should see everyone.
-    for (auto& entry: pkgs) {
+    for (auto& entry : pkgs) {
         RaftPkg* pkg = entry;
-        std::vector< ptr<srv_config> > configs;
+        std::vector< ptr< srv_config > > configs;
         pkg->raftServer->get_srv_config_all(configs);
 
         TestSuite::setInfo("id = %d", pkg->myId);
@@ -514,20 +494,19 @@ int removed_server_late_step_down_test() {
     }
 
     // Removing server again should fail.
-    ptr< cmd_result< ptr<buffer> > > ret =
-        s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+    ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->remove_srv(s3.getTestMgr()->get_srv_config()->get_id());
     CHK_FALSE(ret->get_accepted());
 
     // More catch-up for to-be-removed server.
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     // Wait for bg commit for configuration change.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Now all servers should see S1 and S2 only.
-    for (auto& entry: pkgs) {
+    for (auto& entry : pkgs) {
         RaftPkg* pkg = entry;
-        std::vector< ptr<srv_config> > configs;
+        std::vector< ptr< srv_config > > configs;
         pkg->raftServer->get_srv_config_all(configs);
 
         TestSuite::setInfo("id = %d", pkg->myId);
@@ -535,10 +514,10 @@ int removed_server_late_step_down_test() {
     }
 
     // Invoke election timer for S3, to make it step down.
-    s3.fTimer->invoke( timer_task_type::election_timer );
-    s3.fTimer->invoke( timer_task_type::election_timer );
+    s3.fTimer->invoke(timer_task_type::election_timer);
+    s3.fTimer->invoke(timer_task_type::election_timer);
     // Pending timer task should be zero in S3.
-    CHK_Z( s3.fTimer->getNumPendingTasks() );
+    CHK_Z(s3.fTimer->getNumPendingTasks());
 
     print_stats(pkgs);
 
@@ -553,17 +532,17 @@ int removed_server_late_step_down_test() {
 
 int remove_server_on_pending_configs_test() {
     reset_log_files();
-    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+    ptr< FakeNetworkBase > f_base = cs_new< FakeNetworkBase >();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
 
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
-    std::vector<RaftPkg*> pkgs = {&s1, &s2};
+    std::vector< RaftPkg* > pkgs = {&s1, &s2};
 
-    CHK_Z( launch_servers( pkgs ) );
-    CHK_Z( make_group( pkgs ) );
+    CHK_Z(launch_servers(pkgs));
+    CHK_Z(make_group(pkgs));
 
     // Make some dummy configs by setting user ctx.
     s1.raftServer->set_user_ctx("a");
@@ -575,16 +554,15 @@ int remove_server_on_pending_configs_test() {
 
     // Make failure.
     s1.fNet->makeReqFailAll(s2_addr);
-    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
     s1.fNet->makeReqFailAll(s2_addr);
 
     // Wait for bg commit for configuration change.
-    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Adding server should succeed without error about duplicate ID.
-    ptr< cmd_result< ptr<buffer> > > ret =
-        s1.raftServer->add_srv( *s2.getTestMgr()->get_srv_config() );
-    CHK_Z( ret->get_result_code() );
+    ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->add_srv(*s2.getTestMgr()->get_srv_config());
+    CHK_Z(ret->get_result_code());
 
     print_stats(pkgs);
 
@@ -596,7 +574,7 @@ int remove_server_on_pending_configs_test() {
     return 0;
 }
 
-}  // namespace failure_test;
+} // namespace failure_test
 using namespace failure_test;
 
 int main(int argc, char** argv) {
@@ -607,25 +585,18 @@ int main(int argc, char** argv) {
     // Disable reconnection timer for deterministic test.
     debugging_options::get_instance().disable_reconn_backoff_ = true;
 
-    ts.doTest( "simple conflict test",
-               simple_conflict_test );
+    ts.doTest("simple conflict test", simple_conflict_test);
 
-    ts.doTest( "remove not responding server with quorum test",
-               rmv_not_resp_srv_wq_test,
-               TestRange<bool>({false, true}) );
+    ts.doTest("remove not responding server with quorum test", rmv_not_resp_srv_wq_test,
+              TestRange< bool >({false, true}));
 
-    ts.doTest( "force log compaction test",
-               force_log_compaction_test );
+    ts.doTest("force log compaction test", force_log_compaction_test);
 
-    ts.doTest( "uncommitted config for new leader test",
-               uncommitted_conf_new_leader_test );
+    ts.doTest("uncommitted config for new leader test", uncommitted_conf_new_leader_test);
 
-    ts.doTest( "removed server late step down test",
-               removed_server_late_step_down_test );
+    ts.doTest("removed server late step down test", removed_server_late_step_down_test);
 
-    ts.doTest( "remove server on pending configs test",
-               remove_server_on_pending_configs_test );
+    ts.doTest("remove server on pending configs test", remove_server_on_pending_configs_test);
 
     return 0;
 }
-

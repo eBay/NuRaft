@@ -1,22 +1,147 @@
 ---
-Language: Cpp
-UseTab: Never
+# We'll use defaults from the LLVM style, but with 4 columns indentation.
+BasedOnStyle: LLVM
 IndentWidth: 4
-AccessModifierOffset: -4
-TabWidth: 4
-ColumnLimit: 90
-BreakConstructorInitializersBeforeComma: true
-BreakBeforeTernaryOperators: true
-BreakBeforeBinaryOperators: NonAssignment
+---
+Language: Cpp
+# Force pointers to the type for C++.
+DerivePointerAlignment: false
 PointerAlignment: Left
+ColumnLimit: 120
+
+AccessModifierOffset: -4
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Right
+AlignOperands:   false
+AlignTrailingComments: true
+AllowShortBlocksOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: true
-SpaceBeforeRangeBasedForLoopColon: false
-BinPackArguments: false
-BinPackParameters: false
-AlwaysBreakBeforeMultilineStrings: false
-AlignEscapedNewlines: Left
-#IndentPPDirectives: BeforeHash
-AllowShortLambdasOnASingleLine: Inline
-AlignAfterOpenBracket: true
-AlignOperands: true
+AllowShortBlocksOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: false
+# AllowShortFunctionsOnASingleLine: InlineOnly
+# AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakTemplateDeclarations: true
+
+BinPackArguments: true
+BinPackParameters: true
+BreakConstructorInitializersBeforeComma: true
+BreakConstructorInitializers: AfterColon
+
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ConstructorInitializerIndentWidth: 8
+
+IndentCaseLabels: false
+SortIncludes: false
+#IndentWrappedFunctionNames: true
+#SpaceAfterTemplateKeyword: true
+#SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpacesInAngles : true
+
+---
+Language: JavaScript
+# Use 140 columns for JS.
+ColumnLimit: 140
+...
+
+
+#####################
+# ---
+# Language:        Cpp
+# AccessModifierOffset: -1
+# AlignAfterOpenBracket: Align
+# AlignConsecutiveAssignments: false
+# AlignConsecutiveDeclarations: false
+# AlignEscapedNewlinesLeft: true
+# AlignOperands:   true
+# AlignTrailingComments: true
+# AllowAllParametersOfDeclarationOnNextLine: false
+# AllowShortBlocksOnASingleLine: false
+# AllowShortCaseLabelsOnASingleLine: false
+# AllowShortFunctionsOnASingleLine: Inline
+# AllowShortIfStatementsOnASingleLine: false
+# AllowShortLoopsOnASingleLine: false
+# AlwaysBreakAfterDefinitionReturnType: None
+# AlwaysBreakAfterReturnType: None
+# AlwaysBreakBeforeMultilineStrings: true
+# AlwaysBreakTemplateDeclarations: true
+# BinPackArguments: true
+# BinPackParameters: false
+# BraceWrapping:
+#   AfterClass:      false
+#   AfterControlStatement: false
+#   AfterEnum:       false
+#   AfterFunction:   false
+#   AfterNamespace:  false
+#   AfterObjCDeclaration: false
+#   AfterStruct:     false
+#   AfterUnion:      false
+#   BeforeCatch:     false
+#   BeforeElse:      false
+#   IndentBraces:    false
+# BreakBeforeBinaryOperators: None
+# BreakBeforeBraces: Attach
+# BreakBeforeInheritanceComma: false
+# BreakBeforeTernaryOperators: true
+# BreakAfterJavaFieldAnnotations: false
+# BreakConstructorInitializersBeforeComma: false
+# BreakStringLiterals: true
+# ColumnLimit:     80
+# CommentPragmas:  '^ IWYU pragma:'
+# ConstructorInitializerAllOnOneLineOrOnePerLine: true
+# ConstructorInitializerIndentWidth: 4
+# ContinuationIndentWidth: 4
+# Cpp11BracedListStyle: true
+# DerivePointerAlignment: false
+# DisableFormat:   false
+# ExperimentalAutoDetectBinPacking: false
+# FixNamespaceComments: true
+# ForEachMacros:   [ foreach, Q_FOREACH, BOOST_FOREACH ]
+# IncludeCategories:
+#   - Regex:           '^<.*\.h>'
+#     Priority:        1
+#   - Regex:           '^<.*'
+#     Priority:        2
+#   - Regex:           '.*'
+#     Priority:        3
+# IncludeIsMainRegex: '([-_](test|unittest))?$'
+# IndentCaseLabels: true
+# IndentWidth:     2
+# IndentWrappedFunctionNames: false
+# JavaScriptQuotes: Leave
+# JavaScriptWrapImports: true
+# KeepEmptyLinesAtTheStartOfBlocks: false
+# MacroBlockBegin: ''
+# MacroBlockEnd:   ''
+# MaxEmptyLinesToKeep: 1
+# NamespaceIndentation: None
+# ObjCBlockIndentWidth: 2
+# ObjCSpaceAfterProperty: true
+# ObjCSpaceBeforeProtocolList: false
+# PenaltyBreakBeforeFirstCallParameter: 1
+# PenaltyBreakComment: 300
+# PenaltyBreakFirstLessLess: 120
+# PenaltyBreakString: 1000
+# PenaltyExcessCharacter: 1000000
+# PenaltyReturnTypeOnItsOwnLine: 200
+# PointerAlignment: Right
+# ReflowComments:  true
+# SortIncludes:    false
+# SpaceAfterCStyleCast: false
+# SpaceAfterTemplateKeyword: true
+# SpaceBeforeAssignmentOperators: true
+# SpaceBeforeParens: ControlStatements
+# SpaceInEmptyParentheses: false
+# SpacesBeforeTrailingComments: 2
+# SpacesInAngles:  false
+# SpacesInContainerLiterals: true
+# SpacesInCStyleCastParentheses: false
+# SpacesInParentheses: false
+# SpacesInSquareBrackets: false
+# Standard:        Auto
+# TabWidth:        8
+# UseTab:          Never
+# ...

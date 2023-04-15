@@ -36,34 +36,19 @@ public:
     // WARNING: Please see the comment at raft_server::raft_server(...).
     const static int32 INIT_PRIORITY = 1;
 
-    srv_config(int32 id, const std::string& endpoint)
-        : id_(id)
-        , dc_id_(0)
-        , endpoint_(endpoint)
-        , learner_(false)
-        , priority_(INIT_PRIORITY)
-        {}
+    srv_config(int32 id, const std::string& endpoint) :
+            id_(id), dc_id_(0), endpoint_(endpoint), learner_(false), priority_(INIT_PRIORITY) {}
 
-    srv_config(int32 id,
-               int32 dc_id,
-               const std::string& endpoint,
-               const std::string& aux,
-               bool learner,
-               int32 priority = INIT_PRIORITY)
-        : id_(id)
-        , dc_id_(dc_id)
-        , endpoint_(endpoint)
-        , aux_(aux)
-        , learner_(learner)
-        , priority_(priority)
-        {}
+    srv_config(int32 id, int32 dc_id, const std::string& endpoint, const std::string& aux, bool learner,
+               int32 priority = INIT_PRIORITY) :
+            id_(id), dc_id_(dc_id), endpoint_(endpoint), aux_(aux), learner_(learner), priority_(priority) {}
 
     __nocopy__(srv_config);
 
 public:
-    static ptr<srv_config> deserialize(buffer& buf);
+    static ptr< srv_config > deserialize(buffer& buf);
 
-    static ptr<srv_config> deserialize(buffer_serializer& bs);
+    static ptr< srv_config > deserialize(buffer_serializer& bs);
 
     int32 get_id() const { return id_; }
 
@@ -79,7 +64,7 @@ public:
 
     void set_priority(const int32 new_val) { priority_ = new_val; }
 
-    ptr<buffer> serialize() const;
+    ptr< buffer > serialize() const;
 
 private:
     /**

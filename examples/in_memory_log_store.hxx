@@ -42,22 +42,21 @@ public:
 
     ulong start_index() const;
 
-    ptr<log_entry> last_entry() const;
+    ptr< log_entry > last_entry() const;
 
-    ulong append(ptr<log_entry>& entry);
+    ulong append(ptr< log_entry >& entry);
 
-    void write_at(ulong index, ptr<log_entry>& entry);
+    void write_at(ulong index, ptr< log_entry >& entry);
 
-    ptr<std::vector<ptr<log_entry>>> log_entries(ulong start, ulong end);
+    ptr< std::vector< ptr< log_entry > > > log_entries(ulong start, ulong end);
 
-    ptr<std::vector<ptr<log_entry>>> log_entries_ext(
-            ulong start, ulong end, int64 batch_size_hint_in_bytes = 0);
+    ptr< std::vector< ptr< log_entry > > > log_entries_ext(ulong start, ulong end, int64 batch_size_hint_in_bytes = 0);
 
-    ptr<log_entry> entry_at(ulong index);
+    ptr< log_entry > entry_at(ulong index);
 
     ulong term_at(ulong index);
 
-    ptr<buffer> pack(ulong index, int32 cnt);
+    ptr< buffer > pack(ulong index, int32 cnt);
 
     void apply_pack(ulong index, buffer& pack);
 
@@ -72,14 +71,14 @@ public:
     void set_disk_delay(raft_server* raft, size_t delay_ms);
 
 private:
-    static ptr<log_entry> make_clone(const ptr<log_entry>& entry);
+    static ptr< log_entry > make_clone(const ptr< log_entry >& entry);
 
     void disk_emul_loop();
 
     /**
      * Map of <log index, log data>.
      */
-    std::map<ulong, ptr<log_entry>> logs_;
+    std::map< ulong, ptr< log_entry > > logs_;
 
     /**
      * Lock for `logs_`.
@@ -89,7 +88,7 @@ private:
     /**
      * The index of the first log.
      */
-    std::atomic<ulong> start_idx_;
+    std::atomic< ulong > start_idx_;
 
     /**
      * Backward pointer to Raft server.
@@ -101,24 +100,24 @@ private:
     /**
      * If non-zero, this log store will emulate the disk write delay.
      */
-    std::atomic<size_t> disk_emul_delay;
+    std::atomic< size_t > disk_emul_delay;
 
     /**
      * Map of <timestamp, log index>, emulating logs that is being written to disk.
      * Log index will be regarded as "durable" after the corresponding timestamp.
      */
-    std::map<uint64_t, uint64_t> disk_emul_logs_being_written_;
+    std::map< uint64_t, uint64_t > disk_emul_logs_being_written_;
 
     /**
      * Thread that will update `last_durable_index_` and call
      * `notify_log_append_completion` at proper time.
      */
-    std::unique_ptr<std::thread> disk_emul_thread_;
+    std::unique_ptr< std::thread > disk_emul_thread_;
 
     /**
      * Flag to terminate the thread.
      */
-    std::atomic<bool> disk_emul_thread_stop_signal_;
+    std::atomic< bool > disk_emul_thread_stop_signal_;
 
     /**
      * Event awaiter that emulates disk delay.
@@ -128,10 +127,9 @@ private:
     /**
      * Last written log index.
      */
-    std::atomic<uint64_t> disk_emul_last_durable_index_;
+    std::atomic< uint64_t > disk_emul_last_durable_index_;
 
     // Testing purpose --------------- END
 };
 
-}
-
+} // namespace nuraft

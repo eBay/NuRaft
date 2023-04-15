@@ -33,6 +33,6 @@ typedef uint16_t ushort;
 typedef uint32_t uint;
 typedef int32_t int32;
 
-}
+} // namespace nuraft
 
 #endif // _BASIC_TYPES_HXX_

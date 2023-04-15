@@ -29,18 +29,15 @@ using namespace nuraft;
 namespace stat_mgr_test {
 
 int stat_mgr_basic_test() {
-    stat_elem& counter = *stat_mgr::get_instance()->create_stat
-        (stat_elem::COUNTER, "counter");
+    stat_elem& counter = *stat_mgr::get_instance()->create_stat(stat_elem::COUNTER, "counter");
 
-    stat_elem& gauge = *stat_mgr::get_instance()->create_stat
-        (stat_elem::GAUGE, "gauge");
+    stat_elem& gauge = *stat_mgr::get_instance()->create_stat(stat_elem::GAUGE, "gauge");
 
-    stat_elem& histogram = *stat_mgr::get_instance()->create_stat
-        (stat_elem::HISTOGRAM, "histogram");
+    stat_elem& histogram = *stat_mgr::get_instance()->create_stat(stat_elem::HISTOGRAM, "histogram");
 
     size_t exp_sum = 0;
     size_t NUM = 1000;
-    for (size_t ii=0; ii<NUM; ++ii) {
+    for (size_t ii = 0; ii < NUM; ++ii) {
         counter++;
         gauge += ii;
         exp_sum += ii;
@@ -52,11 +49,11 @@ int stat_mgr_basic_test() {
     CHK_EQ(exp_sum, raft_server::get_stat_counter("gauge"));
     CHK_EQ(exp_sum, raft_server::get_stat_gauge("gauge"));
 
-    std::map<double, uint64_t> hist_dump;
+    std::map< double, uint64_t > hist_dump;
     raft_server::get_stat_histogram("histogram", hist_dump);
 
     size_t hist_sum = 0;
-    for (auto& entry: hist_dump) {
+    for (auto& entry : hist_dump) {
         TestSuite::_msg("%.1f %zu\n", entry.first, entry.second);
         hist_sum += entry.second;
     }
@@ -71,7 +68,7 @@ int stat_mgr_basic_test() {
     hist_dump.clear();
     hist_sum = 0;
     raft_server::get_stat_histogram("histogram", hist_dump);
-    for (auto& entry: hist_dump) {
+    for (auto& entry : hist_dump) {
         TestSuite::_msg("%.1f %zu\n", entry.first, entry.second);
         hist_sum += entry.second;
     }
@@ -80,7 +77,7 @@ int stat_mgr_basic_test() {
     return 0;
 }
 
-}  // namespace stat_mgr_test;
+} // namespace stat_mgr_test
 using namespace stat_mgr_test;
 
 int main(int argc, char** argv) {
@@ -89,10 +86,8 @@ int main(int argc, char** argv) {
     ts.options.printTestMessage = false;
 
 #ifdef ENABLE_RAFT_STATS
-    ts.doTest( "stat mgr basic test",
-               stat_mgr_basic_test );
+    ts.doTest("stat mgr basic test", stat_mgr_basic_test);
 #endif
 
     return 0;
 }
-

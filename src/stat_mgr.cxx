@@ -25,29 +25,22 @@ namespace nuraft {
 
 // === stat_elem ==============================================================
 
-stat_elem::stat_elem(Type _type, const std::string& _name)
-    : stat_type_(_type)
-    , stat_name_(_name)
-    , counter_(0)
-    , gauge_(0)
-    , hist_( ( _type == HISTOGRAM )
-             ? ( new Histogram() )
-             : nullptr )
-    {}
+stat_elem::stat_elem(Type _type, const std::string& _name) :
+        stat_type_(_type),
+        stat_name_(_name),
+        counter_(0),
+        gauge_(0),
+        hist_((_type == HISTOGRAM) ? (new Histogram()) : nullptr) {}
 
-stat_elem::~stat_elem() {
-    delete hist_;
-}
-
+stat_elem::~stat_elem() { delete hist_; }
 
 // === stat_mgr ===============================================================
 
-stat_mgr::stat_mgr() {
-}
+stat_mgr::stat_mgr() {}
 
 stat_mgr::~stat_mgr() {
-    std::unique_lock<std::mutex> l(stat_map_lock_);
-    for (auto& entry: stat_map_) {
+    std::unique_lock< std::mutex > l(stat_map_lock_);
+    for (auto& entry : stat_map_) {
         delete entry.second;
     }
     stat_map_.clear();
@@ -59,7 +52,7 @@ stat_mgr* stat_mgr::get_instance() {
 }
 
 stat_elem* stat_mgr::get_stat(const std::string& stat_name) {
-    std::unique_lock<std::mutex> l(stat_map_lock_);
+    std::unique_lock< std::mutex > l(stat_map_lock_);
     auto entry = stat_map_.find(stat_name);
     if (entry == stat_map_.end()) {
         // Not exist.
@@ -78,28 +71,28 @@ stat_elem* stat_mgr::create_stat(stat_elem::Type type, const std::string& stat_n
 
     stat_elem* elem = new stat_elem(type, stat_name);
 
-    std::unique_lock<std::mutex> l(stat_map_lock_);
+    std::unique_lock< std::mutex > l(stat_map_lock_);
     auto entry = stat_map_.find(stat_name);
     if (entry != stat_map_.end()) {
         // Alraedy exist.
         delete elem;
         return entry->second;
     }
-    stat_map_.insert( std::make_pair(stat_name, elem) );
+    stat_map_.insert(std::make_pair(stat_name, elem));
     return elem;
 }
 
-void stat_mgr::get_all_stats(std::vector<stat_elem*>& stats_out) {
-    std::unique_lock<std::mutex> l(stat_map_lock_);
+void stat_mgr::get_all_stats(std::vector< stat_elem* >& stats_out) {
+    std::unique_lock< std::mutex > l(stat_map_lock_);
     stats_out.resize(stat_map_.size());
     size_t idx = 0;
-    for (auto& entry: stat_map_) {
+    for (auto& entry : stat_map_) {
         stats_out[idx++] = entry.second;
     }
 }
 
 void stat_mgr::reset_stat(const std::string& stat_name) {
-    std::unique_lock<std::mutex> l(stat_map_lock_);
+    std::unique_lock< std::mutex > l(stat_map_lock_);
     auto entry = stat_map_.find(stat_name);
     if (entry != stat_map_.end()) {
         stat_elem* elem = entry->second;
@@ -108,13 +101,12 @@ void stat_mgr::reset_stat(const std::string& stat_name) {
 }
 
 void stat_mgr::reset_all_stats() {
-    std::unique_lock<std::mutex> l(stat_map_lock_);
-    for (auto& entry: stat_map_) {
+    std::unique_lock< std::mutex > l(stat_map_lock_);
+    for (auto& entry : stat_map_) {
         stat_elem* elem = entry.second;
         elem->reset();
     }
 }
-
 
 // === raft_server ============================================================
 
@@ -142,28 +134,20 @@ int64_t raft_server::get_stat_gauge(const std::string& name) {
     return 0;
 }
 
-bool raft_server::get_stat_histogram(const std::string& name,
-                                     std::map<double, uint64_t>& histogram_out ) {
+bool raft_server::get_stat_histogram(const std::string& name, std::map< double, uint64_t >& histogram_out) {
     stat_elem* elem = stat_mgr::get_instance()->get_stat(name);
     if (!elem) return false;
     if (elem->get_type() != stat_elem::HISTOGRAM) return false;
 
-    for (HistItr& entry: *elem->get_histogram()) {
+    for (HistItr& entry : *elem->get_histogram()) {
         uint64_t cnt = entry.getCount();
-        if (cnt) {
-            histogram_out.insert( std::make_pair(entry.getUpperBound(), cnt) );
-        }
+        if (cnt) { histogram_out.insert(std::make_pair(entry.getUpperBound(), cnt)); }
     }
     return true;
 }
 
-void raft_server::reset_stat(const std::string& name) {
-    stat_mgr::get_instance()->reset_stat(name);
-}
+void raft_server::reset_stat(const std::string& name) { stat_mgr::get_instance()->reset_stat(name); }
 
-void raft_server::reset_all_stats() {
-    stat_mgr::get_instance()->reset_all_stats();
-}
+void raft_server::reset_all_stats() { stat_mgr::get_instance()->reset_all_stats(); }
 
 } // namespace nuraft
-

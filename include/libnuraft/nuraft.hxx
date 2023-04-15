@@ -49,4 +49,3 @@ limitations under the License.
 #include "timer_task.hxx"
 
 #include "launcher.hxx"
-

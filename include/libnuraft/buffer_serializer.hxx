@@ -33,11 +33,9 @@ public:
         BIG = 0x1,
     };
 
-    buffer_serializer(buffer& src_buf,
-                      endianness endian = LITTLE);
+    buffer_serializer(buffer& src_buf, endianness endian = LITTLE);
 
-    buffer_serializer(ptr<buffer>& src_buf_ptr,
-                      endianness endian = LITTLE);
+    buffer_serializer(ptr< buffer >& src_buf_ptr, endianness endian = LITTLE);
 
     __nocopy__(buffer_serializer);
 
@@ -260,7 +258,7 @@ public:
      *
      * @param dst Buffer where the data will be stored.
      */
-    void get_buffer(ptr<buffer>& dst);
+    void get_buffer(ptr< buffer >& dst);
 
     /**
      * Read 4-byte length followed by byte array, and then return them.
@@ -302,5 +300,4 @@ private:
     size_t pos_;
 };
 
-}
-
+} // namespace nuraft

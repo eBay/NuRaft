@@ -41,14 +41,11 @@ void raft_server::enable_hb_for_peer(peer& p) {
 void raft_server::check_srv_to_leave_timeout() {
     if (!srv_to_leave_) return;
     ulong last_resp_ms = srv_to_leave_->get_resp_timer_us() / 1000;
-    if ( last_resp_ms >
-             (ulong)raft_server::raft_limits_.leave_limit_ *
-             ctx_->get_params()->heart_beat_interval_ ) {
+    if (last_resp_ms > (ulong)raft_server::raft_limits_.leave_limit_ * ctx_->get_params()->heart_beat_interval_) {
         // Timeout: remove peer.
         p_wn("server to be removed %d, response timeout %" PRIu64 " ms. "
              "force remove now",
-             srv_to_leave_->get_id(),
-             last_resp_ms);
+             srv_to_leave_->get_id(), last_resp_ms);
         remove_peer_from_peers(srv_to_leave_);
         reset_srv_to_leave();
     }
@@ -60,8 +57,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
     check_srv_to_leave_timeout();
 
     if (write_paused_ && reelection_timer_.timeout()) {
-        p_in("resign by timeout, %" PRIu64 " us elapsed, resign now",
-             reelection_timer_.get_us());
+        p_in("resign by timeout, %" PRIu64 " us elapsed, resign now", reelection_timer_.get_us());
         leader_ = -1;
         become_follower();
 
@@ -70,24 +66,20 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
         return;
     }
 
-    if ( srv_to_join_snp_retry_required_ &&
-         srv_to_join_ &&
-         srv_to_join_->get_id() == srv_id ) {
+    if (srv_to_join_snp_retry_required_ && srv_to_join_ && srv_to_join_->get_id() == srv_id) {
         p_in("retrying snapshot read for server %d", srv_id);
         if (srv_to_join_->need_to_reconnect()) {
             p_in("rpc client for %d needs reconnection", srv_id);
 
-            ptr<raft_params> params = ctx_->get_params();
+            ptr< raft_params > params = ctx_->get_params();
             uint64_t resp_timer_ms = srv_to_join_->get_resp_timer_us() / 1000;
-            if ( resp_timer_ms >= (uint64_t)params->heart_beat_interval_ *
-                                  raft_server::raft_limits_.response_limit_ ) {
+            if (resp_timer_ms >= (uint64_t)params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_) {
                 p_in("response timeout: %" PRIu64 " ms, will not retry", resp_timer_ms);
                 clear_snapshot_sync_ctx(*srv_to_join_);
                 return;
             }
 
-            ptr<srv_config> s_config =
-                srv_config::deserialize( *srv_to_join_->get_config().serialize() );
+            ptr< srv_config > s_config = srv_config::deserialize(*srv_to_join_->get_config().serialize());
             bool succ = srv_to_join_->recreate_rpc(s_config, *ctx_);
             if (!succ) {
                 // Reconnection failed.
@@ -107,15 +99,14 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
     }
 
     // To avoid freeing this pointer in the middle of this function.
-    ptr<peer> p = pit->second;
+    ptr< peer > p = pit->second;
 
     if (p->is_leave_flag_set()) {
         // Leave request has been sent but not removed yet,
         // increase the counter.
         p->inc_hb_cnt_since_leave();
         int32 cur_cnt = p->get_hb_cnt_since_leave();
-        p_in("peer %d is not responding for %d HBs since leave request",
-             p->get_id(), cur_cnt);
+        p_in("peer %d is not responding for %d HBs since leave request", p->get_id(), cur_cnt);
 
         if (cur_cnt >= raft_server::raft_limits_.leave_limit_) {
             // Force remove the server.
@@ -144,7 +135,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
         update_target_priority();
         request_append_entries(p);
         {
-            std::lock_guard<std::mutex> guard(p->get_lock());
+            std::lock_guard< std::mutex > guard(p->get_lock());
             if (p->is_hb_enabled()) {
                 // Schedule another heartbeat if heartbeat is still enabled
                 schedule_task(p->get_hb_task(), p->get_current_hb_interval());
@@ -154,7 +145,8 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
         }
     } else {
         p_wn("Receive a heartbeat event for %d "
-             "while no longer as a leader", p->get_id());
+             "while no longer as a leader",
+             p->get_id());
     }
 }
 
@@ -162,9 +154,7 @@ void raft_server::restart_election_timer() {
     // don't start the election timer while this server is still catching up the logs
     // or this server is the leader
     recur_lock(lock_);
-    if (catching_up_ || role_ == srv_role::leader) {
-        return;
-    }
+    if (catching_up_ || role_ == srv_role::leader) { return; }
 
     // If election timer was not allowed, clear the flag.
     if (!state_->is_election_timer_allowed()) {
@@ -176,9 +166,7 @@ void raft_server::restart_election_timer() {
         p_tr("cancel existing timer");
         cancel_task(election_task_);
     } else {
-        election_task_ = cs_new< timer_task<void> >
-                               ( election_exec_,
-                                 timer_task_type::election_timer );
+        election_task_ = cs_new< timer_task< void > >(election_exec_, timer_task_type::election_timer);
     }
 
     p_tr("re-schedule election timer");
@@ -229,14 +217,14 @@ void raft_server::handle_election_timeout() {
 
             // Modified by Jung-Sang Ahn (Dec 24, 2019):
             // Same as in reconfigure().
-            //reset_peer_info();
+            // reset_peer_info();
             cancel_schedulers();
             return;
         }
 
-        p_in( "stepping down (cycles left: %d), "
-              "skip this election timeout event",
-              steps_to_down_ );
+        p_in("stepping down (cycles left: %d), "
+             "skip this election timeout event",
+             steps_to_down_);
         restart_election_timer();
         return;
     }
@@ -259,14 +247,14 @@ void raft_server::handle_election_timeout() {
         // ignore election timeout 20 times.
         et_cnt_receiving_snapshot_.fetch_add(1);
         p_wn("election timeout while receiving snapshot, count %" PRIu64 ", "
-             "ignore it.", et_cnt_receiving_snapshot_.load());
+             "ignore it.",
+             et_cnt_receiving_snapshot_.load());
         restart_election_timer();
         return;
     }
 
     int time_ms = last_election_timer_reset_.get_us() / 1000;
-    if ( serving_req_ ||
-         time_ms < ctx_->get_params()->election_timeout_lower_bound_ ) {
+    if (serving_req_ || time_ms < ctx_->get_params()->election_timeout_lower_bound_) {
         // Handling appending entries is now taking long time,
         // so that server keeps skipping sending heartbeat.
         // It doesn't mean server is gone. Just ignore.
@@ -276,8 +264,8 @@ void raft_server::handle_election_timeout() {
     }
 
     if (role_ == srv_role::leader) {
-        p_er( "A leader should never encounter election timeout, "
-              "illegal application state, ignore it.");
+        p_er("A leader should never encounter election timeout, "
+             "illegal application state, ignore it.");
         return;
     }
 
@@ -290,40 +278,30 @@ void raft_server::handle_election_timeout() {
         }
 
         ulong last_log_term = 0;
-        if (log_store_ && log_store_->last_entry()) {
-            last_log_term = log_store_->last_entry()->get_term();
-        }
+        if (log_store_ && log_store_->last_entry()) { last_log_term = log_store_->last_entry()->get_term(); }
 
         ulong state_term = state_->get_term();
 
-        p_in( "[ELECTION TIMEOUT] current role: %s, log last term %" PRIu64 ", "
-              "state term %" PRIu64 ", target p %d, my p %d, %s, %s",
-              srv_role_to_string(role_).c_str(), last_log_term, state_term,
-              target_priority_, my_priority_,
-              (hb_alive_) ? "hb alive" : "hb dead",
-              (pre_vote_.done_) ? "pre-vote done" : "pre-vote NOT done");
+        p_in("[ELECTION TIMEOUT] current role: %s, log last term %" PRIu64 ", "
+             "state term %" PRIu64 ", target p %d, my p %d, %s, %s",
+             srv_role_to_string(role_).c_str(), last_log_term, state_term, target_priority_, my_priority_,
+             (hb_alive_) ? "hb alive" : "hb dead", (pre_vote_.done_) ? "pre-vote done" : "pre-vote NOT done");
 
         // `term` changed, cannot use previous pre-vote result.
         if (pre_vote_.term_ != state_term) {
-            p_in("pre-vote term (%" PRIu64 ") is different, reset it to %" PRIu64 "",
-                 pre_vote_.term_, state_term);
+            p_in("pre-vote term (%" PRIu64 ") is different, reset it to %" PRIu64 "", pre_vote_.term_, state_term);
             pre_vote_.reset(state_term);
         }
 
-        if ( !peers_.size() ||
-             pre_vote_.done_ ||
-             get_quorum_for_election() == 0 ) {
+        if (!peers_.size() || pre_vote_.done_ || get_quorum_for_election() == 0) {
             initiate_vote();
         } else {
             request_prevote();
         }
-
     }
 
     // restart the election timer if this is not yet a leader
-    if (role_ != srv_role::leader) {
-        restart_election_timer();
-    }
+    if (role_ != srv_role::leader) { restart_election_timer(); }
 }
 
 void raft_server::cancel_schedulers() {
@@ -332,15 +310,11 @@ void raft_server::cancel_schedulers() {
         return;
     }
 
-    if (election_task_) {
-        cancel_task(election_task_);
-    }
+    if (election_task_) { cancel_task(election_task_); }
 
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        const ptr<peer>& p = it->second;
-        if (p->get_hb_task()) {
-            cancel_task(p->get_hb_task());
-        }
+        const ptr< peer >& p = it->second;
+        if (p->get_hb_task()) { cancel_task(p->get_hb_task()); }
         // Shutdown peer to cut off smart pointers.
         p->shutdown();
 
@@ -350,22 +324,19 @@ void raft_server::cancel_schedulers() {
     scheduler_.reset();
 }
 
-void raft_server::schedule_task(ptr<delayed_task>& task, int32 milliseconds) {
+void raft_server::schedule_task(ptr< delayed_task >& task, int32 milliseconds) {
     if (stopping_) return;
 
     if (!scheduler_) {
-        std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
+        std::lock_guard< std::mutex > l(ctx_->ctx_lock_);
         scheduler_ = ctx_->scheduler_;
     }
-    if (scheduler_) {
-        scheduler_->schedule(task, milliseconds);
-    }
+    if (scheduler_) { scheduler_->schedule(task, milliseconds); }
 }
 
-void raft_server::cancel_task(ptr<delayed_task>& task) {
+void raft_server::cancel_task(ptr< delayed_task >& task) {
     if (!scheduler_) return;
     scheduler_->cancel(task);
 }
 
-}// namespace nuraft;
-
+} // namespace nuraft

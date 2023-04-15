@@ -24,32 +24,31 @@ limitations under the License.
 
 namespace nuraft {
 
-ptr<snapshot_sync_req> snapshot_sync_req::deserialize(buffer& buf) {
+ptr< snapshot_sync_req > snapshot_sync_req::deserialize(buffer& buf) {
     buffer_serializer bs(buf);
     return deserialize(bs);
 }
 
-ptr<snapshot_sync_req> snapshot_sync_req::deserialize(buffer_serializer& bs) {
-    ptr<snapshot> snp(snapshot::deserialize(bs));
+ptr< snapshot_sync_req > snapshot_sync_req::deserialize(buffer_serializer& bs) {
+    ptr< snapshot > snp(snapshot::deserialize(bs));
     ulong offset = bs.get_u64();
     bool done = bs.get_u8() == 1;
     byte* src = (byte*)bs.data();
-    ptr<buffer> b;
+    ptr< buffer > b;
     if (bs.pos() < bs.size()) {
         size_t sz = bs.size() - bs.pos();
         b = buffer::alloc(sz);
         ::memcpy(b->data(), src, sz);
-    }
-    else {
+    } else {
         b = buffer::alloc(0);
     }
 
-    return cs_new<snapshot_sync_req>(snp, offset, b, done);
+    return cs_new< snapshot_sync_req >(snp, offset, b, done);
 }
 
-ptr<buffer> snapshot_sync_req::serialize() {
-    ptr<buffer> snp_buf = snapshot_->serialize();
-    ptr<buffer> buf = buffer::alloc(snp_buf->size() + sz_ulong + sz_byte + (data_->size() - data_->pos()));
+ptr< buffer > snapshot_sync_req::serialize() {
+    ptr< buffer > snp_buf = snapshot_->serialize();
+    ptr< buffer > buf = buffer::alloc(snp_buf->size() + sz_ulong + sz_byte + (data_->size() - data_->pos()));
     buf->put(*snp_buf);
     buf->put(offset_);
     buf->put(done_ ? (byte)1 : (byte)0);
@@ -58,4 +57,4 @@ ptr<buffer> snapshot_sync_req::serialize() {
     return buf;
 }
 
-} // namespace nuraft;
+} // namespace nuraft

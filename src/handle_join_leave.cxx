@@ -34,18 +34,13 @@ limitations under the License.
 
 namespace nuraft {
 
-ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
-    std::vector< ptr<log_entry> >& entries = req.log_entries();
-    ptr<resp_msg> resp = cs_new<resp_msg>
-                         ( state_->get_term(),
-                           msg_type::add_server_response,
-                           id_,
-                           leader_ );
+ptr< resp_msg > raft_server::handle_add_srv_req(req_msg& req) {
+    std::vector< ptr< log_entry > >& entries = req.log_entries();
+    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::add_server_response, id_, leader_);
 
-    if ( entries.size() != 1 ||
-         entries[0]->get_val_type() != log_val_type::cluster_server ) {
-        p_db( "bad add server request as we are expecting one log entry "
-              "with value type of ClusterServer" );
+    if (entries.size() != 1 || entries[0]->get_val_type() != log_val_type::cluster_server) {
+        p_db("bad add server request as we are expecting one log entry "
+             "with value type of ClusterServer");
         resp->set_result_code(cmd_result_code::BAD_REQUEST);
         return resp;
     }
@@ -58,13 +53,11 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
 
     // Before checking duplicate ID, confirm srv_to_leave_ is gone.
     check_srv_to_leave_timeout();
-    ptr<srv_config> srv_conf =
-        srv_config::deserialize( entries[0]->get_buf() );
-    if ( peers_.find( srv_conf->get_id() ) != peers_.end() ||
-         id_ == srv_conf->get_id() ) {
-        p_wn( "the server to be added has a duplicated "
-              "id with existing server %d",
-              srv_conf->get_id() );
+    ptr< srv_config > srv_conf = srv_config::deserialize(entries[0]->get_buf());
+    if (peers_.find(srv_conf->get_id()) != peers_.end() || id_ == srv_conf->get_id()) {
+        p_wn("the server to be added has a duplicated "
+             "id with existing server %d",
+             srv_conf->get_id());
         resp->set_result_code(cmd_result_code::SERVER_ALREADY_EXISTS);
         return resp;
     }
@@ -83,67 +76,43 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         ulong last_active_ms = srv_to_join_->get_active_timer_us() / 1000;
         p_wn("previous adding server (%d) is in progress, "
              "last activity: %" PRIu64 " ms ago",
-             srv_to_join_->get_id(),
-             last_active_ms);
+             srv_to_join_->get_id(), last_active_ms);
 
-        if ( last_active_ms <=
-                 (ulong)raft_server::raft_limits_.response_limit_ *
-                 ctx_->get_params()->heart_beat_interval_ ) {
+        if (last_active_ms <=
+            (ulong)raft_server::raft_limits_.response_limit_ * ctx_->get_params()->heart_beat_interval_) {
             resp->set_result_code(cmd_result_code::SERVER_IS_JOINING);
             return resp;
         }
         // Otherwise: activity timeout, reset the server.
-        p_wn("activity timeout (last activity %" PRIu64 " ms ago), start over",
-             last_active_ms);
+        p_wn("activity timeout (last activity %" PRIu64 " ms ago), start over", last_active_ms);
         reset_srv_to_join();
     }
 
     conf_to_add_ = std::move(srv_conf);
-    timer_task<int32>::executor exec =
-        (timer_task<int32>::executor)
-        std::bind( &raft_server::handle_hb_timeout,
-                   this,
-                   std::placeholders::_1 );
-    srv_to_join_ = cs_new< peer,
-                           ptr<srv_config>&,
-                           context&,
-                           timer_task<int32>::executor&,
-                           ptr<logger>& >
-                         ( conf_to_add_, *ctx_, exec, l_ );
+    timer_task< int32 >::executor exec =
+        (timer_task< int32 >::executor)std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1);
+    srv_to_join_ = cs_new< peer, ptr< srv_config >&, context&, timer_task< int32 >::executor&, ptr< logger >& >(
+        conf_to_add_, *ctx_, exec, l_);
     invite_srv_to_join_cluster();
     resp->accept(log_store_->next_slot());
     return resp;
 }
 
 void raft_server::invite_srv_to_join_cluster() {
-    ptr<req_msg> req = cs_new<req_msg>
-                       ( state_->get_term(),
-                         msg_type::join_cluster_request,
-                         id_,
-                         srv_to_join_->get_id(),
-                         0L,
-                         log_store_->next_slot() - 1,
-                         quick_commit_index_.load() );
+    ptr< req_msg > req =
+        cs_new< req_msg >(state_->get_term(), msg_type::join_cluster_request, id_, srv_to_join_->get_id(), 0L,
+                          log_store_->next_slot() - 1, quick_commit_index_.load());
 
-    ptr<cluster_config> c_conf = get_config();
-    req->log_entries().push_back
-        ( cs_new<log_entry>
-          ( state_->get_term(), c_conf->serialize(), log_val_type::conf ) );
+    ptr< cluster_config > c_conf = get_config();
+    req->log_entries().push_back(cs_new< log_entry >(state_->get_term(), c_conf->serialize(), log_val_type::conf));
     srv_to_join_->send_req(srv_to_join_, req, ex_resp_handler_);
-    p_in("sent join request to peer %d, %s",
-         srv_to_join_->get_id(),
-         srv_to_join_->get_endpoint().c_str());
+    p_in("sent join request to peer %d, %s", srv_to_join_->get_id(), srv_to_join_->get_endpoint().c_str());
 }
 
-ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
-    std::vector<ptr<log_entry>>& entries = req.log_entries();
-    ptr<resp_msg> resp = cs_new<resp_msg>
-                         ( state_->get_term(),
-                           msg_type::join_cluster_response,
-                           id_,
-                           req.get_src() );
-    if ( entries.size() != 1 ||
-         entries[0]->get_val_type() != log_val_type::conf ) {
+ptr< resp_msg > raft_server::handle_join_cluster_req(req_msg& req) {
+    std::vector< ptr< log_entry > >& entries = req.log_entries();
+    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::join_cluster_response, id_, req.get_src());
+    if (entries.size() != 1 || entries[0]->get_val_type() != log_val_type::conf) {
         p_in("receive an invalid JoinClusterRequest as the log entry value "
              "doesn't meet the requirements");
         return resp;
@@ -158,8 +127,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
         p_wn("this server is already in log syncing mode, "
              "but let's do it again: sm idx %" PRIu64 ", quick commit idx %" PRIu64 ", "
              "will not reset commit index",
-             sm_commit_index_.load(),
-             quick_commit_index_.load());
+             sm_commit_index_.load(), quick_commit_index_.load());
         reset_commit_idx = false;
     }
 
@@ -170,8 +138,8 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
 
     if (reset_commit_idx) {
         // MONSTOR-7503: We should not reset it to 0.
-        sm_commit_index_.store( initial_commit_index_ );
-        quick_commit_index_.store( initial_commit_index_ );
+        sm_commit_index_.store(initial_commit_index_);
+        quick_commit_index_.store(initial_commit_index_);
     }
 
     state_->set_voted_for(-1);
@@ -181,9 +149,9 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     cb_func::Param follower_param(id_, leader_);
     uint64_t my_term = state_->get_term();
     follower_param.ctx = &my_term;
-    (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &follower_param);
+    (void)ctx_->cb_func_.call(cb_func::BecomeFollower, &follower_param);
 
-    ptr<cluster_config> c_config = cluster_config::deserialize(entries[0]->get_buf());
+    ptr< cluster_config > c_config = cluster_config::deserialize(entries[0]->get_buf());
     // WARNING: We should make cluster config durable here. Otherwise, if
     //          this server gets restarted before receiving the first
     //          committed config (the first config that includes this server),
@@ -192,7 +160,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     ctx_->state_mgr_->save_config(*c_config);
     reconfigure(c_config);
 
-    resp->accept( quick_commit_index_.load() + 1 );
+    resp->accept(quick_commit_index_.load() + 1);
     return resp;
 }
 
@@ -200,11 +168,11 @@ void raft_server::handle_join_cluster_resp(resp_msg& resp) {
     if (srv_to_join_ && srv_to_join_ == resp.get_peer()) {
         if (resp.get_accepted()) {
             p_in("new server (%d) confirms it will join, "
-                 "start syncing logs to it", srv_to_join_->get_id());
+                 "start syncing logs to it",
+                 srv_to_join_->get_id());
             sync_log_to_new_srv(resp.get_next_idx());
         } else {
-            p_wn("new server (%d) cannot accept the invitation, give up",
-                 srv_to_join_->get_id());
+            p_wn("new server (%d) cannot accept the invitation, give up", srv_to_join_->get_id());
         }
     } else {
         p_wn("no server to join, drop the message");
@@ -212,51 +180,39 @@ void raft_server::handle_join_cluster_resp(resp_msg& resp) {
 }
 
 void raft_server::sync_log_to_new_srv(ulong start_idx) {
-    p_db("[SYNC LOG] peer %d start idx %" PRIu64 ", my log start idx %" PRIu64,
-         srv_to_join_->get_id(), start_idx, log_store_->start_index());
+    p_db("[SYNC LOG] peer %d start idx %" PRIu64 ", my log start idx %" PRIu64, srv_to_join_->get_id(), start_idx,
+         log_store_->start_index());
     // only sync committed logs
-    ulong gap = ( quick_commit_index_ > start_idx )
-                ? ( quick_commit_index_ - start_idx )
-                : 0;
-    ptr<raft_params> params = ctx_->get_params();
-    if ( ( params->log_sync_stop_gap_ > 0 &&
-           gap < (ulong)params->log_sync_stop_gap_ ) ||
-         params->log_sync_stop_gap_ == 0 ) {
-        p_in( "[SYNC LOG] LogSync is done for server %d "
-              "with log gap %" PRIu64 " (%" PRIu64 " - %" PRIu64 ", limit %d), "
-              "now put the server into cluster",
-              srv_to_join_->get_id(),
-              gap, quick_commit_index_.load(), start_idx,
-              params->log_sync_stop_gap_ );
+    ulong gap = (quick_commit_index_ > start_idx) ? (quick_commit_index_ - start_idx) : 0;
+    ptr< raft_params > params = ctx_->get_params();
+    if ((params->log_sync_stop_gap_ > 0 && gap < (ulong)params->log_sync_stop_gap_) ||
+        params->log_sync_stop_gap_ == 0) {
+        p_in("[SYNC LOG] LogSync is done for server %d "
+             "with log gap %" PRIu64 " (%" PRIu64 " - %" PRIu64 ", limit %d), "
+             "now put the server into cluster",
+             srv_to_join_->get_id(), gap, quick_commit_index_.load(), start_idx, params->log_sync_stop_gap_);
 
-        ptr<cluster_config> cur_conf = get_config();
+        ptr< cluster_config > cur_conf = get_config();
 
         // WARNING:
         //   If there is any uncommitted changed config,
         //   new config should be generated on top of it.
         if (uncommitted_config_) {
-            p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64,
-                 uncommitted_config_->get_log_idx(),
+            p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64, uncommitted_config_->get_log_idx(),
                  uncommitted_config_->get_prev_log_idx());
             cur_conf = uncommitted_config_;
         }
 
-        ptr<cluster_config> new_conf = cs_new<cluster_config>
-                                       ( log_store_->next_slot(),
-                                         cur_conf->get_log_idx() );
-        new_conf->get_servers().insert( new_conf->get_servers().end(),
-                                        cur_conf->get_servers().begin(),
-                                        cur_conf->get_servers().end() );
+        ptr< cluster_config > new_conf = cs_new< cluster_config >(log_store_->next_slot(), cur_conf->get_log_idx());
+        new_conf->get_servers().insert(new_conf->get_servers().end(), cur_conf->get_servers().begin(),
+                                       cur_conf->get_servers().end());
         new_conf->get_servers().push_back(conf_to_add_);
-        new_conf->set_user_ctx( cur_conf->get_user_ctx() );
-        new_conf->set_async_replication
-                  ( cur_conf->is_async_replication() );
+        new_conf->set_user_ctx(cur_conf->get_user_ctx());
+        new_conf->set_async_replication(cur_conf->is_async_replication());
 
-        ptr<buffer> new_conf_buf(new_conf->serialize());
-        ptr<log_entry> entry( cs_new<log_entry>( state_->get_term(),
-                                                 new_conf_buf,
-                                                 log_val_type::conf,
-                                                 timer_helper::get_timeofday_us() ) );
+        ptr< buffer > new_conf_buf(new_conf->serialize());
+        ptr< log_entry > entry(cs_new< log_entry >(state_->get_term(), new_conf_buf, log_val_type::conf,
+                                                   timer_helper::get_timeofday_us()));
         store_log_entry(entry);
         config_changing_ = true;
         uncommitted_config_ = new_conf;
@@ -264,7 +220,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
         return;
     }
 
-    ptr<req_msg> req;
+    ptr< req_msg > req;
 
     // Modified by Jung-Sang Ahn, 12/22, 2017.
     // When snapshot transmission is still in progress, start_idx can be 0.
@@ -272,11 +228,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     if (/* start_idx > 0 && */ start_idx < log_store_->start_index()) {
         srv_to_join_snp_retry_required_ = false;
         bool succeeded_out = false;
-        req = create_sync_snapshot_req( srv_to_join_,
-                                        start_idx,
-                                        state_->get_term(),
-                                        quick_commit_index_,
-                                        succeeded_out );
+        req = create_sync_snapshot_req(srv_to_join_, start_idx, state_->get_term(), quick_commit_index_, succeeded_out);
         if (!succeeded_out) {
             // If reading snapshot fails, enable HB temporarily to retry it.
             srv_to_join_snp_retry_required_ = true;
@@ -286,19 +238,11 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
 
     } else {
         int32 size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
-        ptr<buffer> log_pack = log_store_->pack(start_idx, size_to_sync);
-        p_db( "size to sync: %d, log_pack size %zu\n",
-              size_to_sync, log_pack->size() );
-        req = cs_new<req_msg>( state_->get_term(),
-                               msg_type::sync_log_request,
-                               id_,
-                               srv_to_join_->get_id(),
-                               0L,
-                               start_idx - 1,
-                               quick_commit_index_.load() );
-        req->log_entries().push_back
-            ( cs_new<log_entry>
-              ( state_->get_term(), log_pack, log_val_type::log_pack) );
+        ptr< buffer > log_pack = log_store_->pack(start_idx, size_to_sync);
+        p_db("size to sync: %d, log_pack size %zu\n", size_to_sync, log_pack->size());
+        req = cs_new< req_msg >(state_->get_term(), msg_type::sync_log_request, id_, srv_to_join_->get_id(), 0L,
+                                start_idx - 1, quick_commit_index_.load());
+        req->log_entries().push_back(cs_new< log_entry >(state_->get_term(), log_pack, log_val_type::log_pack));
     }
 
     if (!params->use_bg_thread_for_snapshot_io_) {
@@ -310,27 +254,24 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     }
 }
 
-ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {
-    std::vector<ptr<log_entry>>& entries = req.log_entries();
-    ptr<resp_msg> resp
-        ( cs_new<resp_msg>
-          ( state_->get_term(), msg_type::sync_log_response, id_,
-            req.get_src(), log_store_->next_slot() ) );
+ptr< resp_msg > raft_server::handle_log_sync_req(req_msg& req) {
+    std::vector< ptr< log_entry > >& entries = req.log_entries();
+    ptr< resp_msg > resp(cs_new< resp_msg >(state_->get_term(), msg_type::sync_log_response, id_, req.get_src(),
+                                            log_store_->next_slot()));
 
-    p_db("entries size %d, type %d, catching_up %s\n",
-         (int)entries.size(), (int)entries[0]->get_val_type(),
-         (catching_up_)?"true":"false");
-    if ( entries.size() != 1 ||
-         entries[0]->get_val_type() != log_val_type::log_pack ) {
+    p_db("entries size %d, type %d, catching_up %s\n", (int)entries.size(), (int)entries[0]->get_val_type(),
+         (catching_up_) ? "true" : "false");
+    if (entries.size() != 1 || entries[0]->get_val_type() != log_val_type::log_pack) {
         p_wn("receive an invalid LogSyncRequest as the log entry value "
              "doesn't meet the requirements: entries size %zu",
-             entries.size() );
+             entries.size());
         return resp;
     }
 
     if (!catching_up_) {
         p_wn("This server is ready for cluster, ignore the request, "
-             "my next log idx %" PRIu64 "", resp->get_next_idx());
+             "my next log idx %" PRIu64 "",
+             resp->get_next_idx());
         return resp;
     }
 
@@ -355,13 +296,9 @@ void raft_server::handle_log_sync_resp(resp_msg& resp) {
     }
 }
 
-ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
-    std::vector<ptr<log_entry>>& entries = req.log_entries();
-    ptr<resp_msg> resp = cs_new<resp_msg>
-                         ( state_->get_term(),
-                           msg_type::remove_server_response,
-                           id_,
-                           leader_ );
+ptr< resp_msg > raft_server::handle_rm_srv_req(req_msg& req) {
+    std::vector< ptr< log_entry > >& entries = req.log_entries();
+    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::remove_server_response, id_, leader_);
 
     if (entries.size() != 1 || entries[0]->get_buf().size() != sz_int) {
         p_wn("bad remove server request as we are expecting "
@@ -378,16 +315,15 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
 
     check_srv_to_leave_timeout();
     if (srv_to_leave_) {
-        p_wn("previous to-be-removed server %d has not left yet",
-             srv_to_leave_->get_id());
+        p_wn("previous to-be-removed server %d has not left yet", srv_to_leave_->get_id());
         resp->set_result_code(cmd_result_code::SERVER_IS_LEAVING);
         return resp;
     }
     // NOTE:
     //   Although `srv_to_leave_` is not set, we should check if
     //   there is any peer whose leave flag is set.
-    for (auto& entry: peers_) {
-        ptr<peer> pp = entry.second;
+    for (auto& entry : peers_) {
+        ptr< peer > pp = entry.second;
         if (pp->is_leave_flag_set()) {
             p_wn("leave flag of server %d is set, but the server "
                  "has not left yet",
@@ -418,13 +354,9 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
         return resp;
     }
 
-    ptr<peer> p = pit->second;
-    ptr<req_msg> leave_req( cs_new<req_msg>
-                            ( state_->get_term(),
-                              msg_type::leave_cluster_request,
-                              id_, srv_id, 0,
-                              log_store_->next_slot() - 1,
-                              quick_commit_index_.load() ) );
+    ptr< peer > p = pit->second;
+    ptr< req_msg > leave_req(cs_new< req_msg >(state_->get_term(), msg_type::leave_cluster_request, id_, srv_id, 0,
+                                               log_store_->next_slot() - 1, quick_commit_index_.load()));
     // WARNING:
     //   DO NOT reset HB counter to 0 as removing server
     //   may be requested multiple times, and anyway we should
@@ -443,12 +375,8 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
     return resp;
 }
 
-ptr<resp_msg> raft_server::handle_leave_cluster_req(req_msg& req) {
-    ptr<resp_msg> resp
-        ( cs_new<resp_msg>( state_->get_term(),
-                            msg_type::leave_cluster_response,
-                            id_,
-                            req.get_src() ) );
+ptr< resp_msg > raft_server::handle_leave_cluster_req(req_msg& req) {
+    ptr< resp_msg > resp(cs_new< resp_msg >(state_->get_term(), msg_type::leave_cluster_response, id_, req.get_src()));
     if (!config_changing_) {
         p_db("leave cluster, set steps to down to 2");
         // NOTE: We don't call `RemovedFromCluster` callback here,
@@ -484,48 +412,37 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
         return;
     }
 
-    ptr<cluster_config> cur_conf = get_config();
+    ptr< cluster_config > cur_conf = get_config();
 
     // NOTE: Need to honor uncommitted config,
     //       refer to comment in `sync_log_to_new_srv()`
     if (uncommitted_config_) {
-        p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64,
-             uncommitted_config_->get_log_idx(),
+        p_in("uncommitted config exists at log %" PRIu64 ", prev log %" PRIu64, uncommitted_config_->get_log_idx(),
              uncommitted_config_->get_prev_log_idx());
         cur_conf = uncommitted_config_;
     }
 
-    ptr<cluster_config> new_conf = cs_new<cluster_config>
-                                   ( log_store_->next_slot(),
-                                     cur_conf->get_log_idx() );
-    for (auto it = cur_conf->get_servers().cbegin();
-          it != cur_conf->get_servers().cend();
-          ++it ) {
-        if ((*it)->get_id() != srv_id) {
-            new_conf->get_servers().push_back(*it);
-        }
+    ptr< cluster_config > new_conf = cs_new< cluster_config >(log_store_->next_slot(), cur_conf->get_log_idx());
+    for (auto it = cur_conf->get_servers().cbegin(); it != cur_conf->get_servers().cend(); ++it) {
+        if ((*it)->get_id() != srv_id) { new_conf->get_servers().push_back(*it); }
     }
-    new_conf->set_user_ctx( cur_conf->get_user_ctx() );
-    new_conf->set_async_replication
-              ( cur_conf->is_async_replication() );
+    new_conf->set_user_ctx(cur_conf->get_user_ctx());
+    new_conf->set_async_replication(cur_conf->is_async_replication());
 
-    p_in( "removed server %d from configuration and "
-          "save the configuration to log store at %" PRIu64,
-          srv_id,
-          new_conf->get_log_idx() );
+    p_in("removed server %d from configuration and "
+         "save the configuration to log store at %" PRIu64,
+         srv_id, new_conf->get_log_idx());
 
     config_changing_ = true;
     uncommitted_config_ = new_conf;
-    ptr<buffer> new_conf_buf( new_conf->serialize() );
-    ptr<log_entry> entry( cs_new<log_entry>( state_->get_term(),
-                                             new_conf_buf,
-                                             log_val_type::conf,
-                                             timer_helper::get_timeofday_us() ) );
+    ptr< buffer > new_conf_buf(new_conf->serialize());
+    ptr< log_entry > entry(
+        cs_new< log_entry >(state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
     store_log_entry(entry);
 
     auto p_entry = peers_.find(srv_id);
     if (p_entry != peers_.end()) {
-        ptr<peer> pp = p_entry->second;
+        ptr< peer > pp = p_entry->second;
         srv_to_leave_ = pp;
         srv_to_leave_target_idx_ = new_conf->get_log_idx();
         p_in("set srv_to_leave_, "
@@ -536,11 +453,11 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     request_append_entries();
 }
 
-void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
+void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr< peer > p) {
     if (t_msg == msg_type::leave_cluster_request) {
-        p_in( "rpc failed for removing server (%d), "
-              "will remove this server directly",
-              p->get_id() );
+        p_in("rpc failed for removing server (%d), "
+             "will remove this server directly",
+             p->get_id());
 
         /**
          * In case of there are only two servers in the cluster,
@@ -563,13 +480,10 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
                 peers_.erase(pit);
                 p_in("server %d is removed from cluster", p->get_id());
             } else {
-                p_in("peer %d cannot be found, no action for removing",
-                     p->get_id());
+                p_in("peer %d cannot be found, no action for removing", p->get_id());
             }
 
-            if (srv_to_leave_) {
-                reset_srv_to_leave();
-            }
+            if (srv_to_leave_) { reset_srv_to_leave(); }
         }
 
         if (srv_to_leave_) {
@@ -580,7 +494,8 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
             //   generated the log for the configuration change. We should
             //   abandon the peer entry from `peers_`.
             p_wn("srv_to_leave_ is already set to %d, will remove it from "
-                 "peer list", srv_to_leave_->get_id());
+                 "peer list",
+                 srv_to_leave_->get_id());
             remove_peer_from_peers(srv_to_leave_);
             reset_srv_to_leave();
 
@@ -590,9 +505,9 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
         }
 
     } else {
-        p_in( "rpc failed again for the new coming server (%d), "
-              "will stop retry for this server",
-              p->get_id() );
+        p_in("rpc failed again for the new coming server (%d), "
+             "will stop retry for this server",
+             p->get_id());
         config_changing_ = false;
         reset_srv_to_join();
     }
@@ -611,5 +526,4 @@ void raft_server::reset_srv_to_leave() {
     p_in("clearing srv_to_leave_");
 }
 
-} // namespace nuraft;
-
+} // namespace nuraft

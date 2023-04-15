@@ -30,42 +30,39 @@ enum timer_task_type {
     heartbeat_timer = 0x2,
 };
 
-template<typename T>
+template < typename T >
 class timer_task : public delayed_task {
 public:
-    typedef std::function<void(T)> executor;
+    typedef std::function< void(T) > executor;
 
-    timer_task(executor& e, T ctx, int32 type = 0)
-        : delayed_task(type), exec_(e), ctx_(ctx) {}
+    timer_task(executor& e, T ctx, int32 type = 0) : delayed_task(type), exec_(e), ctx_(ctx) {}
+
 protected:
     virtual void exec() __override__ {
-        if (exec_) {
-            exec_(ctx_);
-        }
+        if (exec_) { exec_(ctx_); }
     }
+
 private:
     executor exec_;
     T ctx_;
 };
 
-template<>
-class timer_task<void> : public delayed_task {
+template <>
+class timer_task< void > : public delayed_task {
 public:
-    typedef std::function<void()> executor;
+    typedef std::function< void() > executor;
 
-    explicit timer_task(executor& e, int32 type = 0)
-        : delayed_task(type)
-        , exec_(e) {}
+    explicit timer_task(executor& e, int32 type = 0) : delayed_task(type), exec_(e) {}
+
 protected:
     virtual void exec() __override__ {
-        if (exec_) {
-            exec_();
-        }
+        if (exec_) { exec_(); }
     }
+
 private:
     executor exec_;
 };
 
-}
+} // namespace nuraft
 
 #endif //_TIMER_TASK_HXX_

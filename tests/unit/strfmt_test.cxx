@@ -29,17 +29,14 @@ namespace strfmt_test {
 
 int strfmt_basic_test() {
 
-    CHK_EQ( std::string( "number 10" ),
-            std::string( strfmt<20>("number %d").fmt(10) ) );
-    CHK_EQ( std::string( "another string" ),
-            std::string( strfmt<30>("another %s").fmt("string") ) );
-    CHK_EQ( std::string( "100-20=80" ),
-            std::string( strfmt<30>("%d-%d=%d").fmt(100, 20, 80) ) );
+    CHK_EQ(std::string("number 10"), std::string(strfmt< 20 >("number %d").fmt(10)));
+    CHK_EQ(std::string("another string"), std::string(strfmt< 30 >("another %s").fmt("string")));
+    CHK_EQ(std::string("100-20=80"), std::string(strfmt< 30 >("%d-%d=%d").fmt(100, 20, 80)));
 
     return 0;
 }
 
-}  // namespace strfmt_test;
+} // namespace strfmt_test
 using namespace strfmt_test;
 
 int main(int argc, char** argv) {
@@ -47,10 +44,7 @@ int main(int argc, char** argv) {
 
     ts.options.printTestMessage = false;
 
-    ts.doTest( "strfmt basic test",
-               strfmt_basic_test );
+    ts.doTest("strfmt basic test", strfmt_basic_test);
 
     return 0;
 }
-
-

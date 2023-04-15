@@ -45,7 +45,7 @@ public:
      *
      * @return Cluster config.
      */
-    virtual ptr<cluster_config> load_config() = 0;
+    virtual ptr< cluster_config > load_config() = 0;
 
     /**
      * Save given cluster config.
@@ -71,14 +71,14 @@ public:
      *
      * @param Server state.
      */
-    virtual ptr<srv_state> read_state() = 0;
+    virtual ptr< srv_state > read_state() = 0;
 
     /**
      * Get instance of user-defined Raft log store.
      *
      * @param Raft log store instance.
      */
-    virtual ptr<log_store> load_log_store() = 0;
+    virtual ptr< log_store > load_log_store() = 0;
 
     /**
      * Get ID of this Raft server.
@@ -96,6 +96,6 @@ public:
     virtual void system_exit(const int exit_code) = 0;
 };
 
-}
+} // namespace nuraft
 
 #endif //_STATE_MGR_HXX_

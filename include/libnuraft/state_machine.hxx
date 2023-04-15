@@ -38,13 +38,9 @@ class state_machine {
 
 public:
     struct ext_op_params {
-        ext_op_params(ulong _log_idx,
-                      ptr<buffer>& _data)
-            : log_idx(_log_idx)
-            , data(_data)
-            {}
+        ext_op_params(ulong _log_idx, ptr< buffer >& _data) : log_idx(_log_idx), data(_data) {}
         ulong log_idx;
-        ptr<buffer>& data;
+        ptr< buffer >& data;
         // May add more parameters in the future.
     };
 
@@ -63,16 +59,14 @@ public:
      * @param data Payload of the Raft log.
      * @return Result value of state machine.
      */
-    virtual ptr<buffer> commit(const ulong log_idx,
-                               buffer& data) { return nullptr; }
+    virtual ptr< buffer > commit(const ulong log_idx, buffer& data) { return nullptr; }
 
     /**
      * (Optional)
      * Extended version of `commit`, for users want to keep
      * the data without any extra memory copy.
      */
-    virtual ptr<buffer> commit_ext(const ext_op_params& params)
-    {   return commit(params.log_idx, *params.data);    }
+    virtual ptr< buffer > commit_ext(const ext_op_params& params) { return commit(params.log_idx, *params.data); }
 
     /**
      * (Optional)
@@ -81,7 +75,7 @@ public:
      * @param log_idx Raft log number of the configuration change.
      * @param new_conf New cluster configuration.
      */
-    virtual void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) { }
+    virtual void commit_config(const ulong log_idx, ptr< cluster_config >& new_conf) {}
 
     /**
      * Pre-commit the given Raft log.
@@ -96,16 +90,16 @@ public:
      * @param data Payload of the Raft log.
      * @return Result value of state machine.
      */
-    virtual ptr<buffer> pre_commit(const ulong log_idx,
-                                   buffer& data) { return nullptr; }
+    virtual ptr< buffer > pre_commit(const ulong log_idx, buffer& data) { return nullptr; }
 
     /**
      * (Optional)
      * Extended version of `pre_commit`, for users want to keep
      * the data without any extra memory copy.
      */
-    virtual ptr<buffer> pre_commit_ext(const ext_op_params& params)
-    {   return pre_commit(params.log_idx, *params.data);  }
+    virtual ptr< buffer > pre_commit_ext(const ext_op_params& params) {
+        return pre_commit(params.log_idx, *params.data);
+    }
 
     /**
      * Rollback the state machine to given Raft log number.
@@ -119,16 +113,14 @@ public:
      * @param log_idx Raft log number to commit.
      * @param data Payload of the Raft log.
      */
-    virtual void rollback(const ulong log_idx,
-                          buffer& data) {}
+    virtual void rollback(const ulong log_idx, buffer& data) {}
 
     /**
      * (Optional)
      * Extended version of `rollback`, for users want to keep
      * the data without any extra memory copy.
      */
-    virtual void rollback_ext(const ext_op_params& params)
-    {   rollback(params.log_idx, *params.data);  }
+    virtual void rollback_ext(const ext_op_params& params) { rollback(params.log_idx, *params.data); }
 
     /**
      * (Optional)
@@ -163,9 +155,7 @@ public:
      * @param offset Byte offset of given chunk.
      * @param data Payload of given chunk.
      */
-    virtual void save_snapshot_data(snapshot& s,
-                                    const ulong offset,
-                                    buffer& data) {}
+    virtual void save_snapshot_data(snapshot& s, const ulong offset, buffer& data) {}
 
     /**
      * Save the given snapshot object to local snapshot.
@@ -190,11 +180,7 @@ public:
      * @param is_first_obj `true` if this is the first object.
      * @param is_last_obj `true` if this is the last object.
      */
-    virtual void save_logical_snp_obj(snapshot& s,
-                                      ulong& obj_id,
-                                      buffer& data,
-                                      bool is_first_obj,
-                                      bool is_last_obj) {}
+    virtual void save_logical_snp_obj(snapshot& s, ulong& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {}
 
     /**
      * Apply received snapshot to state machine.
@@ -215,9 +201,7 @@ public:
      * @return Amount of bytes read.
      *         0 if failed.
      */
-    virtual int read_snapshot_data(snapshot& s,
-                                   const ulong offset,
-                                   buffer& data) { return 0; }
+    virtual int read_snapshot_data(snapshot& s, const ulong offset, buffer& data) { return 0; }
 
     /**
      * Read the given snapshot object.
@@ -240,10 +224,7 @@ public:
      * @param[out] is_last_obj Set `true` if this is the last object.
      * @return Negative number if failed.
      */
-    virtual int read_logical_snp_obj(snapshot& s,
-                                     void*& user_snp_ctx,
-                                     ulong obj_id,
-                                     ptr<buffer>& data_out,
+    virtual int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, ptr< buffer >& data_out,
                                      bool& is_last_obj) {
         data_out = buffer::alloc(4); // A dummy buffer.
         is_last_obj = true;
@@ -268,7 +249,7 @@ public:
      *
      * @return Pointer to the latest snapshot.
      */
-    virtual ptr<snapshot> last_snapshot() = 0;
+    virtual ptr< snapshot > last_snapshot() = 0;
 
     /**
      * Get the last committed Raft log number.
@@ -289,8 +270,7 @@ public:
      * @param when_done Callback function that will be called after
      *                  snapshot creation is done.
      */
-    virtual void create_snapshot(snapshot& s,
-                                 async_result<bool>::handler_type& when_done) = 0;
+    virtual void create_snapshot(snapshot& s, async_result< bool >::handler_type& when_done) = 0;
 
     /**
      * Decide to create snapshot or not.
@@ -319,10 +299,7 @@ public:
      * Parameters for `adjust_commit_index` API.
      */
     struct adjust_commit_index_params {
-        adjust_commit_index_params()
-            : current_commit_index_(0)
-            , expected_commit_index_(0)
-            {}
+        adjust_commit_index_params() : current_commit_index_(0), expected_commit_index_(0) {}
 
         /**
          * The current committed index.
@@ -338,7 +315,7 @@ public:
          * A map of <peer ID, peer's log index>, including the
          * leader and learners.
          */
-        std::unordered_map<int, uint64_t> peer_index_map_;
+        std::unordered_map< int, uint64_t > peer_index_map_;
     };
 
     /**
@@ -356,6 +333,6 @@ public:
     }
 };
 
-}
+} // namespace nuraft
 
 #endif //_STATE_MACHINE_HXX_

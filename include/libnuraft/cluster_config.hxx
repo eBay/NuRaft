@@ -37,68 +37,49 @@ namespace nuraft {
 //    - remove server
 class cluster_config {
 public:
-    cluster_config(ulong log_idx = 0L,
-                   ulong prev_log_idx = 0L,
-                   bool _ec = false)
-        : log_idx_(log_idx)
-        , prev_log_idx_(prev_log_idx)
-        , async_replication_(_ec)
-        , servers_()
-        {}
+    cluster_config(ulong log_idx = 0L, ulong prev_log_idx = 0L, bool _ec = false) :
+            log_idx_(log_idx), prev_log_idx_(prev_log_idx), async_replication_(_ec), servers_() {}
 
-    ~cluster_config() {
-    }
+    ~cluster_config() {}
 
     __nocopy__(cluster_config);
 
 public:
-    static ptr<cluster_config> deserialize(buffer& buf);
+    static ptr< cluster_config > deserialize(buffer& buf);
 
-    static ptr<cluster_config> deserialize(buffer_serializer& buf);
+    static ptr< cluster_config > deserialize(buffer_serializer& buf);
 
-    ulong get_log_idx() const {
-        return log_idx_;
-    }
+    ulong get_log_idx() const { return log_idx_; }
 
     void set_log_idx(ulong log_idx) {
         prev_log_idx_ = log_idx_;
         log_idx_ = log_idx;
     }
 
-    ulong get_prev_log_idx() const {
-        return prev_log_idx_;
-    }
+    ulong get_prev_log_idx() const { return prev_log_idx_; }
 
-    std::list<ptr<srv_config>> const& get_servers() const {
-        return servers_;
-    }
+    std::list< ptr< srv_config > > const& get_servers() const { return servers_; }
 
-    std::list<ptr<srv_config>>& get_servers() {
-        return servers_;
-    }
+    std::list< ptr< srv_config > >& get_servers() { return servers_; }
 
-    ptr<srv_config> get_server(int id) const {
-        for (auto& entry: servers_) {
-            const ptr<srv_config>& srv = entry;
-            if (srv->get_id() == id) {
-                return srv;
-            }
+    ptr< srv_config > get_server(int id) const {
+        for (auto& entry : servers_) {
+            const ptr< srv_config >& srv = entry;
+            if (srv->get_id() == id) { return srv; }
         }
 
-        return ptr<srv_config>();
+        return ptr< srv_config >();
     }
 
     bool is_async_replication() const { return async_replication_; }
 
-    void set_async_replication(bool flag) {
-        async_replication_ = flag;
-    }
+    void set_async_replication(bool flag) { async_replication_ = flag; }
 
     std::string get_user_ctx() const { return user_ctx_; }
 
     void set_user_ctx(const std::string& src) { user_ctx_ = src; }
 
-    ptr<buffer> serialize() const;
+    ptr< buffer > serialize() const;
 
 private:
     // Log index number of current config.
@@ -114,7 +95,7 @@ private:
     std::string user_ctx_;
 
     // List of servers.
-    std::list<ptr<srv_config>> servers_;
+    std::list< ptr< srv_config > > servers_;
 };
 
 } // namespace nuraft

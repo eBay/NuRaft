@@ -4,8 +4,7 @@
 #include <string>
 
 #if __WORDSIZE == 32
-static void
-replace_all(std::string& s, const std::string& search, const std::string& target) {
+static void replace_all(std::string& s, const std::string& search, const std::string& target) {
     size_t index = 0;
     while (true) {
         index = s.find(search, index);
@@ -15,10 +14,10 @@ replace_all(std::string& s, const std::string& search, const std::string& target
     }
 }
 
-#define _fix_format(format)                        \
-    std::string format_string(format);             \
-    replace_all(format_string, "%ld", "%" PRId64); \
-    replace_all(format_string, "%lu", "%" PRIu64); \
+#define _fix_format(format)                                                                                            \
+    std::string format_string(format);                                                                                 \
+    replace_all(format_string, "%ld", "%" PRId64);                                                                     \
+    replace_all(format_string, "%lu", "%" PRIu64);                                                                     \
     format = format_string.c_str();
 #else
 #define _fix_format(format)

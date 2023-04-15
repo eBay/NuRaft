@@ -44,15 +44,12 @@ class rpc_exception;
 class snapshot;
 class snapshot_sync_ctx {
 public:
-    snapshot_sync_ctx(const ptr<snapshot>& s,
-                      int peer_id,
-                      ulong timeout_ms,
-                      ulong offset = 0L);
+    snapshot_sync_ctx(const ptr< snapshot >& s, int peer_id, ulong timeout_ms, ulong offset = 0L);
 
     __nocopy__(snapshot_sync_ctx);
 
 public:
-    const ptr<snapshot>& get_snapshot() const { return snapshot_; }
+    const ptr< snapshot >& get_snapshot() const { return snapshot_; }
     ulong get_offset() const { return offset_; }
     ulong get_obj_idx() const { return obj_idx_; }
     void*& get_user_snp_ctx() { return user_snp_ctx_; }
@@ -74,7 +71,7 @@ private:
     /**
      * Pointer to snapshot.
      */
-    ptr<snapshot> snapshot_;
+    ptr< snapshot > snapshot_;
 
     /**
      * Current cursor of snapshot.
@@ -113,9 +110,7 @@ public:
      * @param h Response handler.
      * @return `true` if succeeds (when there is no pending request for the same peer).
      */
-    bool push(ptr<raft_server> r,
-              ptr<peer> p,
-              std::function< void(ptr<resp_msg>&, ptr<rpc_exception>&) >& h);
+    bool push(ptr< raft_server > r, ptr< peer > p, std::function< void(ptr< resp_msg >&, ptr< rpc_exception >&) >& h);
 
     /**
      * Invoke IO thread.
@@ -152,7 +147,7 @@ private:
 
     void async_io_loop();
 
-    bool push(ptr<io_queue_elem>& elem);
+    bool push(ptr< io_queue_elem >& elem);
 
     /**
      * A dedicated thread for reading snapshot object.
@@ -162,17 +157,17 @@ private:
     /**
      * Event awaiter for `io_thread_`.
      */
-    ptr<EventAwaiter> io_thread_ea_;
+    ptr< EventAwaiter > io_thread_ea_;
 
     /**
      * `true` if we are closing this context.
      */
-    std::atomic<bool> terminating_;
+    std::atomic< bool > terminating_;
 
     /**
      * Request queue. Allow only one request per peer at a time.
      */
-    std::list< ptr<io_queue_elem> > queue_;
+    std::list< ptr< io_queue_elem > > queue_;
 
     /**
      * Lock for `queue_`.
@@ -180,6 +175,6 @@ private:
     std::mutex queue_lock_;
 };
 
-}
+} // namespace nuraft
 
 #endif //_SNAPSHOT_SYNC_CTX_HXX_
