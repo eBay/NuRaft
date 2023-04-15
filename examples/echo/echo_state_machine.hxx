@@ -32,7 +32,7 @@ public:
 
     ~echo_state_machine() {}
 
-    ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
         std::string str = bs.get_str();
@@ -42,7 +42,7 @@ public:
         return nullptr;
     }
 
-    ptr< buffer > commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
         std::string str = bs.get_str();
@@ -55,7 +55,7 @@ public:
         return nullptr;
     }
 
-    void commit_config(const ulong log_idx, ptr< cluster_config >& new_conf) {
+    void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) {
         // Nothing to do with configuration change. Just update committed index.
         last_committed_idx_ = log_idx;
     }
@@ -69,7 +69,7 @@ public:
         std::cout << "rollback " << log_idx << ": " << str << std::endl;
     }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         // Put dummy data.
         data_out = buffer::alloc(sizeof(int32));
@@ -92,7 +92,7 @@ public:
         // Clone snapshot from `s`.
         {
             std::lock_guard< std::mutex > l(last_snapshot_lock_);
-            ptr< buffer > snp_buf = s.serialize();
+            std::shared_ptr< buffer > snp_buf = s.serialize();
             last_snapshot_ = snapshot::deserialize(*snp_buf);
         }
         return true;
@@ -100,7 +100,7 @@ public:
 
     void free_user_snp_ctx(void*& user_snp_ctx) {}
 
-    ptr< snapshot > last_snapshot() {
+    std::shared_ptr< snapshot > last_snapshot() {
         // Just return the latest snapshot.
         std::lock_guard< std::mutex > l(last_snapshot_lock_);
         return last_snapshot_;
@@ -113,10 +113,10 @@ public:
         // Clone snapshot from `s`.
         {
             std::lock_guard< std::mutex > l(last_snapshot_lock_);
-            ptr< buffer > snp_buf = s.serialize();
+            std::shared_ptr< buffer > snp_buf = s.serialize();
             last_snapshot_ = snapshot::deserialize(*snp_buf);
         }
-        ptr< std::exception > except(nullptr);
+        std::shared_ptr< std::exception > except(nullptr);
         bool ret = true;
         when_done(ret, except);
     }
@@ -126,7 +126,7 @@ private:
     std::atomic< uint64_t > last_committed_idx_;
 
     // Last snapshot.
-    ptr< snapshot > last_snapshot_;
+    std::shared_ptr< snapshot > last_snapshot_;
 
     // Mutex for last snapshot.
     std::mutex last_snapshot_lock_;

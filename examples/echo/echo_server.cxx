@@ -37,7 +37,8 @@ static const raft_params::return_method_type CALL_TYPE = raft_params::blocking;
 
 #include "example_common.hxx"
 
-void handle_result(ptr< TestSuite::Timer > timer, raft_result& result, ptr< std::exception >& err) {
+void handle_result(std::shared_ptr< TestSuite::Timer > timer, raft_result& result,
+                   std::shared_ptr< std::exception >& err) {
     if (result.get_result_code() != cmd_result_code::OK) {
         // Something went wrong.
         // This means committing this log failed,
@@ -62,15 +63,15 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
 
     // Create a new log which will contain
     // 4-byte length and string data.
-    ptr< buffer > new_log = buffer::alloc(sizeof(int) + cascaded_str.size());
+    std::shared_ptr< buffer > new_log = buffer::alloc(sizeof(int) + cascaded_str.size());
     buffer_serializer bs(new_log);
     bs.put_str(cascaded_str);
 
     // To measure the elapsed time.
-    ptr< TestSuite::Timer > timer = cs_new< TestSuite::Timer >();
+    std::shared_ptr< TestSuite::Timer > timer = std::make_shared< TestSuite::Timer >();
 
     // Do append.
-    ptr< raft_result > ret = stuff.raft_instance_->append_entries({new_log});
+    std::shared_ptr< raft_result > ret = stuff.raft_instance_->append_entries({new_log});
 
     if (!ret->get_accepted()) {
         // Log append rejected, usually because this node is not a leader.
@@ -85,7 +86,7 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
         // Blocking mode:
         //   `append_entries` returns after getting a consensus,
         //   so that `ret` already has the result from state machine.
-        ptr< std::exception > err(nullptr);
+        std::shared_ptr< std::exception > err(nullptr);
         handle_result(timer, *ret, err);
 
     } else if (CALL_TYPE == raft_params::async_handler) {
@@ -101,7 +102,7 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
 }
 
 void print_status(const std::string& cmd, const std::vector< std::string >& tokens) {
-    ptr< log_store > ls = stuff.smgr_->load_log_store();
+    std::shared_ptr< log_store > ls = stuff.smgr_->load_log_store();
     std::cout << "my server id: " << stuff.server_id_ << std::endl
               << "leader id: " << stuff.raft_instance_->get_leader() << std::endl
               << "Raft log range: " << ls->start_index() << " - " << (ls->next_slot() - 1) << std::endl
@@ -162,7 +163,7 @@ int main(int argc, char** argv) {
     std::cout << "               Version 0.1.0" << std::endl;
     std::cout << "    Server ID:    " << stuff.server_id_ << std::endl;
     std::cout << "    Endpoint:     " << stuff.endpoint_ << std::endl;
-    init_raft(cs_new< echo_state_machine >());
+    init_raft(std::make_shared< echo_state_machine >());
     loop();
 
     return 0;

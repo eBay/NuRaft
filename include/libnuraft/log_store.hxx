@@ -25,7 +25,6 @@ limitations under the License.
 #include "buffer.hxx"
 #include "log_entry.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 #include <vector>
 
@@ -55,7 +54,7 @@ public:
      * @return If no log entry exists: a dummy constant entry with
      *         value set to null and term set to zero.
      */
-    virtual ptr< log_entry > last_entry() const = 0;
+    virtual std::shared_ptr< log_entry > last_entry() const = 0;
 
     /**
      * Append a log entry to store.
@@ -63,7 +62,7 @@ public:
      * @param entry Log entry
      * @return Log index number.
      */
-    virtual ulong append(ptr< log_entry >& entry) = 0;
+    virtual ulong append(std::shared_ptr< log_entry >& entry) = 0;
 
     /**
      * Overwrite a log entry at the given `index`.
@@ -74,7 +73,7 @@ public:
      * @param index Log index number to overwrite.
      * @param entry New log entry to overwrite.
      */
-    virtual void write_at(ulong index, ptr< log_entry >& entry) = 0;
+    virtual void write_at(ulong index, std::shared_ptr< log_entry >& entry) = 0;
 
     /**
      * Invoked after a batch of logs is written as a part of
@@ -95,7 +94,7 @@ public:
      * @param end The end log index number (exclusive).
      * @return The log entries between [start, end).
      */
-    virtual ptr< std::vector< ptr< log_entry > > > log_entries(ulong start, ulong end) = 0;
+    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(ulong start, ulong end) = 0;
 
     /**
      * (Optional)
@@ -114,7 +113,7 @@ public:
      * @return The log entries between [start, end) and limited by the total size
      *         given by the batch_size_hint_in_bytes.
      */
-    virtual ptr< std::vector< ptr< log_entry > > > log_entries_ext(ulong start, ulong end,
+    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries_ext(ulong start, ulong end,
                                                                    int64 batch_size_hint_in_bytes = 0) {
         return log_entries(start, end);
     }
@@ -125,7 +124,7 @@ public:
      * @param index Should be equal to or greater than 1.
      * @return The log entry or null if index >= this->next_slot().
      */
-    virtual ptr< log_entry > entry_at(ulong index) = 0;
+    virtual std::shared_ptr< log_entry > entry_at(ulong index) = 0;
 
     /**
      * Get the term for the log entry at the specified index.
@@ -144,7 +143,7 @@ public:
      * @param cnt The number of logs to pack.
      * @return Packed (encoded) logs.
      */
-    virtual ptr< buffer > pack(ulong index, int32 cnt) = 0;
+    virtual std::shared_ptr< buffer > pack(ulong index, int32 cnt) = 0;
 
     /**
      * Apply the log pack to current log store, starting from index.

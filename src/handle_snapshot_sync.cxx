@@ -40,8 +40,8 @@ int32 raft_server::get_snapshot_sync_block_size() const {
     return block_size == 0 ? default_snapshot_sync_block_size : block_size;
 }
 
-bool raft_server::check_snapshot_timeout(ptr< peer > pp) {
-    ptr< snapshot_sync_ctx > sync_ctx = pp->get_snapshot_sync_ctx();
+bool raft_server::check_snapshot_timeout(std::shared_ptr< peer > pp) {
+    std::shared_ptr< snapshot_sync_ctx > sync_ctx = pp->get_snapshot_sync_ctx();
     if (!sync_ctx) return false;
 
     if (sync_ctx->get_timer().timeout()) {
@@ -54,7 +54,7 @@ bool raft_server::check_snapshot_timeout(ptr< peer > pp) {
     return false;
 }
 
-void raft_server::destroy_user_snp_ctx(ptr< snapshot_sync_ctx > sync_ctx) {
+void raft_server::destroy_user_snp_ctx(std::shared_ptr< snapshot_sync_ctx > sync_ctx) {
     if (!sync_ctx) return;
     void*& user_ctx = sync_ctx->get_user_snp_ctx();
     p_tr("destroy user ctx %p", user_ctx);
@@ -62,7 +62,7 @@ void raft_server::destroy_user_snp_ctx(ptr< snapshot_sync_ctx > sync_ctx) {
 }
 
 void raft_server::clear_snapshot_sync_ctx(peer& pp) {
-    ptr< snapshot_sync_ctx > snp_ctx = pp.get_snapshot_sync_ctx();
+    std::shared_ptr< snapshot_sync_ctx > snp_ctx = pp.get_snapshot_sync_ctx();
     if (snp_ctx) {
         destroy_user_snp_ctx(snp_ctx);
         p_tr("destroy snapshot sync ctx %p", snp_ctx.get());
@@ -70,14 +70,14 @@ void raft_server::clear_snapshot_sync_ctx(peer& pp) {
     pp.set_snapshot_in_sync(nullptr);
 }
 
-ptr< req_msg > raft_server::create_sync_snapshot_req(ptr< peer >& pp, ulong last_log_idx, ulong term, ulong commit_idx,
-                                                     bool& succeeded_out) {
+std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr< peer >& pp, ulong last_log_idx,
+                                                                 ulong term, ulong commit_idx, bool& succeeded_out) {
     succeeded_out = false;
     peer& p = *pp;
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     std::unique_lock< std::mutex > guard(p.get_lock());
-    ptr< snapshot_sync_ctx > sync_ctx = p.get_snapshot_sync_ctx();
-    ptr< snapshot > snp = nullptr;
+    std::shared_ptr< snapshot_sync_ctx > sync_ctx = p.get_snapshot_sync_ctx();
+    std::shared_ptr< snapshot > snp = nullptr;
     ulong prev_sync_snp_log_idx = 0;
     if (sync_ctx) {
         snp = sync_ctx->get_snapshot();
@@ -114,7 +114,7 @@ ptr< req_msg > raft_server::create_sync_snapshot_req(ptr< peer >& pp, ulong last
             }
             ctx_->state_mgr_->system_exit(raft_err::N16_snapshot_for_peer_not_found);
             ::exit(-1);
-            return ptr< req_msg >();
+            return std::shared_ptr< req_msg >();
             // LCOV_EXCL_STOP
         }
 
@@ -125,7 +125,7 @@ ptr< req_msg > raft_server::create_sync_snapshot_req(ptr< peer >& pp, ulong last
                  "further errors");
             ctx_->state_mgr_->system_exit(raft_err::N17_empty_snapshot);
             ::exit(-1);
-            return ptr< req_msg >();
+            return std::shared_ptr< req_msg >();
             // LCOV_EXCL_STOP
         }
 
@@ -156,7 +156,7 @@ ptr< req_msg > raft_server::create_sync_snapshot_req(ptr< peer >& pp, ulong last
     // Otherwise (sync snapshot IO), read the requested object here and then return.
 
     bool last_request = false;
-    ptr< buffer > data = nullptr;
+    std::shared_ptr< buffer > data = nullptr;
     ulong data_idx = 0;
     if (snp->get_type() == snapshot::raw_binary) {
         // LCOV_EXCL_START
@@ -173,7 +173,7 @@ ptr< req_msg > raft_server::create_sync_snapshot_req(ptr< peer >& pp, ulong last
                  sz_rd, data->size());
             ctx_->state_mgr_->system_exit(raft_err::N18_partial_snapshot_block);
             ::exit(-1);
-            return ptr< req_msg >();
+            return std::shared_ptr< req_msg >();
             // LCOV_EXCL_STOP
         }
         last_request = (offset + (ulong)data->size()) >= snp->size();
@@ -200,15 +200,17 @@ ptr< req_msg > raft_server::create_sync_snapshot_req(ptr< peer >& pp, ulong last
     }
 
     std::unique_ptr< snapshot_sync_req > sync_req(new snapshot_sync_req(snp, data_idx, data, last_request));
-    ptr< req_msg > req(cs_new< req_msg >(term, msg_type::install_snapshot_request, id_, p.get_id(),
-                                         snp->get_last_log_term(), snp->get_last_log_idx(), commit_idx));
-    req->log_entries().push_back(cs_new< log_entry >(term, sync_req->serialize(), log_val_type::snp_sync_req));
+    std::shared_ptr< req_msg > req(std::make_shared< req_msg >(term, msg_type::install_snapshot_request, id_,
+                                                               p.get_id(), snp->get_last_log_term(),
+                                                               snp->get_last_log_idx(), commit_idx));
+    req->log_entries().push_back(
+        std::make_shared< log_entry >(term, sync_req->serialize(), log_val_type::snp_sync_req));
 
     succeeded_out = true;
     return req;
 }
 
-ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& req) {
+std::shared_ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& req) {
     if (req.get_term() == state_->get_term() && !catching_up_) {
         if (role_ == srv_role::candidate) {
             become_follower();
@@ -220,7 +222,7 @@ ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& req) {
                  req.get_src());
             ctx_->state_mgr_->system_exit(raft_err::N10_leader_receive_InstallSnapshotRequest);
             ::exit(-1);
-            return ptr< resp_msg >();
+            return std::shared_ptr< resp_msg >();
             // LCOV_EXCL_STOP
 
         } else {
@@ -228,8 +230,8 @@ ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& req) {
         }
     }
 
-    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::install_snapshot_response, id_,
-                                              req.get_src(), log_store_->next_slot());
+    std::shared_ptr< resp_msg > resp = std::make_shared< resp_msg >(
+        state_->get_term(), msg_type::install_snapshot_response, id_, req.get_src(), log_store_->next_slot());
 
     if (!catching_up_ && req.get_term() < state_->get_term()) {
         p_wn("received an install snapshot request (%" PRIu64 ") which has lower term "
@@ -238,20 +240,20 @@ ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& req) {
         return resp;
     }
 
-    std::vector< ptr< log_entry > >& entries(req.log_entries());
+    std::vector< std::shared_ptr< log_entry > >& entries(req.log_entries());
     if (entries.size() != 1 || entries[0]->get_val_type() != log_val_type::snp_sync_req) {
         p_wn("Receive an invalid InstallSnapshotRequest due to "
              "bad log entries or bad log entry value");
         return resp;
     }
 
-    ptr< snapshot_sync_req > sync_req = snapshot_sync_req::deserialize(entries[0]->get_buf());
+    std::shared_ptr< snapshot_sync_req > sync_req = snapshot_sync_req::deserialize(entries[0]->get_buf());
     if (sync_req->get_snapshot().get_last_log_idx() <= quick_commit_index_) {
         p_wn("received a snapshot (%" PRIu64 ") that is older than "
              "current commit idx (%" PRIu64 "), last log idx %" PRIu64,
              sync_req->get_snapshot().get_last_log_idx(), quick_commit_index_.load(), log_store_->next_slot() - 1);
         // Put dummy CTX to end the snapshot sync.
-        ptr< buffer > done_ctx = buffer::alloc(1);
+        std::shared_ptr< buffer > done_ctx = buffer::alloc(1);
         done_ctx->pos(0);
         done_ctx->put((byte)0);
         done_ctx->pos(0);
@@ -272,7 +274,7 @@ ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& req) {
             if (sync_req->is_done()) {
                 // TODO: check if there is missing object.
                 // Add a context buffer to inform installation is done.
-                ptr< buffer > done_ctx = buffer::alloc(1);
+                std::shared_ptr< buffer > done_ctx = buffer::alloc(1);
                 done_ctx->pos(0);
                 done_ctx->put((byte)0);
                 done_ctx->pos(0);
@@ -295,16 +297,16 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
     // if there are pending logs to be synced or commit index need to be advanced,
     // continue to send appendEntries to this peer
     bool need_to_catchup = true;
-    ptr< peer > p = it->second;
+    std::shared_ptr< peer > p = it->second;
     if (resp.get_accepted()) {
         std::lock_guard< std::mutex > guard(p->get_lock());
-        ptr< snapshot_sync_ctx > sync_ctx = p->get_snapshot_sync_ctx();
+        std::shared_ptr< snapshot_sync_ctx > sync_ctx = p->get_snapshot_sync_ctx();
         if (sync_ctx == nullptr) {
             p_in("no snapshot sync context for this peer, drop the response");
             need_to_catchup = false;
 
         } else {
-            ptr< snapshot > snp = sync_ctx->get_snapshot();
+            std::shared_ptr< snapshot > snp = sync_ctx->get_snapshot();
             if (snp->get_type() == snapshot::raw_binary) {
                 // LCOV_EXCL_START
                 p_db("resp.get_next_idx(): %" PRIu64 ", snp->size(): %" PRIu64, resp.get_next_idx(), snp->size());
@@ -367,7 +369,7 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
     }
     srv_to_join_->reset_resp_timer();
 
-    ptr< snapshot_sync_ctx > sync_ctx = srv_to_join_->get_snapshot_sync_ctx();
+    std::shared_ptr< snapshot_sync_ctx > sync_ctx = srv_to_join_->get_snapshot_sync_ctx();
     if (sync_ctx == nullptr) {
         p_ft("SnapshotSyncContext must not be null: "
              "src %d dst %d my id %d leader id %d, "
@@ -377,7 +379,7 @@ void raft_server::handle_install_snapshot_resp_new_member(resp_msg& resp) {
         return;
     }
 
-    ptr< snapshot > snp = sync_ctx->get_snapshot();
+    std::shared_ptr< snapshot > snp = sync_ctx->get_snapshot();
     bool snp_install_done = (snp->get_type() == snapshot::raw_binary && resp.get_next_idx() >= snp->size()) ||
         (snp->get_type() == snapshot::logical_object && resp.get_ctx());
 
@@ -498,7 +500,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
 
                 reconfigure(req.get_snapshot().get_last_config());
 
-                ptr< cluster_config > c_conf = get_config();
+                std::shared_ptr< cluster_config > c_conf = get_config();
                 ctx_->state_mgr_->save_config(*c_conf);
 
                 precommit_index_ = req.get_snapshot().get_last_log_idx();
@@ -508,9 +510,9 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
 
                 ctx_->state_mgr_->save_state(*state_);
 
-                ptr< snapshot > new_snp =
-                    cs_new< snapshot >(req.get_snapshot().get_last_log_idx(), req.get_snapshot().get_last_log_term(),
-                                       c_conf, req.get_snapshot().size(), req.get_snapshot().get_type());
+                std::shared_ptr< snapshot > new_snp = std::make_shared< snapshot >(
+                    req.get_snapshot().get_last_log_idx(), req.get_snapshot().get_last_log_term(), c_conf,
+                    req.get_snapshot().size(), req.get_snapshot().get_type());
                 set_last_snapshot(new_snp);
 
                 restart_election_timer();

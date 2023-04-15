@@ -372,7 +372,7 @@ int message_meta_test() {
 
     for (size_t ii = 0; ii < 10; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -446,7 +446,7 @@ int message_meta_random_denial_test() {
 
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -518,7 +518,7 @@ int empty_meta_test(bool always_invoke_cb) {
 
     for (size_t ii = 0; ii < 10; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -594,7 +594,7 @@ int response_hint_test(bool with_meta) {
     const size_t NUM = 100;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -612,7 +612,7 @@ int response_hint_test(bool with_meta) {
 
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string msg_str = "2nd_" + std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -638,7 +638,7 @@ int response_hint_test(bool with_meta) {
 
     for (size_t ii = 0; ii < 3; ++ii) {
         std::string msg_str = "3rd_" + std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -669,8 +669,8 @@ int response_hint_test(bool with_meta) {
     return 0;
 }
 
-static void async_handler(std::list< ulong >* idx_list, std::mutex* idx_list_lock, ptr< buffer >& result,
-                          ptr< std::exception >& err) {
+static void async_handler(std::list< ulong >* idx_list, std::mutex* idx_list_lock, std::shared_ptr< buffer >& result,
+                          std::shared_ptr< std::exception >& err) {
     result->pos(0);
     ulong idx = result->get_ulong();
     if (idx_list) {
@@ -707,16 +707,16 @@ int async_append_handler_test() {
 
     // Append messages asynchronously.
     const size_t NUM = 10;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     std::list< ulong > idx_list;
     std::mutex idx_list_lock;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
 
-        cmd_result< ptr< buffer > >::handler_type my_handler =
+        cmd_result< std::shared_ptr< buffer > >::handler_type my_handler =
             std::bind(async_handler, &idx_list, &idx_list_lock, std::placeholders::_1, std::placeholders::_2);
         ret->when_ready(my_handler);
 
@@ -780,10 +780,11 @@ int async_append_handler_with_order_inversion_test() {
     std::atomic< bool > handler_invoked(false);
     {
         std::string test_msg = "test" + std::to_string(1234);
-        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
-        ret->when_ready([&handler_invoked](cmd_result< ptr< buffer > >& result, ptr< std::exception >& err) -> int {
+        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        ret->when_ready([&handler_invoked](cmd_result< std::shared_ptr< buffer > >& result,
+                                           std::shared_ptr< std::exception >& err) -> int {
             CHK_NONNULL(result.get());
             handler_invoked = true;
             return 0;
@@ -842,7 +843,7 @@ int auto_quorum_size_test() {
     // Replication.
     for (size_t ii = 0; ii < 10; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -862,7 +863,7 @@ int auto_quorum_size_test() {
     // More replication.
     for (size_t ii = 10; ii < 11; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -882,7 +883,7 @@ int auto_quorum_size_test() {
     // More replication.
     for (size_t ii = 11; ii < 12; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -935,7 +936,7 @@ int auto_quorum_size_election_test() {
     // Replication.
     for (size_t ii = 0; ii < 10; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1->raftServer->append_entries({msg});
@@ -960,7 +961,7 @@ int auto_quorum_size_election_test() {
     // More replication.
     for (size_t ii = 10; ii < 11; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s2->raftServer->append_entries({msg});
@@ -985,7 +986,7 @@ int auto_quorum_size_election_test() {
     // More replication.
     for (size_t ii = 11; ii < 12; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s2->raftServer->append_entries({msg});
@@ -1041,7 +1042,7 @@ int global_mgr_basic_test() {
     TestSuite::Progress prog(NUM_OP, "append op");
     for (size_t ii = 0; ii < NUM_OP; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1094,7 +1095,7 @@ int global_mgr_heavy_test() {
 
     for (size_t ii = 0; ii < 500; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
 
@@ -1251,7 +1252,7 @@ int auto_forwarding_timeout_test() {
     }
 
     std::string test_msg = "test";
-    ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+    std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
     msg->put(test_msg);
 
     // Forwarded as expected
@@ -1327,13 +1328,13 @@ int auto_forwarding_test(bool async) {
     };
 
     std::mutex handlers_lock;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     auto send_msg = [&](TestSuite::ThreadArgs* t_args) -> int {
         MsgArgs* args = (MsgArgs*)t_args;
         std::string test_msg = "test" + std::to_string(args->ii);
-        ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        ptr< cmd_result< ptr< buffer > > > ret = s2.raftServer->append_entries({msg});
+        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s2.raftServer->append_entries({msg});
 
         std::lock_guard< std::mutex > l(handlers_lock);
         handlers.push_back(ret);
@@ -1364,7 +1365,7 @@ int auto_forwarding_test(bool async) {
         std::set< uint64_t > commit_results;
         std::lock_guard< std::mutex > l(handlers_lock);
         for (auto& handler : handlers) {
-            ptr< buffer > h_result = handler->get();
+            std::shared_ptr< buffer > h_result = handler->get();
             CHK_NONNULL(h_result);
             CHK_EQ(8, h_result->size());
             buffer_serializer bs(h_result);
@@ -1414,7 +1415,7 @@ int enforced_state_machine_catchup_test() {
 
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1501,7 +1502,7 @@ int enforced_state_machine_catchup_with_term_inc_test() {
 
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1566,8 +1567,8 @@ void wait_for_catch_up(const RaftAsioPkg& ll, const RaftAsioPkg& rr, size_t coun
 
 int try_adding_server(RaftAsioPkg& leader, const RaftAsioPkg& srv_to_add, size_t count_limit = 3) {
     for (size_t ii = 0; ii < count_limit; ++ii) {
-        ptr< srv_config > s_conf = srv_to_add.getTestMgr()->get_srv_config();
-        ptr< cmd_result< ptr< buffer > > > ret = leader.raftServer->add_srv(*s_conf);
+        std::shared_ptr< srv_config > s_conf = srv_to_add.getTestMgr()->get_srv_config();
+        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = leader.raftServer->add_srv(*s_conf);
 
         std::string ret_string = "adding S" + std::to_string(s_conf->get_id());
         bool succeeded = false;
@@ -1608,7 +1609,7 @@ int snapshot_read_failure_during_join_test(size_t log_sync_gap) {
 
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1687,7 +1688,7 @@ int snapshot_read_failure_for_lagging_server_test(size_t num_failures) {
     // Replication.
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1749,7 +1750,7 @@ int snapshot_context_timeout_normal_test() {
     // Replication.
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1819,7 +1820,7 @@ int snapshot_context_timeout_join_test() {
     // Replication.
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1922,7 +1923,7 @@ int snapshot_context_timeout_removed_server_test() {
     // Replication.
     for (size_t ii = 0; ii < 100; ++ii) {
         std::string msg_str = std::to_string(ii);
-        ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
+        std::shared_ptr< buffer > msg = buffer::alloc(sizeof(uint32_t) + msg_str.size());
         buffer_serializer bs(msg);
         bs.put_str(msg_str);
         s1.raftServer->append_entries({msg});
@@ -1986,7 +1987,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
 
     // Append messages asynchronously.
     const size_t NUM = 10;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     std::list< ulong > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
@@ -1994,11 +1995,11 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
         idx_list.clear();
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
 
-            cmd_result< ptr< buffer > >::handler_type my_handler =
+            cmd_result< std::shared_ptr< buffer > >::handler_type my_handler =
                 std::bind(async_handler, &idx_list, &idx_list_lock, std::placeholders::_1, std::placeholders::_2);
             ret->when_ready(my_handler);
 
@@ -2105,7 +2106,7 @@ int full_consensus_test() {
 
     // Append messages asynchronously.
     const size_t NUM = 10;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     std::list< ulong > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
@@ -2113,11 +2114,11 @@ int full_consensus_test() {
         idx_list.clear();
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
 
-            cmd_result< ptr< buffer > >::handler_type my_handler =
+            cmd_result< std::shared_ptr< buffer > >::handler_type my_handler =
                 std::bind(async_handler, &idx_list, &idx_list_lock, std::placeholders::_1, std::placeholders::_2);
             ret->when_ready(my_handler);
 
@@ -2190,7 +2191,7 @@ int custom_commit_condition_test() {
 
     // Append messages asynchronously.
     const size_t NUM = 10;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     std::list< ulong > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
@@ -2198,11 +2199,11 @@ int custom_commit_condition_test() {
         idx_list.clear();
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
 
-            cmd_result< ptr< buffer > >::handler_type my_handler =
+            cmd_result< std::shared_ptr< buffer > >::handler_type my_handler =
                 std::bind(async_handler, &idx_list, &idx_list_lock, std::placeholders::_1, std::placeholders::_2);
             ret->when_ready(my_handler);
 
@@ -2270,7 +2271,7 @@ int parallel_log_append_test() {
 
     // Append messages asynchronously.
     const size_t NUM = 10;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     std::list< ulong > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
@@ -2278,11 +2279,11 @@ int parallel_log_append_test() {
         idx_list.clear();
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
 
-            cmd_result< ptr< buffer > >::handler_type my_handler =
+            cmd_result< std::shared_ptr< buffer > >::handler_type my_handler =
                 std::bind(async_handler, &idx_list, &idx_list_lock, std::placeholders::_1, std::placeholders::_2);
             ret->when_ready(my_handler);
 
@@ -2346,7 +2347,7 @@ int custom_resolver_test() {
 
     // Append messages asynchronously.
     const size_t NUM = 10;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     std::list< ulong > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
@@ -2354,11 +2355,11 @@ int custom_resolver_test() {
         idx_list.clear();
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            ptr< cmd_result< ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
 
-            cmd_result< ptr< buffer > >::handler_type my_handler =
+            cmd_result< std::shared_ptr< buffer > >::handler_type my_handler =
                 std::bind(async_handler, &idx_list, &idx_list_lock, std::placeholders::_1, std::placeholders::_2);
             ret->when_ready(my_handler);
 
@@ -2420,7 +2421,7 @@ int log_timestamp_test() {
 
     // Append messages asynchronously.
     const size_t NUM = 5;
-    std::list< ptr< cmd_result< ptr< buffer > > > > handlers;
+    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
     std::list< ulong > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&](RaftAsioPkg& target_srv) {
@@ -2428,11 +2429,12 @@ int log_timestamp_test() {
         idx_list.clear();
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            ptr< cmd_result< ptr< buffer > > > ret = target_srv.raftServer->append_entries({msg});
+            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret =
+                target_srv.raftServer->append_entries({msg});
 
-            cmd_result< ptr< buffer > >::handler_type my_handler =
+            cmd_result< std::shared_ptr< buffer > >::handler_type my_handler =
                 std::bind(async_handler, &idx_list, &idx_list_lock, std::placeholders::_1, std::placeholders::_2);
             ret->when_ready(my_handler);
 
@@ -2502,8 +2504,8 @@ int log_timestamp_test() {
     // All log entries should have their timestamp,
     // and they should be identical across all members.
     for (auto& ss : {s3, s4}) {
-        ptr< inmem_log_store > src_log_store = s1.getTestMgr()->get_inmem_log_store();
-        ptr< inmem_log_store > dst_log_store = ss.getTestMgr()->get_inmem_log_store();
+        std::shared_ptr< inmem_log_store > src_log_store = s1.getTestMgr()->get_inmem_log_store();
+        std::shared_ptr< inmem_log_store > dst_log_store = ss.getTestMgr()->get_inmem_log_store();
 
         size_t start_idx = src_log_store->start_index();
         size_t end_idx = src_log_store->next_slot() - 1;
@@ -2513,8 +2515,8 @@ int log_timestamp_test() {
                 // We don't need to compare it.
                 continue;
             }
-            ptr< log_entry > src_le = src_log_store->entry_at(ii);
-            ptr< log_entry > dst_le = dst_log_store->entry_at(ii);
+            std::shared_ptr< log_entry > src_le = src_log_store->entry_at(ii);
+            std::shared_ptr< log_entry > dst_le = dst_log_store->entry_at(ii);
             TestSuite::_msg("index %2lu, type %d, %lu %lu\n", ii, src_le->get_val_type(), src_le->get_timestamp(),
                             dst_le->get_timestamp());
             CHK_NEQ(0, src_le->get_timestamp());

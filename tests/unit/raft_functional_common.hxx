@@ -48,23 +48,23 @@ public:
 
     ~TestSm() {}
 
-    ptr< buffer > commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) {
         std::lock_guard< std::mutex > ll(dataLock);
         commits[log_idx] = buffer::copy(data);
 
-        ptr< buffer > ret = buffer::alloc(sizeof(ulong));
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(ulong));
         buffer_serializer bs(ret);
         bs.put_u64(log_idx);
         return ret;
     }
 
-    void commit_config(const ulong log_idx, ptr< cluster_config >& new_conf) { lastCommittedConfigIdx = log_idx; }
+    void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) { lastCommittedConfigIdx = log_idx; }
 
-    ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
         std::lock_guard< std::mutex > ll(dataLock);
         preCommits[log_idx] = buffer::copy(data);
 
-        ptr< buffer > ret = buffer::alloc(sizeof(ulong));
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(ulong));
         buffer_serializer bs(ret);
         bs.put_u64(log_idx);
         return ret;
@@ -101,12 +101,12 @@ public:
         assert(log_idx == obj_id);
 
         int32 data_size = bs.get_i32();
-        ptr< buffer > data_commit = buffer::alloc(data_size);
+        std::shared_ptr< buffer > data_commit = buffer::alloc(data_size);
         bs.get_buffer(data_commit);
 
         commits[log_idx] = data_commit;
 
-        ptr< buffer > data_precommit = buffer::copy(*data_commit);
+        std::shared_ptr< buffer > data_precommit = buffer::copy(*data_commit);
         preCommits[log_idx] = data_precommit;
 
         // Request next object.
@@ -116,12 +116,12 @@ public:
     bool apply_snapshot(snapshot& s) {
         std::lock_guard< std::mutex > ll(lastSnapshotLock);
         // NOTE: We only handle logical snapshot.
-        ptr< buffer > snp_buf = s.serialize();
+        std::shared_ptr< buffer > snp_buf = s.serialize();
         lastSnapshot = snapshot::deserialize(*snp_buf);
         return true;
     }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         if (!user_snp_ctx) {
             // Create a dummy context with a magic number.
@@ -168,7 +168,7 @@ public:
             buffer_serializer bs(data_out);
             bs.put_u64(obj_id);
         } else {
-            ptr< buffer > local_data = entry->second;
+            std::shared_ptr< buffer > local_data = entry->second;
             data_out = buffer::alloc(sizeof(ulong) + sizeof(int32) + local_data->size());
             buffer_serializer bs(data_out);
             bs.put_u64(obj_id);
@@ -199,7 +199,7 @@ public:
         return openedUserCtxs.size();
     }
 
-    ptr< snapshot > last_snapshot() {
+    std::shared_ptr< snapshot > last_snapshot() {
         std::lock_guard< std::mutex > ll(lastSnapshotLock);
         return lastSnapshot;
     }
@@ -215,10 +215,10 @@ public:
         {
             std::lock_guard< std::mutex > ll(lastSnapshotLock);
             // NOTE: We only handle logical snapshot.
-            ptr< buffer > snp_buf = s.serialize();
+            std::shared_ptr< buffer > snp_buf = s.serialize();
             lastSnapshot = snapshot::deserialize(*snp_buf);
         }
-        ptr< std::exception > except(nullptr);
+        std::shared_ptr< std::exception > except(nullptr);
         bool ret = true;
         when_done(ret, except);
     }
@@ -264,8 +264,8 @@ public:
                 auto e2 = with.preCommits.find(e1.first);
                 if (e2 == with.preCommits.end()) return false;
 
-                ptr< buffer > e1_buf = e1.second;
-                ptr< buffer > e2_buf = e2->second;
+                std::shared_ptr< buffer > e1_buf = e1.second;
+                std::shared_ptr< buffer > e2_buf = e2->second;
                 if (e1_buf->size() != e2_buf->size()) return false;
 
                 e1_buf->pos(0);
@@ -279,8 +279,8 @@ public:
             auto e2 = with.commits.find(e1.first);
             if (e2 == with.commits.end()) return false;
 
-            ptr< buffer > e1_buf = e1.second;
-            ptr< buffer > e2_buf = e2->second;
+            std::shared_ptr< buffer > e1_buf = e1.second;
+            std::shared_ptr< buffer > e2_buf = e2->second;
             if (e1_buf->size() != e2_buf->size()) return false;
 
             e1_buf->pos(0);
@@ -294,7 +294,7 @@ public:
     ulong isCommitted(const std::string& msg) {
         std::lock_guard< std::mutex > ll(dataLock);
         for (auto& entry : commits) {
-            ptr< buffer > bb = entry.second;
+            std::shared_ptr< buffer > bb = entry.second;
             bb->pos(0);
             const char* str = bb->get_str();
             bb->pos(0);
@@ -303,7 +303,7 @@ public:
         return 0;
     }
 
-    ptr< buffer > getData(ulong log_idx) const {
+    std::shared_ptr< buffer > getData(ulong log_idx) const {
         std::lock_guard< std::mutex > ll(dataLock);
         auto entry = commits.find(log_idx);
         if (entry == commits.end()) return nullptr;
@@ -329,12 +329,12 @@ public:
     }
 
 private:
-    std::map< uint64_t, ptr< buffer > > preCommits;
-    std::map< uint64_t, ptr< buffer > > commits;
+    std::map< uint64_t, std::shared_ptr< buffer > > preCommits;
+    std::map< uint64_t, std::shared_ptr< buffer > > commits;
     std::list< uint64_t > rollbacks;
     mutable std::mutex dataLock;
 
-    ptr< snapshot > lastSnapshot;
+    std::shared_ptr< snapshot > lastSnapshot;
     mutable std::mutex lastSnapshotLock;
 
     std::atomic< uint64_t > customBatchSize;
@@ -360,41 +360,41 @@ private:
 class TestMgr : public state_mgr {
 public:
     TestMgr(int srv_id, const std::string& endpoint) :
-            myId(srv_id), myEndpoint(endpoint), curLogStore(cs_new< inmem_log_store >()) {
-        mySrvConfig = cs_new< srv_config >(srv_id, 1, endpoint, "server " + std::to_string(srv_id), false, 50);
+            myId(srv_id), myEndpoint(endpoint), curLogStore(std::make_shared< inmem_log_store >()) {
+        mySrvConfig = std::make_shared< srv_config >(srv_id, 1, endpoint, "server " + std::to_string(srv_id), false, 50);
 
-        savedConfig = cs_new< cluster_config >();
+        savedConfig = std::make_shared< cluster_config >();
         savedConfig->get_servers().push_back(mySrvConfig);
     }
     ~TestMgr() {}
 
-    ptr< cluster_config > load_config() { return savedConfig; }
+    std::shared_ptr< cluster_config > load_config() { return savedConfig; }
     void save_config(const cluster_config& config) {
-        ptr< buffer > buf = config.serialize();
+        std::shared_ptr< buffer > buf = config.serialize();
         savedConfig = cluster_config::deserialize(*buf);
     }
     void save_state(const srv_state& state) {
-        ptr< buffer > buf = state.serialize();
+        std::shared_ptr< buffer > buf = state.serialize();
         savedState = srv_state::deserialize(*buf);
     }
-    ptr< srv_state > read_state() { return savedState; }
-    ptr< log_store > load_log_store() { return curLogStore; }
+    std::shared_ptr< srv_state > read_state() { return savedState; }
+    std::shared_ptr< log_store > load_log_store() { return curLogStore; }
     int32 server_id() { return myId; }
     void system_exit(const int exit_code) { abort(); }
 
-    ptr< srv_config > get_srv_config() const { return mySrvConfig; }
+    std::shared_ptr< srv_config > get_srv_config() const { return mySrvConfig; }
 
     void set_disk_delay(raft_server* raft, size_t delay_ms) { curLogStore->set_disk_delay(raft, delay_ms); }
 
-    ptr< inmem_log_store > get_inmem_log_store() const { return curLogStore; }
+    std::shared_ptr< inmem_log_store > get_inmem_log_store() const { return curLogStore; }
 
 private:
     int myId;
     std::string myEndpoint;
-    ptr< inmem_log_store > curLogStore;
-    ptr< srv_config > mySrvConfig;
-    ptr< cluster_config > savedConfig;
-    ptr< srv_state > savedState;
+    std::shared_ptr< inmem_log_store > curLogStore;
+    std::shared_ptr< srv_config > mySrvConfig;
+    std::shared_ptr< cluster_config > savedConfig;
+    std::shared_ptr< srv_state > savedState;
 };
 
 static VOID_UNUSED reset_log_files() {

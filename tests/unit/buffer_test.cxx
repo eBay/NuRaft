@@ -31,7 +31,7 @@ using namespace nuraft;
 namespace buffer_test {
 
 int buffer_basic_test(size_t buf_size) {
-    ptr< buffer > buf = buffer::alloc(buf_size);
+    std::shared_ptr< buffer > buf = buffer::alloc(buf_size);
 
     uint seed = (uint)std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine engine(seed);
@@ -62,15 +62,15 @@ int buffer_basic_test(size_t buf_size) {
     const char raw_str[] = "a raw string";
     buf->put_raw(reinterpret_cast< const byte* >(raw_str), sizeof(raw_str));
 
-    ptr< buffer > buf1(buffer::alloc(100));
+    std::shared_ptr< buffer > buf1(buffer::alloc(100));
     buf1->put("another string");
     buf1->pos(0);
 
-    ptr< buffer > buf2(buffer::copy(*buf1));
+    std::shared_ptr< buffer > buf2(buffer::copy(*buf1));
     buf->put(*buf1);
     buf->pos(0);
 
-    ptr< buffer > buf3(buffer::alloc(sz_int * 100));
+    std::shared_ptr< buffer > buf3(buffer::alloc(sz_int * 100));
     buf->get(buf3);
     buf->pos(0);
 
@@ -99,20 +99,20 @@ int buffer_basic_test(size_t buf_size) {
     std::stringstream stream;
     long_val = std::numeric_limits< uint >::max();
     long_val += rnd();
-    ptr< buffer > lbuf(buffer::alloc(sizeof(ulong)));
+    std::shared_ptr< buffer > lbuf(buffer::alloc(sizeof(ulong)));
     lbuf->put(long_val);
     lbuf->pos(0);
 
     stream << *lbuf;
     stream.seekp(0);
 
-    ptr< buffer > lbuf1(buffer::alloc(sizeof(ulong)));
+    std::shared_ptr< buffer > lbuf1(buffer::alloc(sizeof(ulong)));
     stream >> *lbuf1;
 
     ulong long_val_copy = lbuf1->get_ulong();
     CHK_EQ(long_val, long_val_copy);
 
-    ptr< buffer > buf4(buffer::alloc(sz_int * 100));
+    std::shared_ptr< buffer > buf4(buffer::alloc(sz_int * 100));
     buf4->pos(0);
     for (int i = 0; i < 100; ++i) {
         buf4->put(i);
@@ -130,7 +130,7 @@ int buffer_basic_test(size_t buf_size) {
 }
 
 int buffer_serializer_test(bool little_endian) {
-    ptr< buffer > buf = buffer::alloc(100);
+    std::shared_ptr< buffer > buf = buffer::alloc(100);
     buffer_serializer::endianness endian = (little_endian) ? buffer_serializer::LITTLE : buffer_serializer::BIG;
     buffer_serializer ss(buf, endian);
 
@@ -171,7 +171,7 @@ int buffer_serializer_test(bool little_endian) {
     ss.put_str(helloworld);
 
     // Other buffer containing string.
-    ptr< buffer > hw_buf = buffer::alloc(helloworld.size() + sizeof(uint32_t));
+    std::shared_ptr< buffer > hw_buf = buffer::alloc(helloworld.size() + sizeof(uint32_t));
     buffer_serializer bs_hw_buf(hw_buf, endian);
     bs_hw_buf.put_str(helloworld);
     ss.put_buffer(*hw_buf);
@@ -221,7 +221,7 @@ int buffer_serializer_test(bool little_endian) {
     CHK_EQ(helloworld, str_read);
 
     // Buffer.
-    ptr< buffer > hw_buf_read = buffer::alloc(helloworld.size() + sizeof(uint32_t));
+    std::shared_ptr< buffer > hw_buf_read = buffer::alloc(helloworld.size() + sizeof(uint32_t));
     ss_read.get_buffer(hw_buf_read);
     buffer_serializer bs_hw_buf_read(hw_buf_read, endian);
     str_read = bs_hw_buf_read.get_str();

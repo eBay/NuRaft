@@ -29,22 +29,22 @@ namespace raft_bench {
 
 LatencyCollector global_lat;
 
-using raft_result = cmd_result< ptr< buffer > >;
+using raft_result = cmd_result< std::shared_ptr< buffer > >;
 
 class dummy_sm : public state_machine {
 public:
     dummy_sm() : last_commit_idx_(0) {}
     ~dummy_sm() {}
 
-    ptr< buffer > commit(const ulong log_idx, buffer& data) {
-        ptr< buffer > ret = buffer::alloc(sizeof(ulong));
+    std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) {
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(ulong));
         ret->put(log_idx);
         ret->pos(0);
         last_commit_idx_ = log_idx;
         return ret;
     }
 
-    ptr< buffer > pre_commit(const ulong log_idx, buffer& data) { return nullptr; }
+    std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) { return nullptr; }
 
     void rollback(const ulong log_idx, buffer& data) {}
     void save_snapshot_data(snapshot& s, const ulong offset, buffer& data) {}
@@ -54,7 +54,7 @@ public:
     bool apply_snapshot(snapshot& s) { return true; }
     int read_snapshot_data(snapshot& s, const ulong offset, buffer& data) { return 0; }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         is_last_obj = true;
         data_out = buffer::alloc(sizeof(ulong));
@@ -65,7 +65,7 @@ public:
 
     void free_user_snp_ctx(void*& user_snp_ctx) {}
 
-    ptr< snapshot > last_snapshot() {
+    std::shared_ptr< snapshot > last_snapshot() {
         std::lock_guard< std::mutex > ll(last_snapshot_lock_);
         return last_snapshot_;
     }
@@ -76,16 +76,16 @@ public:
         {
             std::lock_guard< std::mutex > ll(last_snapshot_lock_);
             // NOTE: We only handle logical snapshot.
-            ptr< buffer > snp_buf = s.serialize();
+            std::shared_ptr< buffer > snp_buf = s.serialize();
             last_snapshot_ = snapshot::deserialize(*snp_buf);
         }
-        ptr< std::exception > except(nullptr);
+        std::shared_ptr< std::exception > except(nullptr);
         bool ret = true;
         when_done(ret, except);
     }
 
 private:
-    ptr< snapshot > last_snapshot_;
+    std::shared_ptr< snapshot > last_snapshot_;
     std::mutex last_snapshot_lock_;
     uint64_t last_commit_idx_;
 };
@@ -122,40 +122,40 @@ struct server_stuff {
     std::string endpoint_;
 
     // Logger.
-    ptr< logger_wrapper > log_wrap_;
-    ptr< logger > raft_logger_;
+    std::shared_ptr< logger_wrapper > log_wrap_;
+    std::shared_ptr< logger > raft_logger_;
 
     // State machine.
-    ptr< state_machine > sm_;
+    std::shared_ptr< state_machine > sm_;
     // State manager.
-    ptr< state_mgr > smgr_;
+    std::shared_ptr< state_mgr > smgr_;
 
     // ASIO things.
-    ptr< asio_service > asio_svc_;
-    ptr< rpc_listener > asio_listener_;
+    std::shared_ptr< asio_service > asio_svc_;
+    std::shared_ptr< rpc_listener > asio_listener_;
 
     // Raft server instance.
-    ptr< raft_server > raft_instance_;
+    std::shared_ptr< raft_server > raft_instance_;
 };
 
 int init_raft(server_stuff& stuff) {
     // Create logger for this server.
     std::string log_file_name = "./srv" + std::to_string(stuff.server_id_) + ".log";
-    stuff.log_wrap_ = cs_new< logger_wrapper >(log_file_name, 4);
+    stuff.log_wrap_ = std::make_shared< logger_wrapper >(log_file_name, 4);
     stuff.raft_logger_ = stuff.log_wrap_;
 
     // Create state manager and state machine.
-    stuff.smgr_ = cs_new< TestMgr >(stuff.server_id_, stuff.endpoint_);
-    stuff.sm_ = cs_new< dummy_sm >();
+    stuff.smgr_ = std::make_shared< TestMgr >(stuff.server_id_, stuff.endpoint_);
+    stuff.sm_ = std::make_shared< dummy_sm >();
 
     // Start ASIO service.
     asio_service::options asio_opt;
     asio_opt.thread_pool_size_ = 32;
-    stuff.asio_svc_ = cs_new< asio_service >(asio_opt, stuff.raft_logger_);
+    stuff.asio_svc_ = std::make_shared< asio_service >(asio_opt, stuff.raft_logger_);
 
     stuff.asio_listener_ = stuff.asio_svc_->create_rpc_listener(stuff.port_, stuff.raft_logger_);
-    ptr< delayed_task_scheduler > scheduler = stuff.asio_svc_;
-    ptr< rpc_client_factory > rpc_cli_factory = stuff.asio_svc_;
+    std::shared_ptr< delayed_task_scheduler > scheduler = stuff.asio_svc_;
+    std::shared_ptr< rpc_client_factory > rpc_cli_factory = stuff.asio_svc_;
 
     // Set parameters and start Raft server.
     raft_params params;
@@ -168,7 +168,7 @@ int init_raft(server_stuff& stuff) {
     params.return_method_ = raft_params::blocking;
     context* ctx = new context(stuff.smgr_, stuff.sm_, stuff.asio_listener_, stuff.raft_logger_, rpc_cli_factory,
                                scheduler, params);
-    stuff.raft_instance_ = cs_new< raft_server >(ctx);
+    stuff.raft_instance_ = std::make_shared< raft_server >(ctx);
 
     // Listen.
     stuff.asio_listener_->listen(stuff.raft_instance_);
@@ -196,7 +196,7 @@ int add_servers(server_stuff& stuff, const bench_config& config) {
         _msg("add server %d ", server_id_to_add);
 
         srv_config srv_conf_to_add(server_id_to_add, 1, config.endpoints_[ii], std::string(), false, 50);
-        ptr< raft_result > ret = stuff.raft_instance_->add_srv(srv_conf_to_add);
+        std::shared_ptr< raft_result > ret = stuff.raft_instance_->add_srv(srv_conf_to_add);
         if (!ret->get_accepted()) {
             _msg(" .. failed");
             return -1;
@@ -208,7 +208,7 @@ int add_servers(server_stuff& stuff, const bench_config& config) {
             fflush(stdout);
             _msg(".");
             TestSuite::sleep_ms(250);
-            ptr< srv_config > conf = stuff.raft_instance_->get_srv_config(server_id_to_add);
+            std::shared_ptr< srv_config > conf = stuff.raft_instance_->get_srv_config(server_id_to_add);
             if (conf) {
                 _msg(" done\n");
                 break;
@@ -233,7 +233,7 @@ struct worker_params : public TestSuite::ThreadArgs {
 int worker_func(TestSuite::ThreadArgs* _args) {
     worker_params* args = static_cast< worker_params* >(_args);
 
-    ptr< buffer > msg = buffer::alloc(args->config_.payload_size_);
+    std::shared_ptr< buffer > msg = buffer::alloc(args->config_.payload_size_);
     msg->put((byte)0x0);
 
     while (!args->stop_signal_) {
@@ -250,7 +250,7 @@ int worker_func(TestSuite::ThreadArgs* _args) {
         TestSuite::Timer timer;
 
         msg->pos(0);
-        ptr< raft_result > ret = args->stuff_.raft_instance_->append_entries({msg});
+        std::shared_ptr< raft_result > ret = args->stuff_.raft_instance_->append_entries({msg});
         global_lat.addLatency("rep", timer.getTimeUs());
 
         CHK_TRUE(ret->get_accepted());

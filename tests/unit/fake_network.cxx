@@ -45,7 +45,7 @@ void FakeNetworkBase::destroy() {
     SimpleLogger::shutdown();
 }
 
-void FakeNetworkBase::addNetwork(ptr< FakeNetwork >& net) { nets[net->getEndpoint()] = net; }
+void FakeNetworkBase::addNetwork(std::shared_ptr< FakeNetwork >& net) { nets[net->getEndpoint()] = net; }
 
 void FakeNetworkBase::removeNetwork(const std::string& endpoint) {
     auto entry = nets.find(endpoint);
@@ -61,10 +61,10 @@ FakeNetwork* FakeNetworkBase::findNetwork(const std::string& endpoint) {
 
 // === FakeNetwork
 
-FakeNetwork::FakeNetwork(const std::string& _endpoint, ptr< FakeNetworkBase >& _base) :
+FakeNetwork::FakeNetwork(const std::string& _endpoint, std::shared_ptr< FakeNetworkBase >& _base) :
         myEndpoint(_endpoint), base(_base), handler(nullptr), online(true) {}
 
-ptr< rpc_client > FakeNetwork::create_client(const std::string& endpoint) {
+std::shared_ptr< rpc_client > FakeNetwork::create_client(const std::string& endpoint) {
     FakeNetwork* dst_net = base->findNetwork(endpoint);
     if (!dst_net) return nullptr;
 
@@ -77,15 +77,15 @@ ptr< rpc_client > FakeNetwork::create_client(const std::string& endpoint) {
         clients.erase(entry);
     }
 
-    ptr< FakeClient > ret = cs_new< FakeClient >(this, dst_net);
+    std::shared_ptr< FakeClient > ret = std::make_shared< FakeClient >(this, dst_net);
     clients[endpoint] = ret;
     return ret;
 }
 
-void FakeNetwork::listen(ptr< msg_handler >& _handler) { handler = _handler; }
+void FakeNetwork::listen(std::shared_ptr< msg_handler >& _handler) { handler = _handler; }
 
-ptr< resp_msg > FakeNetwork::gotMsg(ptr< req_msg >& msg) {
-    ptr< resp_msg > resp = raft_server_handler::process_req(handler.get(), *msg);
+std::shared_ptr< resp_msg > FakeNetwork::gotMsg(std::shared_ptr< req_msg >& msg) {
+    std::shared_ptr< resp_msg > resp = raft_server_handler::process_req(handler.get(), *msg);
     return resp;
 }
 
@@ -93,7 +93,7 @@ bool FakeNetwork::execReqResp(const std::string& endpoint) {
     if (endpoint.empty()) {
         // Do the same thing to all.
 
-        std::map< std::string, ptr< FakeClient > > clients_clone;
+        std::map< std::string, std::shared_ptr< FakeClient > > clients_clone;
 
         // WARNING:
         //   As a result of processing req or resp, client re-connection
@@ -131,7 +131,7 @@ bool FakeNetwork::execReqResp(const std::string& endpoint) {
     return ret;
 }
 
-ptr< FakeClient > FakeNetwork::findClient(const std::string& endpoint) {
+std::shared_ptr< FakeClient > FakeNetwork::findClient(const std::string& endpoint) {
     std::lock_guard< std::mutex > ll(clientsLock);
     auto entry = clients.find(endpoint);
     if (entry == clients.end()) return nullptr;
@@ -141,7 +141,7 @@ ptr< FakeClient > FakeNetwork::findClient(const std::string& endpoint) {
 bool FakeNetwork::delieverReqTo(const std::string& endpoint, bool random_order) {
     // this:                    source (sending request)
     // conn->dstNet (endpoint): destination (sending response)
-    ptr< FakeClient > conn = findClient(endpoint);
+    std::shared_ptr< FakeClient > conn = findClient(endpoint);
 
     // If destination is offline, make failure.
     if (!conn->isDstOnline()) return makeReqFail(endpoint, random_order);
@@ -155,7 +155,7 @@ bool FakeNetwork::delieverReqTo(const std::string& endpoint, bool random_order) 
     _log_info(ll, "[BEGIN] send/process %s -> %s, %s", myEndpoint.c_str(), endpoint.c_str(),
               msg_type_to_string(pkg.req->get_type()).c_str());
 
-    ptr< resp_msg > resp = conn->dstNet->gotMsg(pkg.req);
+    std::shared_ptr< resp_msg > resp = conn->dstNet->gotMsg(pkg.req);
     _log_info(ll, "[END] send/process %s -> %s, %s", myEndpoint.c_str(), endpoint.c_str(),
               msg_type_to_string(pkg.req->get_type()).c_str());
 
@@ -172,7 +172,7 @@ void FakeNetwork::delieverAllTo(const std::string& endpoint) {
 bool FakeNetwork::makeReqFail(const std::string& endpoint, bool random_order) {
     // this:                    source (sending request)
     // conn->dstNet (endpoint): destination (sending response)
-    ptr< FakeClient > conn = findClient(endpoint);
+    std::shared_ptr< FakeClient > conn = findClient(endpoint);
 
     auto pkg_entry = conn->pendingReqs.begin();
     if (pkg_entry == conn->pendingReqs.end()) return false;
@@ -183,9 +183,9 @@ bool FakeNetwork::makeReqFail(const std::string& endpoint, bool random_order) {
     _log_info(ll, "[BEGIN] make request %s -> %s failed, %s", myEndpoint.c_str(), endpoint.c_str(),
               msg_type_to_string(pkg.req->get_type()).c_str());
 
-    ptr< resp_msg > rsp; // empty.
-    ptr< rpc_exception > exp(
-        cs_new< rpc_exception >(sstrfmt("failed to send request to peer %d").fmt(pkg.req->get_dst()), pkg.req));
+    std::shared_ptr< resp_msg > rsp; // empty.
+    std::shared_ptr< rpc_exception > exp(std::make_shared< rpc_exception >(
+        sstrfmt("failed to send request to peer %d").fmt(pkg.req->get_dst()), pkg.req));
     pkg.whenDone(rsp, exp);
 
     _log_info(ll, "[END] make request %s -> %s failed, %s", myEndpoint.c_str(), endpoint.c_str(),
@@ -203,7 +203,7 @@ void FakeNetwork::makeReqFailAll(const std::string& endpoint) {
 bool FakeNetwork::handleRespFrom(const std::string& endpoint, bool random_order) {
     // this:        source (sending request)
     // endpoint:    destination (sending response)
-    ptr< FakeClient > conn = findClient(endpoint);
+    std::shared_ptr< FakeClient > conn = findClient(endpoint);
 
     auto pkg_entry = conn->pendingResps.begin();
     if (pkg_entry == conn->pendingResps.end()) return false;
@@ -216,7 +216,7 @@ bool FakeNetwork::handleRespFrom(const std::string& endpoint, bool random_order)
     _log_info(ll, "[BEGIN] deliver response %s -> %s, %s", endpoint.c_str(), myEndpoint.c_str(),
               msg_type_to_string(pkg.resp->get_type()).c_str());
 
-    ptr< rpc_exception > exp;
+    std::shared_ptr< rpc_exception > exp;
     pkg.whenDone(pkg.resp, exp);
 
     _log_info(ll, "[END] deliver response %s -> %s, %s", endpoint.c_str(), myEndpoint.c_str(),
@@ -227,7 +227,7 @@ bool FakeNetwork::handleRespFrom(const std::string& endpoint, bool random_order)
     for (auto& entry : staleClients) {
         // If client re-connection happened, there will be
         // stale clients. Drop all packets of them.
-        ptr< FakeClient >& cc = entry;
+        std::shared_ptr< FakeClient >& cc = entry;
         cc->dropPackets();
     }
     staleClients.clear();
@@ -241,13 +241,13 @@ void FakeNetwork::handleAllFrom(const std::string& endpoint) {
 }
 
 size_t FakeNetwork::getNumPendingReqs(const std::string& endpoint) {
-    ptr< FakeClient > conn = findClient(endpoint);
+    std::shared_ptr< FakeClient > conn = findClient(endpoint);
     if (!conn) return 0;
     return conn->pendingReqs.size();
 }
 
 size_t FakeNetwork::getNumPendingResps(const std::string& endpoint) {
-    ptr< FakeClient > conn = findClient(endpoint);
+    std::shared_ptr< FakeClient > conn = findClient(endpoint);
     if (!conn) return 0;
     return conn->pendingResps.size();
 }
@@ -257,7 +257,7 @@ void FakeNetwork::stop() { handler = nullptr; }
 void FakeNetwork::shutdown() {
     std::lock_guard< std::mutex > ll(clientsLock);
     for (auto& entry : clients) {
-        ptr< FakeClient >& cc = entry.second;
+        std::shared_ptr< FakeClient >& cc = entry.second;
         cc->dropPackets();
     }
     clients.clear();
@@ -271,7 +271,7 @@ FakeClient::FakeClient(FakeNetwork* mother, FakeNetwork* dst) :
 
 FakeClient::~FakeClient() {}
 
-void FakeClient::send(ptr< req_msg >& req, rpc_handler& when_done, uint64_t /*send_timeout_ms*/) {
+void FakeClient::send(std::shared_ptr< req_msg >& req, rpc_handler& when_done, uint64_t /*send_timeout_ms*/) {
     SimpleLogger* ll = motherNet->getBase()->getLogger();
     _log_info(ll, "got request %s -> %s, %s", motherNet->getEndpoint().c_str(), dstNet->getEndpoint().c_str(),
               msg_type_to_string(req->get_type()).c_str());
@@ -296,24 +296,24 @@ bool FakeClient::is_abandoned() const { return false; }
 
 FakeTimer::FakeTimer(const std::string& endpoint, SimpleLogger* logger) : myEndpoint(endpoint), myLog(logger) {}
 
-void FakeTimer::schedule(ptr< delayed_task >& task, int32 milliseconds) {
+void FakeTimer::schedule(std::shared_ptr< delayed_task >& task, int32 milliseconds) {
     std::lock_guard< std::mutex > l(tasksLock);
     _log_info(myLog, " --- schedule timer for %s %d %p ---", myEndpoint.c_str(), task->get_type(), task.get());
     task->reset();
     tasks.push_back(task);
 }
 
-void FakeTimer::cancel(ptr< delayed_task >& task) { cancel_impl(task); }
+void FakeTimer::cancel(std::shared_ptr< delayed_task >& task) { cancel_impl(task); }
 
 void FakeTimer::invoke(int type) {
     _log_info(myLog, " --- invoke timer tasks for %s %d ---", myEndpoint.c_str(), type);
 
-    std::list< ptr< delayed_task > > tasks_to_invoke;
+    std::list< std::shared_ptr< delayed_task > > tasks_to_invoke;
     {
         std::lock_guard< std::mutex > l(tasksLock);
         auto entry = tasks.begin();
         while (entry != tasks.end()) {
-            ptr< delayed_task > cur_task = *entry;
+            std::shared_ptr< delayed_task > cur_task = *entry;
             if (cur_task->get_type() == type) {
                 entry = tasks.erase(entry);
                 tasks_to_invoke.push_back(cur_task);
@@ -324,7 +324,7 @@ void FakeTimer::invoke(int type) {
     }
 
     for (auto& entry : tasks_to_invoke) {
-        ptr< delayed_task >& cur_task = entry;
+        std::shared_ptr< delayed_task >& cur_task = entry;
         cur_task->execute();
     }
 }
@@ -339,17 +339,17 @@ size_t FakeTimer::getNumPendingTasks(int type) {
 
     size_t count = 0;
     for (auto& entry : tasks) {
-        ptr< delayed_task >& cur_task = entry;
+        std::shared_ptr< delayed_task >& cur_task = entry;
         if (cur_task->get_type() == type) count++;
     }
     return count;
 }
 
-void FakeTimer::cancel_impl(ptr< delayed_task >& task) {
+void FakeTimer::cancel_impl(std::shared_ptr< delayed_task >& task) {
     std::lock_guard< std::mutex > l(tasksLock);
     auto entry = tasks.begin();
     while (entry != tasks.end()) {
-        ptr< delayed_task > cur_task = *entry;
+        std::shared_ptr< delayed_task > cur_task = *entry;
         if (cur_task.get() == task.get()) {
             entry = tasks.erase(entry);
             cur_task->cancel();

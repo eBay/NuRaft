@@ -36,7 +36,7 @@ int timer_basic_test() {
     asio_service svc;
     std::atomic< size_t > counter(0);
     timer_task< void >::executor handler = std::bind(timer_invoke_handler, &counter);
-    ptr< delayed_task > task = cs_new< timer_task< void > >(handler);
+    std::shared_ptr< delayed_task > task = std::make_shared< timer_task< void > >(handler);
 
     // Set 200 ms timer and wait 300 ms.
     svc.schedule(task, 200);
@@ -60,7 +60,7 @@ int timer_cancel_test() {
     asio_service svc;
     std::atomic< size_t > counter(0);
     timer_task< void >::executor handler = std::bind(timer_invoke_handler, &counter);
-    ptr< delayed_task > task = cs_new< timer_task< void > >(handler);
+    std::shared_ptr< delayed_task > task = std::make_shared< timer_task< void > >(handler);
 
     // Set 300 ms timer, wait 100 ms, and then cancel it.
     svc.schedule(task, 300);

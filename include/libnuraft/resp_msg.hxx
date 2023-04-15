@@ -29,9 +29,9 @@ namespace nuraft {
 
 class resp_msg;
 class peer;
-using resp_cb = std::function< ptr< resp_msg >(ptr< resp_msg >) >;
+using resp_cb = std::function< std::shared_ptr< resp_msg >(std::shared_ptr< resp_msg >) >;
 
-using resp_async_cb = std::function< ptr< cmd_result< ptr< buffer > > >() >;
+using resp_async_cb = std::function< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > >() >;
 
 class resp_msg : public msg_base {
 public:
@@ -61,13 +61,13 @@ public:
         accepted_ = true;
     }
 
-    void set_ctx(ptr< buffer > src) { ctx_ = src; }
+    void set_ctx(std::shared_ptr< buffer > src) { ctx_ = src; }
 
-    ptr< buffer > get_ctx() const { return ctx_; }
+    std::shared_ptr< buffer > get_ctx() const { return ctx_; }
 
-    void set_peer(ptr< peer > peer) { peer_ = peer; }
+    void set_peer(std::shared_ptr< peer > peer) { peer_ = peer; }
 
-    ptr< peer > get_peer() const { return peer_; }
+    std::shared_ptr< peer > get_peer() const { return peer_; }
 
     void set_cb(resp_cb _func) { cb_func_ = _func; }
 
@@ -76,7 +76,7 @@ public:
         return false;
     }
 
-    ptr< resp_msg > call_cb(ptr< resp_msg >& _resp) { return cb_func_(_resp); }
+    std::shared_ptr< resp_msg > call_cb(std::shared_ptr< resp_msg >& _resp) { return cb_func_(_resp); }
 
     void set_async_cb(resp_async_cb _func) { async_cb_func_ = _func; }
 
@@ -85,7 +85,7 @@ public:
         return false;
     }
 
-    ptr< cmd_result< ptr< buffer > > > call_async_cb() { return async_cb_func_(); }
+    std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > call_async_cb() { return async_cb_func_(); }
 
     void set_result_code(cmd_result_code rc) { result_code_ = rc; }
 
@@ -95,8 +95,8 @@ private:
     ulong next_idx_;
     int64 next_batch_size_hint_in_bytes_;
     bool accepted_;
-    ptr< buffer > ctx_;
-    ptr< peer > peer_;
+    std::shared_ptr< buffer > ctx_;
+    std::shared_ptr< peer > peer_;
     resp_cb cb_func_;
     resp_async_cb async_cb_func_;
     cmd_result_code result_code_;

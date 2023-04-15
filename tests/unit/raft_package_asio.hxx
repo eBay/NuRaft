@@ -74,11 +74,11 @@ public:
     void initServer(bool enable_ssl = false, bool use_global_asio = false, bool use_bg_snapshot_io = true,
                     const raft_server::init_options& opt = raft_server::init_options()) {
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
-        myLogWrapper = cs_new< logger_wrapper >(log_file_name);
+        myLogWrapper = std::make_shared< logger_wrapper >(log_file_name);
         myLog = myLogWrapper;
 
-        sMgr = cs_new< TestMgr >(myId, myEndpoint);
-        sm = cs_new< TestSm >(myLogWrapper->getLogger());
+        sMgr = std::make_shared< TestMgr >(myId, myEndpoint);
+        sm = std::make_shared< TestSm >(myLogWrapper->getLogger());
 
         asio_service::options asio_opt;
         asio_opt.thread_pool_size_ = 4;
@@ -115,12 +115,12 @@ public:
         asio_opt.invoke_resp_cb_on_empty_meta_ = alwaysInvokeCb;
 
         asioSvc = use_global_asio ? nuraft_global_mgr::init_asio_service(asio_opt, myLog)
-                                  : cs_new< asio_service >(asio_opt, myLog);
+                                  : std::make_shared< asio_service >(asio_opt, myLog);
 
         int raft_port = 20000 + myId * 10;
-        ptr< rpc_listener > listener(asioSvc->create_rpc_listener(raft_port, myLog));
-        ptr< delayed_task_scheduler > scheduler = asioSvc;
-        ptr< rpc_client_factory > rpc_cli_factory = asioSvc;
+        std::shared_ptr< rpc_listener > listener(asioSvc->create_rpc_listener(raft_port, myLog));
+        std::shared_ptr< delayed_task_scheduler > scheduler = asioSvc;
+        std::shared_ptr< rpc_client_factory > rpc_cli_factory = asioSvc;
 
         raft_params params;
         params.with_hb_interval(HEARTBEAT_MS);
@@ -131,7 +131,7 @@ public:
         params.with_client_req_timeout(10000);
         params.use_bg_thread_for_snapshot_io_ = use_bg_snapshot_io;
         context* ctx(new context(sMgr, sm, listener, myLog, rpc_cli_factory, scheduler, params));
-        raftServer = cs_new< raft_server >(ctx, opt);
+        raftServer = std::make_shared< raft_server >(ctx, opt);
 
         // Listen.
         asioListener = listener;
@@ -154,12 +154,12 @@ public:
         }
 
         asioSvc = use_global_asio ? nuraft_global_mgr::init_asio_service(asio_opt, myLog)
-                                  : cs_new< asio_service >(asio_opt, myLog);
+                                  : std::make_shared< asio_service >(asio_opt, myLog);
 
         int raft_port = 20000 + myId * 10;
-        ptr< rpc_listener > listener(asioSvc->create_rpc_listener(raft_port, myLog));
-        ptr< delayed_task_scheduler > scheduler = asioSvc;
-        ptr< rpc_client_factory > rpc_cli_factory = asioSvc;
+        std::shared_ptr< rpc_listener > listener(asioSvc->create_rpc_listener(raft_port, myLog));
+        std::shared_ptr< delayed_task_scheduler > scheduler = asioSvc;
+        std::shared_ptr< rpc_client_factory > rpc_cli_factory = asioSvc;
 
         raft_params params;
         if (custom_params) {
@@ -173,7 +173,7 @@ public:
             params.with_client_req_timeout(10000);
         }
         context* ctx(new context(sMgr, sm, listener, myLog, rpc_cli_factory, scheduler, params));
-        raftServer = cs_new< raft_server >(ctx, opt);
+        raftServer = std::make_shared< raft_server >(ctx, opt);
 
         // Listen.
         asioListener = listener;
@@ -203,13 +203,13 @@ public:
     int myId;
     std::string myEndpoint;
 
-    ptr< state_mgr > sMgr;
-    ptr< state_machine > sm;
+    std::shared_ptr< state_mgr > sMgr;
+    std::shared_ptr< state_machine > sm;
 
-    ptr< asio_service > asioSvc;
-    ptr< rpc_listener > asioListener;
+    std::shared_ptr< asio_service > asioSvc;
+    std::shared_ptr< rpc_listener > asioListener;
 
-    ptr< raft_server > raftServer;
+    std::shared_ptr< raft_server > raftServer;
 
     // Callback function to read Raft request metadata.
     READ_META_FUNC readReqMeta;
@@ -229,6 +229,6 @@ public:
 
     bool useLogTimestamp;
 
-    ptr< logger_wrapper > myLogWrapper;
-    ptr< logger > myLog;
+    std::shared_ptr< logger_wrapper > myLogWrapper;
+    std::shared_ptr< logger > myLog;
 };

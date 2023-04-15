@@ -36,7 +36,8 @@ namespace nuraft {
 class snapshot;
 class peer {
 public:
-    peer(ptr< srv_config >& config, const context& ctx, timer_task< int32 >::executor& hb_exec, ptr< logger >& logger) :
+    peer(std::shared_ptr< srv_config >& config, const context& ctx, timer_task< int32 >::executor& hb_exec,
+         std::shared_ptr< logger >& logger) :
             config_(config),
             scheduler_(ctx.scheduler_),
             rpc_(ctx.rpc_cli_factory_->create_client(config->get_endpoint())),
@@ -51,7 +52,7 @@ public:
             busy_flag_(false),
             pending_commit_flag_(false),
             hb_enabled_(false),
-            hb_task_(cs_new< timer_task< int32 >, timer_task< int32 >::executor&, int32 >(
+            hb_task_(std::make_shared< timer_task< int32 >, timer_task< int32 >::executor&, int32 >(
                 hb_exec, config->get_id(), timer_task_type::heartbeat_timer)),
             snp_sync_ctx_(nullptr),
             lock_(),
@@ -87,9 +88,9 @@ public:
 
     const srv_config& get_config() { return *config_; }
 
-    void set_config(ptr< srv_config > new_config) { config_ = new_config; }
+    void set_config(std::shared_ptr< srv_config > new_config) { config_ = new_config; }
 
-    ptr< delayed_task >& get_hb_task() { return hb_task_; }
+    std::shared_ptr< delayed_task >& get_hb_task() { return hb_task_; }
 
     std::mutex& get_lock() { return lock_; }
 
@@ -136,16 +137,16 @@ public:
         return pending_commit_flag_.compare_exchange_strong(t, false);
     }
 
-    void set_snapshot_in_sync(const ptr< snapshot >& s, ulong timeout_ms = 10 * 1000) {
+    void set_snapshot_in_sync(const std::shared_ptr< snapshot >& s, ulong timeout_ms = 10 * 1000) {
         std::lock_guard< std::mutex > l(snp_sync_ctx_lock_);
         if (s == nilptr) {
             snp_sync_ctx_.reset();
         } else {
-            snp_sync_ctx_ = cs_new< snapshot_sync_ctx >(s, get_id(), timeout_ms);
+            snp_sync_ctx_ = std::make_shared< snapshot_sync_ctx >(s, get_id(), timeout_ms);
         }
     }
 
-    ptr< snapshot_sync_ctx > get_snapshot_sync_ctx() const {
+    std::shared_ptr< snapshot_sync_ctx > get_snapshot_sync_ctx() const {
         std::lock_guard< std::mutex > l(snp_sync_ctx_lock_);
         return snp_sync_ctx_;
     }
@@ -156,7 +157,7 @@ public:
 
     void set_hb_interval(int32 new_interval) { hb_interval_ = new_interval; }
 
-    void send_req(ptr< peer > myself, ptr< req_msg >& req, rpc_handler& handler);
+    void send_req(std::shared_ptr< peer > myself, std::shared_ptr< req_msg >& req, rpc_handler& handler);
 
     void shutdown();
 
@@ -184,7 +185,7 @@ public:
     void set_manual_free() { manual_free_ = true; }
     bool is_manual_free() { return manual_free_; }
 
-    bool recreate_rpc(ptr< srv_config >& config, context& ctx);
+    bool recreate_rpc(std::shared_ptr< srv_config >& config, context& ctx);
 
     void reset_rpc_errs() { rpc_errs_ = 0; }
     void inc_rpc_errs() { rpc_errs_.fetch_add(1); }
@@ -232,32 +233,33 @@ public:
         return suppress_following_error_.compare_exchange_strong(exp, desired);
     }
 
-    void set_rsv_msg(const ptr< req_msg >& m, const rpc_handler& h) {
+    void set_rsv_msg(const std::shared_ptr< req_msg >& m, const rpc_handler& h) {
         rsv_msg_ = m;
         rsv_msg_handler_ = h;
     }
 
-    ptr< req_msg > get_rsv_msg() const { return rsv_msg_; }
+    std::shared_ptr< req_msg > get_rsv_msg() const { return rsv_msg_; }
     rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
 
 private:
-    void handle_rpc_result(ptr< peer > myself, ptr< rpc_client > my_rpc_client, ptr< req_msg >& req,
-                           ptr< rpc_result >& pending_result, ptr< resp_msg >& resp, ptr< rpc_exception >& err);
+    void handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rpc_client > my_rpc_client,
+                           std::shared_ptr< req_msg >& req, std::shared_ptr< rpc_result >& pending_result,
+                           std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err);
 
     /**
      * Information (config) of this server.
      */
-    ptr< srv_config > config_;
+    std::shared_ptr< srv_config > config_;
 
     /**
      * Heartbeat scheduler for this server.
      */
-    ptr< delayed_task_scheduler > scheduler_;
+    std::shared_ptr< delayed_task_scheduler > scheduler_;
 
     /**
      * RPC client to this server.
      */
-    ptr< rpc_client > rpc_;
+    std::shared_ptr< rpc_client > rpc_;
 
     /**
      * Guard of `rpc_`.
@@ -324,12 +326,12 @@ private:
     /**
      * Heartbeat task.
      */
-    ptr< delayed_task > hb_task_;
+    std::shared_ptr< delayed_task > hb_task_;
 
     /**
      * Snapshot context if snapshot transmission is in progress.
      */
-    ptr< snapshot_sync_ctx > snp_sync_ctx_;
+    std::shared_ptr< snapshot_sync_ctx > snp_sync_ctx_;
 
     /**
      * Lock for `snp_sync_ctx_`.
@@ -435,7 +437,7 @@ private:
     /**
      * Reserved message that should be sent next time.
      */
-    ptr< req_msg > rsv_msg_;
+    std::shared_ptr< req_msg > rsv_msg_;
 
     /**
      * Handler for reserved message.
@@ -445,7 +447,7 @@ private:
     /**
      * Logger instance.
      */
-    ptr< logger > l_;
+    std::shared_ptr< logger > l_;
 };
 
 } // namespace nuraft

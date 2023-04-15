@@ -71,7 +71,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
         if (srv_to_join_->need_to_reconnect()) {
             p_in("rpc client for %d needs reconnection", srv_id);
 
-            ptr< raft_params > params = ctx_->get_params();
+            std::shared_ptr< raft_params > params = ctx_->get_params();
             uint64_t resp_timer_ms = srv_to_join_->get_resp_timer_us() / 1000;
             if (resp_timer_ms >= (uint64_t)params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_) {
                 p_in("response timeout: %" PRIu64 " ms, will not retry", resp_timer_ms);
@@ -79,7 +79,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
                 return;
             }
 
-            ptr< srv_config > s_config = srv_config::deserialize(*srv_to_join_->get_config().serialize());
+            std::shared_ptr< srv_config > s_config = srv_config::deserialize(*srv_to_join_->get_config().serialize());
             bool succ = srv_to_join_->recreate_rpc(s_config, *ctx_);
             if (!succ) {
                 // Reconnection failed.
@@ -99,7 +99,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
     }
 
     // To avoid freeing this pointer in the middle of this function.
-    ptr< peer > p = pit->second;
+    std::shared_ptr< peer > p = pit->second;
 
     if (p->is_leave_flag_set()) {
         // Leave request has been sent but not removed yet,
@@ -166,7 +166,7 @@ void raft_server::restart_election_timer() {
         p_tr("cancel existing timer");
         cancel_task(election_task_);
     } else {
-        election_task_ = cs_new< timer_task< void > >(election_exec_, timer_task_type::election_timer);
+        election_task_ = std::make_shared< timer_task< void > >(election_exec_, timer_task_type::election_timer);
     }
 
     p_tr("re-schedule election timer");
@@ -313,7 +313,7 @@ void raft_server::cancel_schedulers() {
     if (election_task_) { cancel_task(election_task_); }
 
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        const ptr< peer >& p = it->second;
+        const std::shared_ptr< peer >& p = it->second;
         if (p->get_hb_task()) { cancel_task(p->get_hb_task()); }
         // Shutdown peer to cut off smart pointers.
         p->shutdown();
@@ -324,7 +324,7 @@ void raft_server::cancel_schedulers() {
     scheduler_.reset();
 }
 
-void raft_server::schedule_task(ptr< delayed_task >& task, int32 milliseconds) {
+void raft_server::schedule_task(std::shared_ptr< delayed_task >& task, int32 milliseconds) {
     if (stopping_) return;
 
     if (!scheduler_) {
@@ -334,7 +334,7 @@ void raft_server::schedule_task(ptr< delayed_task >& task, int32 milliseconds) {
     if (scheduler_) { scheduler_->schedule(task, milliseconds); }
 }
 
-void raft_server::cancel_task(ptr< delayed_task >& task) {
+void raft_server::cancel_task(std::shared_ptr< delayed_task >& task) {
     if (!scheduler_) return;
     scheduler_->cancel(task);
 }

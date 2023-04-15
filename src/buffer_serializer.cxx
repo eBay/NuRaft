@@ -161,7 +161,7 @@ namespace nuraft {
 buffer_serializer::buffer_serializer(buffer& src_buf, buffer_serializer::endianness endian) :
         endian_(endian), buf_(src_buf), pos_(0) {}
 
-buffer_serializer::buffer_serializer(ptr< buffer >& src_buf_ptr, buffer_serializer::endianness endian) :
+buffer_serializer::buffer_serializer(std::shared_ptr< buffer >& src_buf_ptr, buffer_serializer::endianness endian) :
         endian_(endian), buf_(*src_buf_ptr), pos_(0) {}
 
 size_t buffer_serializer::size() const { return buf_.size(); }
@@ -400,7 +400,7 @@ void* buffer_serializer::get_raw(size_t len) {
     return ptr;
 }
 
-void buffer_serializer::get_buffer(ptr< buffer >& dst) {
+void buffer_serializer::get_buffer(std::shared_ptr< buffer >& dst) {
     size_t len = dst->size() - dst->pos();
     void* ptr = get_raw(len);
     ::memcpy(dst->data(), ptr, len);

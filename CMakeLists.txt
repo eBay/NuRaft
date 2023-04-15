@@ -252,6 +252,8 @@ set(LIBRARY_NAME "nuraft")
 add_library(nuraft ${STATIC_LIB_SRC})
 target_link_libraries(nuraft ${ASIO_DEP} openssl::openssl)
 
+add_subdirectory("${PROJECT_SOURCE_DIR}/examples")
+
 
 # === Tests ===
 add_subdirectory("${PROJECT_SOURCE_DIR}/tests")

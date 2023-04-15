@@ -42,21 +42,21 @@ public:
 
     ulong start_index() const;
 
-    ptr< log_entry > last_entry() const;
+    std::shared_ptr< log_entry > last_entry() const;
 
-    ulong append(ptr< log_entry >& entry);
+    ulong append(std::shared_ptr< log_entry >& entry);
 
-    void write_at(ulong index, ptr< log_entry >& entry);
+    void write_at(ulong index, std::shared_ptr< log_entry >& entry);
 
-    ptr< std::vector< ptr< log_entry > > > log_entries(ulong start, ulong end);
+    std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(ulong start, ulong end);
 
-    ptr< std::vector< ptr< log_entry > > > log_entries_ext(ulong start, ulong end, int64 batch_size_hint_in_bytes = 0);
+    std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries_ext(ulong start, ulong end, int64 batch_size_hint_in_bytes = 0);
 
-    ptr< log_entry > entry_at(ulong index);
+    std::shared_ptr< log_entry > entry_at(ulong index);
 
     ulong term_at(ulong index);
 
-    ptr< buffer > pack(ulong index, int32 cnt);
+    std::shared_ptr< buffer > pack(ulong index, int32 cnt);
 
     void apply_pack(ulong index, buffer& pack);
 
@@ -71,14 +71,14 @@ public:
     void set_disk_delay(raft_server* raft, size_t delay_ms);
 
 private:
-    static ptr< log_entry > make_clone(const ptr< log_entry >& entry);
+    static std::shared_ptr< log_entry > make_clone(const std::shared_ptr< log_entry >& entry);
 
     void disk_emul_loop();
 
     /**
      * Map of <log index, log data>.
      */
-    std::map< ulong, ptr< log_entry > > logs_;
+    std::map< ulong, std::shared_ptr< log_entry > > logs_;
 
     /**
      * Lock for `logs_`.

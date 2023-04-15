@@ -49,26 +49,26 @@ public:
     __nocopy__(srv_state);
 
 public:
-    static ptr< srv_state > deserialize(buffer& buf) {
+    static std::shared_ptr< srv_state > deserialize(buffer& buf) {
         if (buf.size() > sz_ulong + sz_int) { return deserialize_v1p(buf); }
         // Backward compatibility.
         return deserialize_v0(buf);
     }
 
-    static ptr< srv_state > deserialize_v0(buffer& buf) {
+    static std::shared_ptr< srv_state > deserialize_v0(buffer& buf) {
         ulong term = buf.get_ulong();
         int voted_for = buf.get_int();
-        return cs_new< srv_state >(term, voted_for, true);
+        return std::make_shared< srv_state >(term, voted_for, true);
     }
 
-    static ptr< srv_state > deserialize_v1p(buffer& buf) {
+    static std::shared_ptr< srv_state > deserialize_v1p(buffer& buf) {
         buffer_serializer bs(buf);
         uint8_t ver = bs.get_u8();
         (void)ver;
         ulong term = bs.get_u64();
         int voted_for = bs.get_i32();
         bool et_allowed = (bs.get_u8() == 1);
-        return cs_new< srv_state >(term, voted_for, et_allowed);
+        return std::make_shared< srv_state >(term, voted_for, et_allowed);
     }
 
     void set_inc_term_func(inc_term_func to) { inc_term_cb_ = to; }
@@ -95,23 +95,24 @@ public:
 
     void allow_election_timer(bool to) { election_timer_allowed_ = to; }
 
-    ptr< buffer > serialize() const { return serialize_v1p(CURRENT_VERSION); }
+    std::shared_ptr< buffer > serialize() const { return serialize_v1p(CURRENT_VERSION); }
 
-    ptr< buffer > serialize_v0() const {
-        ptr< buffer > buf = buffer::alloc(sz_ulong + sz_int);
+    std::shared_ptr< buffer > serialize_v0() const {
+        std::shared_ptr< buffer > buf = buffer::alloc(sz_ulong + sz_int);
         buf->put(term_);
         buf->put(voted_for_);
         buf->pos(0);
         return buf;
     }
 
-    ptr< buffer > serialize_v1p(size_t version) const {
+    std::shared_ptr< buffer > serialize_v1p(size_t version) const {
         //   << Format >>
         // version          1 byte
         // term             8 bytes
         // voted_for        4 bytes
         // election timer   1 byte
-        ptr< buffer > buf = buffer::alloc(sizeof(uint8_t) + sizeof(uint64_t) + sizeof(int32_t) + sizeof(uint8_t));
+        std::shared_ptr< buffer > buf =
+            buffer::alloc(sizeof(uint8_t) + sizeof(uint64_t) + sizeof(int32_t) + sizeof(uint8_t));
         buffer_serializer bs(buf);
         bs.put_u8(version);
         bs.put_u64(term_);

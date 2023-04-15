@@ -28,7 +28,7 @@ static size_t ATTR_UNUSED COMMIT_TIMEOUT_SEC = 3;
 
 class RaftPkg {
 public:
-    RaftPkg(ptr< FakeNetworkBase >& f_base, int srv_id, const std::string& endpoint) :
+    RaftPkg(std::shared_ptr< FakeNetworkBase >& f_base, int srv_id, const std::string& endpoint) :
             myId(srv_id),
             myEndpoint(endpoint),
             fBase(f_base),
@@ -51,15 +51,15 @@ public:
 
     void initServer(raft_params* given_params = nullptr,
                     const raft_server::init_options& opt = raft_server::init_options(false, true, true)) {
-        fNet = cs_new< FakeNetwork >(myEndpoint, fBase);
+        fNet = std::make_shared< FakeNetwork >(myEndpoint, fBase);
         fBase->addNetwork(fNet);
 
-        fTimer = cs_new< FakeTimer >(myEndpoint, fBase->getLogger());
-        sMgr = cs_new< TestMgr >(myId, myEndpoint);
-        sm = cs_new< TestSm >(fBase->getLogger());
+        fTimer = std::make_shared< FakeTimer >(myEndpoint, fBase->getLogger());
+        sMgr = std::make_shared< TestMgr >(myId, myEndpoint);
+        sm = std::make_shared< TestSm >(fBase->getLogger());
 
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
-        myLogWrapper = cs_new< logger_wrapper >(log_file_name);
+        myLogWrapper = std::make_shared< logger_wrapper >(log_file_name);
         myLog = myLogWrapper;
 
         listener = fNet;
@@ -81,7 +81,7 @@ public:
         params.use_bg_thread_for_urgent_commit_ = false;
 
         ctx = new context(sMgr, sm, listener, myLog, rpcCliFactory, scheduler, params);
-        raftServer = cs_new< raft_server >(ctx, opt);
+        raftServer = std::make_shared< raft_server >(ctx, opt);
     }
 
     /**
@@ -104,7 +104,7 @@ public:
         params.use_bg_thread_for_urgent_commit_ = false;
 
         ctx = new context(sMgr, sm, listener, myLog, rpcCliFactory, scheduler, params);
-        raftServer = cs_new< raft_server >(ctx, opt);
+        raftServer = std::make_shared< raft_server >(ctx, opt);
     }
 
     void free() {
@@ -130,19 +130,19 @@ public:
 
     int myId;
     std::string myEndpoint;
-    ptr< FakeNetworkBase > fBase;
-    ptr< FakeNetwork > fNet;
-    ptr< FakeTimer > fTimer;
-    ptr< state_mgr > sMgr;
-    ptr< state_machine > sm;
-    ptr< logger_wrapper > myLogWrapper;
-    ptr< logger > myLog;
-    ptr< rpc_listener > listener;
-    ptr< rpc_client_factory > rpcCliFactory;
-    ptr< delayed_task_scheduler > scheduler;
+    std::shared_ptr< FakeNetworkBase > fBase;
+    std::shared_ptr< FakeNetwork > fNet;
+    std::shared_ptr< FakeTimer > fTimer;
+    std::shared_ptr< state_mgr > sMgr;
+    std::shared_ptr< state_machine > sm;
+    std::shared_ptr< logger_wrapper > myLogWrapper;
+    std::shared_ptr< logger > myLog;
+    std::shared_ptr< rpc_listener > listener;
+    std::shared_ptr< rpc_client_factory > rpcCliFactory;
+    std::shared_ptr< delayed_task_scheduler > scheduler;
     raft_params params;
     context* ctx;
-    ptr< raft_server > raftServer;
+    std::shared_ptr< raft_server > raftServer;
 };
 
 // ===== Helper functions waiting for the execution of state machine ====

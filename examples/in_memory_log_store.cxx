@@ -31,8 +31,8 @@ inmem_log_store::inmem_log_store() :
         disk_emul_thread_stop_signal_(false),
         disk_emul_last_durable_index_(0) {
     // Dummy entry for index 0.
-    ptr< buffer > buf = buffer::alloc(sz_ulong);
-    logs_[0] = cs_new< log_entry >(0, buf);
+    std::shared_ptr< buffer > buf = buffer::alloc(sz_ulong);
+    logs_[0] = std::make_shared< log_entry >(0, buf);
 }
 
 inmem_log_store::~inmem_log_store() {
@@ -43,12 +43,12 @@ inmem_log_store::~inmem_log_store() {
     }
 }
 
-ptr< log_entry > inmem_log_store::make_clone(const ptr< log_entry >& entry) {
+std::shared_ptr< log_entry > inmem_log_store::make_clone(const std::shared_ptr< log_entry >& entry) {
     // NOTE:
     //   Timestamp is used only when `replicate_log_timestamp_` option is on.
     //   Otherwise, log store does not need to store or load it.
-    ptr< log_entry > clone = cs_new< log_entry >(entry->get_term(), buffer::clone(entry->get_buf()),
-                                                 entry->get_val_type(), entry->get_timestamp());
+    std::shared_ptr< log_entry > clone = std::make_shared< log_entry >(
+        entry->get_term(), buffer::clone(entry->get_buf()), entry->get_val_type(), entry->get_timestamp());
     return clone;
 }
 
@@ -60,7 +60,7 @@ ulong inmem_log_store::next_slot() const {
 
 ulong inmem_log_store::start_index() const { return start_idx_; }
 
-ptr< log_entry > inmem_log_store::last_entry() const {
+std::shared_ptr< log_entry > inmem_log_store::last_entry() const {
     ulong next_idx = next_slot();
     std::lock_guard< std::mutex > l(logs_lock_);
     auto entry = logs_.find(next_idx - 1);
@@ -69,8 +69,8 @@ ptr< log_entry > inmem_log_store::last_entry() const {
     return make_clone(entry->second);
 }
 
-ulong inmem_log_store::append(ptr< log_entry >& entry) {
-    ptr< log_entry > clone = make_clone(entry);
+ulong inmem_log_store::append(std::shared_ptr< log_entry >& entry) {
+    std::shared_ptr< log_entry > clone = make_clone(entry);
 
     std::lock_guard< std::mutex > l(logs_lock_);
     size_t idx = start_idx_ + logs_.size() - 1;
@@ -85,8 +85,8 @@ ulong inmem_log_store::append(ptr< log_entry >& entry) {
     return idx;
 }
 
-void inmem_log_store::write_at(ulong index, ptr< log_entry >& entry) {
-    ptr< log_entry > clone = make_clone(entry);
+void inmem_log_store::write_at(ulong index, std::shared_ptr< log_entry >& entry) {
+    std::shared_ptr< log_entry > clone = make_clone(entry);
 
     // Discard all logs equal to or greater than `index.
     std::lock_guard< std::mutex > l(logs_lock_);
@@ -113,13 +113,14 @@ void inmem_log_store::write_at(ulong index, ptr< log_entry >& entry) {
     }
 }
 
-ptr< std::vector< ptr< log_entry > > > inmem_log_store::log_entries(ulong start, ulong end) {
-    ptr< std::vector< ptr< log_entry > > > ret = cs_new< std::vector< ptr< log_entry > > >();
+std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > inmem_log_store::log_entries(ulong start, ulong end) {
+    std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > ret =
+        std::make_shared< std::vector< std::shared_ptr< log_entry > > >();
 
     ret->resize(end - start);
     ulong cc = 0;
     for (ulong ii = start; ii < end; ++ii) {
-        ptr< log_entry > src = nullptr;
+        std::shared_ptr< log_entry > src = nullptr;
         {
             std::lock_guard< std::mutex > l(logs_lock_);
             auto entry = logs_.find(ii);
@@ -134,15 +135,16 @@ ptr< std::vector< ptr< log_entry > > > inmem_log_store::log_entries(ulong start,
     return ret;
 }
 
-ptr< std::vector< ptr< log_entry > > > inmem_log_store::log_entries_ext(ulong start, ulong end,
-                                                                        int64 batch_size_hint_in_bytes) {
-    ptr< std::vector< ptr< log_entry > > > ret = cs_new< std::vector< ptr< log_entry > > >();
+std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >
+inmem_log_store::log_entries_ext(ulong start, ulong end, int64 batch_size_hint_in_bytes) {
+    std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > ret =
+        std::make_shared< std::vector< std::shared_ptr< log_entry > > >();
 
     if (batch_size_hint_in_bytes < 0) { return ret; }
 
     size_t accum_size = 0;
     for (ulong ii = start; ii < end; ++ii) {
-        ptr< log_entry > src = nullptr;
+        std::shared_ptr< log_entry > src = nullptr;
         {
             std::lock_guard< std::mutex > l(logs_lock_);
             auto entry = logs_.find(ii);
@@ -159,8 +161,8 @@ ptr< std::vector< ptr< log_entry > > > inmem_log_store::log_entries_ext(ulong st
     return ret;
 }
 
-ptr< log_entry > inmem_log_store::entry_at(ulong index) {
-    ptr< log_entry > src = nullptr;
+std::shared_ptr< log_entry > inmem_log_store::entry_at(ulong index) {
+    std::shared_ptr< log_entry > src = nullptr;
     {
         std::lock_guard< std::mutex > l(logs_lock_);
         auto entry = logs_.find(index);
@@ -181,28 +183,28 @@ ulong inmem_log_store::term_at(ulong index) {
     return term;
 }
 
-ptr< buffer > inmem_log_store::pack(ulong index, int32 cnt) {
-    std::vector< ptr< buffer > > logs;
+std::shared_ptr< buffer > inmem_log_store::pack(ulong index, int32 cnt) {
+    std::vector< std::shared_ptr< buffer > > logs;
 
     size_t size_total = 0;
     for (ulong ii = index; ii < index + cnt; ++ii) {
-        ptr< log_entry > le = nullptr;
+        std::shared_ptr< log_entry > le = nullptr;
         {
             std::lock_guard< std::mutex > l(logs_lock_);
             le = logs_[ii];
         }
         assert(le.get());
-        ptr< buffer > buf = le->serialize();
+        std::shared_ptr< buffer > buf = le->serialize();
         size_total += buf->size();
         logs.push_back(buf);
     }
 
-    ptr< buffer > buf_out = buffer::alloc(sizeof(int32) + cnt * sizeof(int32) + size_total);
+    std::shared_ptr< buffer > buf_out = buffer::alloc(sizeof(int32) + cnt * sizeof(int32) + size_total);
     buf_out->pos(0);
     buf_out->put((int32)cnt);
 
     for (auto& entry : logs) {
-        ptr< buffer >& bb = entry;
+        std::shared_ptr< buffer >& bb = entry;
         buf_out->put((int32)bb->size());
         buf_out->put(*bb);
     }
@@ -217,10 +219,10 @@ void inmem_log_store::apply_pack(ulong index, buffer& pack) {
         ulong cur_idx = index + ii;
         int32 buf_size = pack.get_int();
 
-        ptr< buffer > buf_local = buffer::alloc(buf_size);
+        std::shared_ptr< buffer > buf_local = buffer::alloc(buf_size);
         pack.get(buf_local);
 
-        ptr< log_entry > le = log_entry::deserialize(*buf_local);
+        std::shared_ptr< log_entry > le = log_entry::deserialize(*buf_local);
         {
             std::lock_guard< std::mutex > l(logs_lock_);
             logs_[cur_idx] = le;

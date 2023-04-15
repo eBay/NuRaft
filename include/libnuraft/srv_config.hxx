@@ -25,7 +25,6 @@ limitations under the License.
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 #include <string>
 
@@ -46,9 +45,9 @@ public:
     __nocopy__(srv_config);
 
 public:
-    static ptr< srv_config > deserialize(buffer& buf);
+    static std::shared_ptr< srv_config > deserialize(buffer& buf);
 
-    static ptr< srv_config > deserialize(buffer_serializer& bs);
+    static std::shared_ptr< srv_config > deserialize(buffer_serializer& bs);
 
     int32 get_id() const { return id_; }
 
@@ -64,7 +63,7 @@ public:
 
     void set_priority(const int32 new_val) { priority_ = new_val; }
 
-    ptr< buffer > serialize() const;
+    std::shared_ptr< buffer > serialize() const;
 
 private:
     /**

@@ -25,6 +25,7 @@ limitations under the License.
 #include "srv_config.hxx"
 
 #include <list>
+#include <memory>
 #include <vector>
 
 namespace nuraft {
@@ -45,9 +46,9 @@ public:
     __nocopy__(cluster_config);
 
 public:
-    static ptr< cluster_config > deserialize(buffer& buf);
+    static std::shared_ptr< cluster_config > deserialize(buffer& buf);
 
-    static ptr< cluster_config > deserialize(buffer_serializer& buf);
+    static std::shared_ptr< cluster_config > deserialize(buffer_serializer& buf);
 
     ulong get_log_idx() const { return log_idx_; }
 
@@ -58,17 +59,17 @@ public:
 
     ulong get_prev_log_idx() const { return prev_log_idx_; }
 
-    std::list< ptr< srv_config > > const& get_servers() const { return servers_; }
+    std::list< std::shared_ptr< srv_config > > const& get_servers() const { return servers_; }
 
-    std::list< ptr< srv_config > >& get_servers() { return servers_; }
+    std::list< std::shared_ptr< srv_config > >& get_servers() { return servers_; }
 
-    ptr< srv_config > get_server(int id) const {
+    std::shared_ptr< srv_config > get_server(int id) const {
         for (auto& entry : servers_) {
-            const ptr< srv_config >& srv = entry;
+            const std::shared_ptr< srv_config >& srv = entry;
             if (srv->get_id() == id) { return srv; }
         }
 
-        return ptr< srv_config >();
+        return std::shared_ptr< srv_config >();
     }
 
     bool is_async_replication() const { return async_replication_; }
@@ -79,7 +80,7 @@ public:
 
     void set_user_ctx(const std::string& src) { user_ctx_ = src; }
 
-    ptr< buffer > serialize() const;
+    std::shared_ptr< buffer > serialize() const;
 
 private:
     // Log index number of current config.
@@ -95,7 +96,7 @@ private:
     std::string user_ctx_;
 
     // List of servers.
-    std::list< ptr< srv_config > > servers_;
+    std::list< std::shared_ptr< srv_config > > servers_;
 };
 
 } // namespace nuraft

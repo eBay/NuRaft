@@ -111,7 +111,7 @@ raft_server::raft_server(context* ctx, raft_server::init_options const& opt) :
 
     ctx->set_cb_func(opt._raft_callback);
 
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     if (params->stale_log_gap_ < params->fresh_log_gap_) { params->stale_log_gap_ = params->fresh_log_gap_; }
     if (params->enable_randomized_snapshot_creation_ && !get_last_snapshot() && params->snapshot_distance_ > 1) {
         uint64_t seed = timer_helper::get_timeofday_us() * id_;
@@ -136,13 +136,13 @@ raft_server::raft_server(context* ctx, raft_server::init_options const& opt) :
     lagging_sm_target_index_ = log_store_->next_slot() - 1;
 
     if (!state_) {
-        state_ = cs_new< srv_state >();
+        state_ = std::make_shared< srv_state >();
         state_->set_term(0);
         state_->set_voted_for(-1);
     }
     vote_init_timer_term_ = state_->get_term();
 
-    ptr< cluster_config > c_conf = get_config();
+    std::shared_ptr< cluster_config > c_conf = get_config();
     std::stringstream init_msg;
     init_msg << "   === INIT RAFT SERVER ===\n"
              << "commit index " << sm_commit_index_ << "\n"
@@ -193,14 +193,14 @@ raft_server::raft_server(context* ctx, raft_server::init_options const& opt) :
     std::stringstream peer_info_msg;
     auto srvs_end = c_conf->get_servers().end();
     for (auto it = c_conf->get_servers().begin(); it != srvs_end; ++it) {
-        ptr< srv_config > cur_srv = *it;
+        std::shared_ptr< srv_config > cur_srv = *it;
         if (cur_srv->get_id() != id_) {
             timer_task< int32 >::executor exec =
                 (timer_task< int32 >::executor)std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1);
             peers_.insert(std::make_pair(
                 cur_srv->get_id(),
-                cs_new< peer, ptr< srv_config >&, context&, timer_task< int32 >::executor&, ptr< logger >& >(
-                    cur_srv, *ctx_, exec, l_)));
+                std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32 >::executor&,
+                                  std::shared_ptr< logger >& >(cur_srv, *ctx_, exec, l_)));
         } else {
             // Myself.
             im_learner_ = cur_srv->is_learner();
@@ -232,7 +232,7 @@ raft_server::raft_server(context* ctx, raft_server::init_options const& opt) :
 }
 
 void raft_server::start_server(bool skip_initial_election_timeout) {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
     if (mgr) {
         p_in("global manager is detected. will use shared thread pool");
@@ -294,7 +294,7 @@ raft_server::~raft_server() {
 }
 
 void raft_server::update_rand_timeout() {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     uint seed = (uint)(std::chrono::system_clock::now().time_since_epoch().count() * id_);
     std::default_random_engine engine(seed);
     std::uniform_int_distribution< int32 > distribution(params->election_timeout_lower_bound_,
@@ -306,7 +306,7 @@ void raft_server::update_rand_timeout() {
 void raft_server::update_params(const raft_params& new_params) {
     recur_lock(lock_);
 
-    ptr< raft_params > clone = cs_new< raft_params >(new_params);
+    std::shared_ptr< raft_params > clone = std::make_shared< raft_params >(new_params);
     ctx_->set_params(clone);
     apply_and_log_current_params();
 
@@ -321,7 +321,7 @@ void raft_server::update_params(const raft_params& new_params) {
 }
 
 void raft_server::apply_and_log_current_params() {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
 
     if (!test_mode_flag_) {
         if (params->heart_beat_interval_ >= params->election_timeout_lower_bound_) {
@@ -387,7 +387,7 @@ void raft_server::shutdown() {
     cancel_global_requests();
 
     // Cancel snapshot requests if exist.
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     if (params->use_bg_thread_for_snapshot_io_) { snapshot_io_mgr::instance().drop_reqs(this); }
 
     // Terminate background commit thread.
@@ -464,7 +464,7 @@ void raft_server::shutdown() {
     p_in("raft_server shutdown completed.");
 }
 
-bool raft_server::is_regular_member(const ptr< peer >& p) {
+bool raft_server::is_regular_member(const std::shared_ptr< peer >& p) {
     // Skip to-be-removed server.
     if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) return false;
 
@@ -478,7 +478,7 @@ bool raft_server::is_regular_member(const ptr< peer >& p) {
 int32 raft_server::get_num_voting_members() {
     int32 count = 0;
     for (auto& entry : peers_) {
-        ptr< peer >& p = entry.second;
+        std::shared_ptr< peer >& p = entry.second;
         auto_lock(p->get_lock());
         if (!is_regular_member(p)) continue;
         count++;
@@ -491,7 +491,7 @@ int32 raft_server::get_num_voting_members() {
 //       EXCLUDING the leader.
 //       e.g.) 7 nodes, quorum 4: return 3.
 int32 raft_server::get_quorum_for_election() {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     int32 num_voting_members = get_num_voting_members();
     if (params->custom_election_quorum_size_ <= 0 || params->custom_election_quorum_size_ > num_voting_members) {
         return num_voting_members / 2;
@@ -500,14 +500,14 @@ int32 raft_server::get_quorum_for_election() {
 }
 
 int32 raft_server::get_quorum_for_commit() {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     int32 num_voting_members = get_num_voting_members();
 
     if (params->exclude_snp_receiver_from_quorum_) {
         // If the option is on, exclude any peer who is
         // receiving snapshot.
         for (auto& entry : peers_) {
-            ptr< peer >& p = entry.second;
+            std::shared_ptr< peer >& p = entry.second;
             if (num_voting_members && p->get_snapshot_sync_ctx()) { num_voting_members--; }
         }
     }
@@ -519,7 +519,7 @@ int32 raft_server::get_quorum_for_commit() {
 }
 
 int32 raft_server::get_leadership_expiry() {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     int expiry = params->leadership_expiry_;
     if (expiry == 0) {
         // If 0, default expiry: 20x of heartbeat.
@@ -533,12 +533,12 @@ size_t raft_server::get_not_responding_peers() {
     // (i.e., don't respond 20x heartbeat time long).
     size_t num_not_resp_nodes = 0;
 
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     int expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
 
     // Check the number of not responding peers.
     for (auto& entry : peers_) {
-        ptr< peer > p = entry.second;
+        std::shared_ptr< peer > p = entry.second;
 
         if (!is_regular_member(p)) continue;
 
@@ -554,13 +554,13 @@ size_t raft_server::get_num_stale_peers() {
 
     size_t count = 0;
     for (auto& entry : peers_) {
-        ptr< peer >& pp = entry.second;
+        std::shared_ptr< peer >& pp = entry.second;
         if (get_last_log_idx() > pp->get_last_accepted_log_idx() + ctx_->get_params()->stale_log_gap_) { count++; }
     }
     return count;
 }
 
-ptr< resp_msg > raft_server::process_req(req_msg& req, const req_ext_params& ext_params) {
+std::shared_ptr< resp_msg > raft_server::process_req(req_msg& req, const req_ext_params& ext_params) {
     cb_func::Param param(id_, leader_);
     param.ctx = &req;
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::ProcessReq, &param);
@@ -604,7 +604,7 @@ ptr< resp_msg > raft_server::process_req(req_msg& req, const req_ext_params& ext
         if (steps_to_down_ > 0) { steps_to_down_ = 2; }
     }
 
-    ptr< resp_msg > resp;
+    std::shared_ptr< resp_msg > resp;
     if (req.get_type() == msg_type::append_entries_request) {
         resp = handle_append_entries(req);
 
@@ -616,7 +616,7 @@ ptr< resp_msg > raft_server::process_req(req_msg& req, const req_ext_params& ext
 
     } else if (req.get_type() == msg_type::ping_request) {
         p_in("got ping from %d", req.get_src());
-        resp = cs_new< resp_msg >(state_->get_term(), msg_type::ping_response, id_, req.get_src());
+        resp = std::make_shared< resp_msg >(state_->get_term(), msg_type::ping_response, id_, req.get_src());
 
     } else if (req.get_type() == msg_type::priority_change_request) {
         resp = handle_priority_change_req(req);
@@ -637,11 +637,11 @@ ptr< resp_msg > raft_server::process_req(req_msg& req, const req_ext_params& ext
 }
 
 void raft_server::reset_peer_info() {
-    ptr< cluster_config > c_config = get_config();
+    std::shared_ptr< cluster_config > c_config = get_config();
     auto const srv_cnt = c_config->get_servers().size();
     p_db("servers: %zu\n", srv_cnt);
     if (srv_cnt > 1) {
-        ptr< srv_config > my_srv_config = c_config->get_server(id_);
+        std::shared_ptr< srv_config > my_srv_config = c_config->get_server(id_);
         if (!my_srv_config) {
             // It means that this node was removed, and then
             // added again (it shouldn't happen though).
@@ -650,8 +650,8 @@ void raft_server::reset_peer_info() {
             return;
         }
 
-        ptr< cluster_config > my_next_config =
-            cs_new< cluster_config >(c_config->get_log_idx(), c_config->get_prev_log_idx());
+        std::shared_ptr< cluster_config > my_next_config =
+            std::make_shared< cluster_config >(c_config->get_log_idx(), c_config->get_prev_log_idx());
         my_next_config->get_servers().push_back(my_srv_config);
         my_next_config->set_user_ctx(c_config->get_user_ctx());
         my_next_config->set_async_replication(c_config->is_async_replication());
@@ -662,18 +662,18 @@ void raft_server::reset_peer_info() {
         // Make its local temporary log for configuration.
         // It will be rolled back and overwritten if this node
         // re-joins the cluster.
-        ptr< buffer > new_conf_buf(my_next_config->serialize());
-        ptr< log_entry > entry(cs_new< log_entry >(state_->get_term(), new_conf_buf, log_val_type::conf,
-                                                   timer_helper::get_timeofday_us()));
+        std::shared_ptr< buffer > new_conf_buf(my_next_config->serialize());
+        std::shared_ptr< log_entry > entry(std::make_shared< log_entry >(
+            state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
         store_log_entry(entry, log_store_->next_slot() - 1);
     }
 }
 
-void raft_server::handle_peer_resp(ptr< resp_msg >& resp, ptr< rpc_exception >& err) {
+void raft_server::handle_peer_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err) {
     recur_lock(lock_);
     if (err) {
         int32 peer_id = err->req()->get_dst();
-        ptr< peer > pp = nullptr;
+        std::shared_ptr< peer > pp = nullptr;
         auto entry = peers_.find(peer_id);
         if (entry != peers_.end()) pp = entry->second;
 
@@ -783,8 +783,9 @@ void raft_server::send_reconnect_request() {
     // Find leader object.
     auto entry = peers_.find(leader_);
     if (entry != peers_.end()) {
-        ptr< peer > p_leader = entry->second;
-        ptr< req_msg > req = cs_new< req_msg >(state_->get_term(), msg_type::reconnect_request, id_, leader_, 0, 0, 0);
+        std::shared_ptr< peer > p_leader = entry->second;
+        std::shared_ptr< req_msg > req =
+            std::make_shared< req_msg >(state_->get_term(), msg_type::reconnect_request, id_, leader_, 0, 0, 0);
 
         if (p_leader->make_busy()) {
             p_leader->send_req(p_leader, req, ex_resp_handler_);
@@ -800,9 +801,10 @@ void raft_server::send_reconnect_request() {
     }
 }
 
-ptr< resp_msg > raft_server::handle_reconnect_req(req_msg& req) {
+std::shared_ptr< resp_msg > raft_server::handle_reconnect_req(req_msg& req) {
     int32 srv_id = req.get_src();
-    ptr< resp_msg > resp(cs_new< resp_msg >(state_->get_term(), msg_type::reconnect_response, id_, srv_id));
+    std::shared_ptr< resp_msg > resp(
+        std::make_shared< resp_msg >(state_->get_term(), msg_type::reconnect_response, id_, srv_id));
     if (role_ != srv_role::leader) {
         p_er("this node is not a leader "
              "(upon re-connect req from peer %d)",
@@ -817,7 +819,7 @@ ptr< resp_msg > raft_server::handle_reconnect_req(req_msg& req) {
     }
 
     // Schedule re-connection.
-    ptr< peer > pp = entry->second;
+    std::shared_ptr< peer > pp = entry->second;
     pp->schedule_reconnection();
     resp->accept(log_store_->next_slot());
     p_in("re-connection to peer %d scheduled", srv_id);
@@ -834,8 +836,8 @@ void raft_server::handle_reconnect_resp(resp_msg& resp) {
 bool raft_server::reconnect_client(peer& p) {
     if (stopping_) return false;
 
-    ptr< cluster_config > c_config = get_config();
-    ptr< srv_config > s_config = c_config->get_server(p.get_id());
+    std::shared_ptr< cluster_config > c_config = get_config();
+    std::shared_ptr< srv_config > s_config = c_config->get_server(p.get_id());
 
     // NOTE: To-be-removed server will not exist in config,
     //       but we still need to reconnect to it if we can
@@ -857,7 +859,7 @@ void raft_server::become_leader() {
         p_in("number of pending commit elements: %zu", commit_ret_elems_.size());
     }
 
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     {
         auto_lock(cli_lock_);
         role_ = srv_role::leader;
@@ -869,9 +871,9 @@ void raft_server::become_leader() {
         p_in("state machine commit index %" PRIu64 ", "
              "precommit index %" PRIu64 ", last log index %" PRIu64,
              sm_commit_index_.load(), precommit_index_.load(), log_store_->next_slot() - 1);
-        ptr< snapshot > nil_snp;
+        std::shared_ptr< snapshot > nil_snp;
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-            ptr< peer > pp = it->second;
+            std::shared_ptr< peer > pp = it->second;
             clear_snapshot_sync_ctx(*pp);
             // Reset RPC client for all peers.
             // NOTE: Now we don't reset client, as we already did it
@@ -883,12 +885,12 @@ void raft_server::become_leader() {
         }
 
         // If there are uncommitted logs, search if conf log exists.
-        ptr< cluster_config > last_config = get_config();
+        std::shared_ptr< cluster_config > last_config = get_config();
 
         ulong s_idx = sm_commit_index_ + 1;
         ulong e_idx = log_store_->next_slot();
         for (ulong ii = s_idx; ii < e_idx; ++ii) {
-            ptr< log_entry > le = log_store_->entry_at(ii);
+            std::shared_ptr< log_entry > le = log_store_->entry_at(ii);
             if (le->get_val_type() != log_val_type::conf) continue;
 
             p_in("found uncommitted config at %" PRIu64 ", size %zu", ii, le->get_buf().size());
@@ -896,11 +898,11 @@ void raft_server::become_leader() {
         }
 
         // WARNING: WE SHOULD NOT CHANGE THE ORIGINAL CONTENTS DIRECTLY!
-        ptr< cluster_config > last_config_cloned = cluster_config::deserialize(*last_config->serialize());
+        std::shared_ptr< cluster_config > last_config_cloned = cluster_config::deserialize(*last_config->serialize());
         last_config_cloned->set_log_idx(log_store_->next_slot());
-        ptr< buffer > conf_buf = last_config_cloned->serialize();
-        ptr< log_entry > entry(
-            cs_new< log_entry >(state_->get_term(), conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
+        std::shared_ptr< buffer > conf_buf = last_config_cloned->serialize();
+        std::shared_ptr< log_entry > entry(std::make_shared< log_entry >(
+            state_->get_term(), conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
         p_in("[BECOME LEADER] appended new config at %" PRIu64, log_store_->next_slot());
         store_log_entry(entry);
         config_changing_ = true;
@@ -968,7 +970,7 @@ bool raft_server::check_leadership_validity() {
 }
 
 void raft_server::check_leadership_transfer() {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     if (!params->leadership_transfer_min_wait_time_) {
         // Transferring leadership is disabled.
         return;
@@ -986,7 +988,7 @@ void raft_server::check_leadership_transfer() {
     int32 max_priority = my_priority_;
     ulong cur_commit_idx = quick_commit_index_;
     for (auto& entry : peers_) {
-        ptr< peer > peer_elem = entry.second;
+        std::shared_ptr< peer > peer_elem = entry.second;
         const srv_config& s_conf = peer_elem->get_config();
         int32 cur_priority = s_conf.get_priority();
         if (cur_priority > max_priority) {
@@ -1059,7 +1061,7 @@ void raft_server::yield_leadership(bool immediate_yield, int successor_id) {
         auto entry = peers_.find(successor_id);
         if (entry != peers_.end()) {
             int32 srv_id = entry->first;
-            ptr< peer >& pp = entry->second;
+            std::shared_ptr< peer >& pp = entry->second;
             max_priority = pp->get_config().get_priority();
             candidate_id = srv_id;
             candidate_endpoint = pp->get_config().get_endpoint();
@@ -1072,7 +1074,7 @@ void raft_server::yield_leadership(bool immediate_yield, int successor_id) {
     if (candidate_id == -1) {
         for (auto& entry : peers_) {
             int32 srv_id = entry.first;
-            ptr< peer >& pp = entry.second;
+            std::shared_ptr< peer >& pp = entry.second;
             uint64_t pp_last_resp_ms = pp->get_resp_timer_us() / 1000;
 
             if (srv_id != id_ && pp_last_resp_ms <= hb_interval_ms && pp->get_config().get_priority() > max_priority) {
@@ -1134,19 +1136,20 @@ bool raft_server::request_leadership() {
              leader_.load());
         return false;
     }
-    ptr< peer > pp = entry->second;
+    std::shared_ptr< peer > pp = entry->second;
 
     // Send resignation message to the follower.
-    ptr< req_msg > req = cs_new< req_msg >(state_->get_term(), msg_type::custom_notification_request, id_, leader_,
-                                           term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1,
-                                           quick_commit_index_.load());
+    std::shared_ptr< req_msg > req = std::make_shared< req_msg >(
+        state_->get_term(), msg_type::custom_notification_request, id_, leader_,
+        term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1, quick_commit_index_.load());
 
     // Create a notification.
-    ptr< custom_notification_msg > custom_noti =
-        cs_new< custom_notification_msg >(custom_notification_msg::request_resignation);
+    std::shared_ptr< custom_notification_msg > custom_noti =
+        std::make_shared< custom_notification_msg >(custom_notification_msg::request_resignation);
 
     // Wrap it using log_entry.
-    ptr< log_entry > custom_noti_le = cs_new< log_entry >(0, custom_noti->serialize(), log_val_type::custom);
+    std::shared_ptr< log_entry > custom_noti_le =
+        std::make_shared< log_entry >(0, custom_noti->serialize(), log_val_type::custom);
 
     req->log_entries().push_back(custom_noti_le);
     pp->send_req(pp, req, resp_handler_);
@@ -1218,7 +1221,7 @@ bool raft_server::update_term(ulong term) {
     return false;
 }
 
-ptr< resp_msg > raft_server::handle_ext_msg(req_msg& req) {
+std::shared_ptr< resp_msg > raft_server::handle_ext_msg(req_msg& req) {
     switch (req.get_type()) {
     case msg_type::add_server_request:
         return handle_add_srv_req(req);
@@ -1249,10 +1252,10 @@ ptr< resp_msg > raft_server::handle_ext_msg(req_msg& req) {
         break;
     }
 
-    return ptr< resp_msg >();
+    return std::shared_ptr< resp_msg >();
 }
 
-void raft_server::handle_ext_resp(ptr< resp_msg >& resp, ptr< rpc_exception >& err) {
+void raft_server::handle_ext_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err) {
     recur_lock(lock_);
     if (err) {
         handle_ext_resp_err(*err);
@@ -1293,7 +1296,7 @@ void raft_server::handle_ext_resp(ptr< resp_msg >& resp, ptr< rpc_exception >& e
 }
 
 void raft_server::handle_ext_resp_err(rpc_exception& err) {
-    ptr< req_msg > req = err.req();
+    std::shared_ptr< req_msg > req = err.req();
     p_in("receive an rpc error response from peer server, %s %d", err.what(), req->get_type());
 
     if (req->get_type() == msg_type::install_snapshot_request) {
@@ -1315,7 +1318,7 @@ void raft_server::handle_ext_resp_err(rpc_exception& err) {
         return;
     }
 
-    ptr< peer > p;
+    std::shared_ptr< peer > p;
     msg_type t_msg = req->get_type();
     int32 peer_id = req->get_dst();
     if (t_msg == msg_type::leave_cluster_request) {
@@ -1336,12 +1339,12 @@ void raft_server::handle_ext_resp_err(rpc_exception& err) {
         p->slow_down_hb();
         timer_task< void >::executor exec =
             (timer_task< void >::executor)std::bind(&raft_server::on_retryable_req_err, this, p, req);
-        ptr< delayed_task > task(cs_new< timer_task< void > >(exec));
+        std::shared_ptr< delayed_task > task(std::make_shared< timer_task< void > >(exec));
         schedule_task(task, p->get_current_hb_interval());
     }
 }
 
-void raft_server::on_retryable_req_err(ptr< peer >& p, ptr< req_msg >& req) {
+void raft_server::on_retryable_req_err(std::shared_ptr< peer >& p, std::shared_ptr< req_msg >& req) {
     p_db("retry the request %s for %d", msg_type_to_string(req->get_type()).c_str(), p->get_id());
     if (p->make_busy()) {
         p->send_req(p, req, ex_resp_handler_);
@@ -1355,7 +1358,7 @@ ulong raft_server::term_for_log(ulong log_idx) {
 
     if (log_idx >= log_store_->start_index()) { return log_store_->term_at(log_idx); }
 
-    ptr< snapshot > last_snapshot(state_machine_->last_snapshot());
+    std::shared_ptr< snapshot > last_snapshot(state_machine_->last_snapshot());
     if (!last_snapshot || log_idx != last_snapshot->get_last_log_idx()) {
         p_er("bad log_idx %" PRIu64 " for retrieving the term value, "
              "will ignore this log req",
@@ -1375,49 +1378,49 @@ ulong raft_server::term_for_log(ulong log_idx) {
 
 void raft_server::set_user_ctx(const std::string& ctx) {
     // Clone current cluster config.
-    ptr< cluster_config > c_conf = get_config();
-    ptr< buffer > enc_conf = c_conf->serialize();
-    ptr< cluster_config > cloned_config = cluster_config::deserialize(*enc_conf);
+    std::shared_ptr< cluster_config > c_conf = get_config();
+    std::shared_ptr< buffer > enc_conf = c_conf->serialize();
+    std::shared_ptr< cluster_config > cloned_config = cluster_config::deserialize(*enc_conf);
 
     // Create a log for new configuration, it should be replicated.
     cloned_config->set_log_idx(log_store_->next_slot());
     cloned_config->set_user_ctx(ctx);
 
-    ptr< buffer > new_conf_buf = cloned_config->serialize();
-    ptr< log_entry > entry =
-        cs_new< log_entry >(state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us());
+    std::shared_ptr< buffer > new_conf_buf = cloned_config->serialize();
+    std::shared_ptr< log_entry > entry = std::make_shared< log_entry >(
+        state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us());
     store_log_entry(entry);
     request_append_entries();
 }
 
 std::string raft_server::get_user_ctx() const {
-    ptr< cluster_config > c_conf = get_config();
+    std::shared_ptr< cluster_config > c_conf = get_config();
     return c_conf->get_user_ctx();
 }
 
 int32 raft_server::get_dc_id(int32 srv_id) const {
-    ptr< cluster_config > c_conf = get_config();
-    ptr< srv_config > s_conf = c_conf->get_server(srv_id);
+    std::shared_ptr< cluster_config > c_conf = get_config();
+    std::shared_ptr< srv_config > s_conf = c_conf->get_server(srv_id);
     if (!s_conf) return -1; // Not found.
 
     return s_conf->get_dc_id();
 }
 
 std::string raft_server::get_aux(int32 srv_id) const {
-    ptr< cluster_config > c_conf = get_config();
-    ptr< srv_config > s_conf = c_conf->get_server(srv_id);
+    std::shared_ptr< cluster_config > c_conf = get_config();
+    std::shared_ptr< srv_config > s_conf = c_conf->get_server(srv_id);
     if (!s_conf) return std::string();
 
     return s_conf->get_aux();
 }
 
-ptr< srv_config > raft_server::get_srv_config(int32 srv_id) const {
-    ptr< cluster_config > c_conf = get_config();
+std::shared_ptr< srv_config > raft_server::get_srv_config(int32 srv_id) const {
+    std::shared_ptr< cluster_config > c_conf = get_config();
     return c_conf->get_server(srv_id);
 }
 
-void raft_server::get_srv_config_all(std::vector< ptr< srv_config > >& configs_out) const {
-    ptr< cluster_config > c_conf = get_config();
+void raft_server::get_srv_config_all(std::vector< std::shared_ptr< srv_config > >& configs_out) const {
+    std::shared_ptr< cluster_config > c_conf = get_config();
     auto& servers = c_conf->get_servers();
     for (auto& entry : servers)
         configs_out.push_back(entry);
@@ -1431,7 +1434,7 @@ raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
     if (entry == peers_.end()) return peer_info();
 
     peer_info ret;
-    ptr< peer > pp = entry->second;
+    std::shared_ptr< peer > pp = entry->second;
     ret.id_ = pp->get_id();
     ret.last_log_idx_ = pp->get_last_accepted_log_idx();
     ret.last_succ_resp_us_ = pp->get_resp_timer_us();
@@ -1445,7 +1448,7 @@ std::vector< raft_server::peer_info > raft_server::get_peer_info_all() const {
     recur_lock(lock_);
     for (auto entry : peers_) {
         peer_info pi;
-        ptr< peer > pp = entry.second;
+        std::shared_ptr< peer > pp = entry.second;
         pi.id_ = pp->get_id();
         pi.last_log_idx_ = pp->get_last_accepted_log_idx();
         pi.last_succ_resp_us_ = pp->get_resp_timer_us();
@@ -1454,30 +1457,30 @@ std::vector< raft_server::peer_info > raft_server::get_peer_info_all() const {
     return ret;
 }
 
-ptr< cluster_config > raft_server::get_config() const {
+std::shared_ptr< cluster_config > raft_server::get_config() const {
     std::lock_guard< std::mutex > l(config_lock_);
-    ptr< cluster_config > ret = config_;
+    std::shared_ptr< cluster_config > ret = config_;
     return ret;
 }
 
-void raft_server::set_config(const ptr< cluster_config >& new_config) {
+void raft_server::set_config(const std::shared_ptr< cluster_config >& new_config) {
     std::lock_guard< std::mutex > l(config_lock_);
     stale_config_ = config_;
     config_ = new_config;
 }
 
-ptr< snapshot > raft_server::get_last_snapshot() const {
+std::shared_ptr< snapshot > raft_server::get_last_snapshot() const {
     std::lock_guard< std::mutex > l(last_snapshot_lock_);
-    ptr< snapshot > ret = last_snapshot_;
+    std::shared_ptr< snapshot > ret = last_snapshot_;
     return ret;
 }
 
-void raft_server::set_last_snapshot(const ptr< snapshot >& new_snapshot) {
+void raft_server::set_last_snapshot(const std::shared_ptr< snapshot >& new_snapshot) {
     std::lock_guard< std::mutex > l(last_snapshot_lock_);
     last_snapshot_ = new_snapshot;
 }
 
-ulong raft_server::store_log_entry(ptr< log_entry >& entry, ulong index) {
+ulong raft_server::store_log_entry(std::shared_ptr< log_entry >& entry, ulong index) {
     ulong log_index = index;
     if (index == 0) {
         log_index = log_store_->append(entry);

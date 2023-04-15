@@ -25,7 +25,6 @@ limitations under the License.
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 namespace nuraft {
 
@@ -40,7 +39,7 @@ public:
         logical_object = 0x2,
     };
 
-    snapshot(ulong last_log_idx, ulong last_log_term, const ptr< cluster_config >& last_config, ulong size = 0,
+    snapshot(ulong last_log_idx, ulong last_log_term, const std::shared_ptr< cluster_config >& last_config, ulong size = 0,
              type _type = logical_object) :
             last_log_idx_(last_log_idx),
             last_log_term_(last_log_term),
@@ -63,19 +62,19 @@ public:
 
     void set_type(type src) { type_ = src; }
 
-    const ptr< cluster_config >& get_last_config() const { return last_config_; }
+    const std::shared_ptr< cluster_config >& get_last_config() const { return last_config_; }
 
-    static ptr< snapshot > deserialize(buffer& buf);
+    static std::shared_ptr< snapshot > deserialize(buffer& buf);
 
-    static ptr< snapshot > deserialize(buffer_serializer& bs);
+    static std::shared_ptr< snapshot > deserialize(buffer_serializer& bs);
 
-    ptr< buffer > serialize();
+    std::shared_ptr< buffer > serialize();
 
 private:
     ulong last_log_idx_;
     ulong last_log_term_;
     ulong size_;
-    ptr< cluster_config > last_config_;
+    std::shared_ptr< cluster_config > last_config_;
     type type_;
 };
 

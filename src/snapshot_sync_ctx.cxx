@@ -27,7 +27,8 @@ namespace nuraft {
 
 class raft_server;
 
-snapshot_sync_ctx::snapshot_sync_ctx(const ptr< snapshot >& s, int peer_id, ulong timeout_ms, ulong offset) :
+snapshot_sync_ctx::snapshot_sync_ctx(const std::shared_ptr< snapshot >& s, int peer_id, ulong timeout_ms,
+                                     ulong offset) :
         peer_id_(peer_id), snapshot_(s), offset_(offset), user_snp_ctx_(nullptr) {
     // 10 seconds by default.
     timer_.set_duration_ms(timeout_ms);
@@ -39,14 +40,15 @@ void snapshot_sync_ctx::set_offset(ulong offset) {
 }
 
 struct snapshot_io_mgr::io_queue_elem {
-    io_queue_elem(ptr< raft_server > r, ptr< snapshot > s, ptr< snapshot_sync_ctx > c, ptr< peer > p,
-                  std::function< void(ptr< resp_msg >&, ptr< rpc_exception >&) >& h) :
+    io_queue_elem(std::shared_ptr< raft_server > r, std::shared_ptr< snapshot > s,
+                  std::shared_ptr< snapshot_sync_ctx > c, std::shared_ptr< peer > p,
+                  std::function< void(std::shared_ptr< resp_msg >&, std::shared_ptr< rpc_exception >&) >& h) :
             raft_(r), snapshot_(s), sync_ctx_(c), dst_(p), handler_(h) {}
-    ptr< raft_server > raft_;
-    ptr< snapshot > snapshot_;
-    ptr< snapshot_sync_ctx > sync_ctx_;
-    ptr< peer > dst_;
-    std::function< void(ptr< resp_msg >&, ptr< rpc_exception >&) > handler_;
+    std::shared_ptr< raft_server > raft_;
+    std::shared_ptr< snapshot > snapshot_;
+    std::shared_ptr< snapshot_sync_ctx > sync_ctx_;
+    std::shared_ptr< peer > dst_;
+    std::function< void(std::shared_ptr< resp_msg >&, std::shared_ptr< rpc_exception >&) > handler_;
 };
 
 snapshot_io_mgr::snapshot_io_mgr() : io_thread_ea_(new EventAwaiter()), terminating_(false) {
@@ -55,7 +57,7 @@ snapshot_io_mgr::snapshot_io_mgr() : io_thread_ea_(new EventAwaiter()), terminat
 
 snapshot_io_mgr::~snapshot_io_mgr() { shutdown(); }
 
-bool snapshot_io_mgr::push(ptr< snapshot_io_mgr::io_queue_elem >& elem) {
+bool snapshot_io_mgr::push(std::shared_ptr< snapshot_io_mgr::io_queue_elem >& elem) {
     auto_lock(queue_lock_);
     logger* l_ = elem->raft_->l_.get();
 
@@ -72,10 +74,10 @@ bool snapshot_io_mgr::push(ptr< snapshot_io_mgr::io_queue_elem >& elem) {
     return true;
 }
 
-bool snapshot_io_mgr::push(ptr< raft_server > r, ptr< peer > p,
-                           std::function< void(ptr< resp_msg >&, ptr< rpc_exception >&) >& h) {
-    ptr< io_queue_elem > elem =
-        cs_new< io_queue_elem >(r, p->get_snapshot_sync_ctx()->get_snapshot(), p->get_snapshot_sync_ctx(), p, h);
+bool snapshot_io_mgr::push(std::shared_ptr< raft_server > r, std::shared_ptr< peer > p,
+                           std::function< void(std::shared_ptr< resp_msg >&, std::shared_ptr< rpc_exception >&) >& h) {
+    std::shared_ptr< io_queue_elem > elem = std::make_shared< io_queue_elem >(
+        r, p->get_snapshot_sync_ctx()->get_snapshot(), p->get_snapshot_sync_ctx(), p, h);
     return push(elem);
 }
 
@@ -123,14 +125,14 @@ void snapshot_io_mgr::async_io_loop() {
         io_thread_ea_->wait_ms(1000);
         io_thread_ea_->reset();
 
-        std::list< ptr< io_queue_elem > > reqs;
-        std::list< ptr< io_queue_elem > > reqs_to_return;
+        std::list< std::shared_ptr< io_queue_elem > > reqs;
+        std::list< std::shared_ptr< io_queue_elem > > reqs_to_return;
         if (!terminating_) {
             auto_lock(queue_lock_);
             reqs = queue_;
         }
 
-        for (ptr< io_queue_elem >& elem : reqs) {
+        for (std::shared_ptr< io_queue_elem >& elem : reqs) {
             if (terminating_) { break; }
             if (!elem->raft_->is_leader()) { break; }
 
@@ -148,7 +150,7 @@ void snapshot_io_mgr::async_io_loop() {
             // ---- lock released
             lock.unlock();
 
-            ptr< buffer > data = nullptr;
+            std::shared_ptr< buffer > data = nullptr;
             bool is_last_request = false;
 
             int rc = elem->raft_->state_machine_->read_logical_snp_obj(*elem->snapshot_, user_snp_ctx, obj_idx, data,
@@ -183,10 +185,11 @@ void snapshot_io_mgr::async_io_loop() {
 
             std::unique_ptr< snapshot_sync_req > sync_req(
                 new snapshot_sync_req(elem->snapshot_, obj_idx, data, is_last_request));
-            ptr< req_msg > req(cs_new< req_msg >(term, msg_type::install_snapshot_request, elem->raft_->id_, dst_id,
-                                                 elem->snapshot_->get_last_log_term(),
-                                                 elem->snapshot_->get_last_log_idx(), commit_idx));
-            req->log_entries().push_back(cs_new< log_entry >(term, sync_req->serialize(), log_val_type::snp_sync_req));
+            std::shared_ptr< req_msg > req(std::make_shared< req_msg >(
+                term, msg_type::install_snapshot_request, elem->raft_->id_, dst_id,
+                elem->snapshot_->get_last_log_term(), elem->snapshot_->get_last_log_idx(), commit_idx));
+            req->log_entries().push_back(
+                std::make_shared< log_entry >(term, sync_req->serialize(), log_val_type::snp_sync_req));
             if (elem->dst_->make_busy()) {
                 elem->dst_->set_rsv_msg(nullptr, nullptr);
                 elem->dst_->send_req(elem->dst_, req, elem->handler_);

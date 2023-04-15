@@ -22,11 +22,11 @@ limitations under the License.
 
 namespace nuraft {
 
-ptr< buffer > cluster_config::serialize() const {
+std::shared_ptr< buffer > cluster_config::serialize() const {
     size_t sz = 2 * sz_ulong + sz_int + sz_byte;
-    std::vector< ptr< buffer > > srv_buffs;
+    std::vector< std::shared_ptr< buffer > > srv_buffs;
     for (auto it = servers_.cbegin(); it != servers_.cend(); ++it) {
-        ptr< buffer > buf = (*it)->serialize();
+        std::shared_ptr< buffer > buf = (*it)->serialize();
         srv_buffs.push_back(buf);
         sz += buf->size();
     }
@@ -34,7 +34,7 @@ ptr< buffer > cluster_config::serialize() const {
     sz += sz_int;
     sz += user_ctx_.size();
 
-    ptr< buffer > result = buffer::alloc(sz);
+    std::shared_ptr< buffer > result = buffer::alloc(sz);
     result->put(log_idx_);
     result->put(prev_log_idx_);
     result->put((byte)(async_replication_ ? 1 : 0));
@@ -48,12 +48,12 @@ ptr< buffer > cluster_config::serialize() const {
     return result;
 }
 
-ptr< cluster_config > cluster_config::deserialize(buffer& buf) {
+std::shared_ptr< cluster_config > cluster_config::deserialize(buffer& buf) {
     buffer_serializer bs(buf);
     return deserialize(bs);
 }
 
-ptr< cluster_config > cluster_config::deserialize(buffer_serializer& bs) {
+std::shared_ptr< cluster_config > cluster_config::deserialize(buffer_serializer& bs) {
     ulong log_idx = bs.get_u64();
     ulong prev_log_idx = bs.get_u64();
 
@@ -65,7 +65,7 @@ ptr< cluster_config > cluster_config::deserialize(buffer_serializer& bs) {
     std::string user_ctx = std::string((const char*)ctx_data, ctx_len);
 
     int32 cnt = bs.get_i32();
-    ptr< cluster_config > conf = cs_new< cluster_config >(log_idx, prev_log_idx, ec);
+    std::shared_ptr< cluster_config > conf = std::make_shared< cluster_config >(log_idx, prev_log_idx, ec);
     while (cnt-- > 0) {
         conf->get_servers().push_back(srv_config::deserialize(bs));
     }

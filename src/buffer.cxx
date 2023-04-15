@@ -78,7 +78,7 @@ static void free_buffer(buffer* buf) {
     delete[] reinterpret_cast< char* >(buf);
 }
 
-ptr< buffer > buffer::alloc(const size_t size) {
+std::shared_ptr< buffer > buffer::alloc(const size_t size) {
     static stat_elem& num_allocs = *stat_mgr::get_instance()->create_stat(stat_elem::COUNTER, "num_buffer_allocs");
     static stat_elem& amount_allocs =
         *stat_mgr::get_instance()->create_stat(stat_elem::COUNTER, "amount_buffer_allocs");
@@ -95,7 +95,7 @@ ptr< buffer > buffer::alloc(const size_t size) {
 
     if (size >= 0x8000) {
         size_t len = size + sizeof(uint) * 2;
-        ptr< buffer > buf(reinterpret_cast< buffer* >(new char[len]), &free_buffer);
+        std::shared_ptr< buffer > buf(reinterpret_cast< buffer* >(new char[len]), &free_buffer);
         amount_allocs += len;
         amount_active += len;
 
@@ -105,7 +105,7 @@ ptr< buffer > buffer::alloc(const size_t size) {
     }
 
     size_t len = size + sizeof(ushort) * 2;
-    ptr< buffer > buf(reinterpret_cast< buffer* >(new char[len]), &free_buffer);
+    std::shared_ptr< buffer > buf(reinterpret_cast< buffer* >(new char[len]), &free_buffer);
     amount_allocs += len;
     amount_active += len;
 
@@ -115,15 +115,15 @@ ptr< buffer > buffer::alloc(const size_t size) {
     return buf;
 }
 
-ptr< buffer > buffer::copy(const buffer& buf) {
-    ptr< buffer > other = alloc(buf.size() - buf.pos());
+std::shared_ptr< buffer > buffer::copy(const buffer& buf) {
+    std::shared_ptr< buffer > other = alloc(buf.size() - buf.pos());
     other->put(buf);
     other->pos(0);
     return other;
 }
 
-ptr< buffer > buffer::clone(const buffer& buf) {
-    ptr< buffer > other = alloc(buf.size());
+std::shared_ptr< buffer > buffer::clone(const buffer& buf) {
+    std::shared_ptr< buffer > other = alloc(buf.size());
 
     byte* dst = other->data_begin();
     byte* src = buf.data_begin();
@@ -133,7 +133,7 @@ ptr< buffer > buffer::clone(const buffer& buf) {
     return other;
 }
 
-ptr< buffer > buffer::expand(const buffer& buf, uint32_t new_size) {
+std::shared_ptr< buffer > buffer::expand(const buffer& buf, uint32_t new_size) {
     if (new_size >= 0x80000000) {
         throw std::out_of_range("size exceed the max size that "
                                 "nuraft::buffer could support");
@@ -143,7 +143,7 @@ ptr< buffer > buffer::expand(const buffer& buf, uint32_t new_size) {
         throw std::out_of_range("realloc() new_size is less than "
                                 "old size");
     }
-    ptr< buffer > other = alloc(new_size);
+    std::shared_ptr< buffer > other = alloc(new_size);
     byte* dst = other->data_begin();
     byte* src = buf.data_begin();
     ::memcpy(dst, src, buf.size());
@@ -304,7 +304,7 @@ void buffer::put(const std::string& str) {
     __mv_fw_block(this, str.length() + 1);
 }
 
-void buffer::get(ptr< buffer >& dst) {
+void buffer::get(std::shared_ptr< buffer >& dst) {
     size_t sz = dst->size() - dst->pos();
     ::memcpy(dst->data(), data(), sz);
     __mv_fw_block(this, sz);

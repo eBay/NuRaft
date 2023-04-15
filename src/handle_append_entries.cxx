@@ -82,7 +82,7 @@ void raft_server::request_append_entries() {
     }
 }
 
-bool raft_server::request_append_entries(ptr< peer > p) {
+bool raft_server::request_append_entries(std::shared_ptr< peer > p) {
     static timer_helper chk_timer(1000 * 1000);
 
     // Checking the validity of role first.
@@ -99,7 +99,7 @@ bool raft_server::request_append_entries(ptr< peer > p) {
         return true;
     }
 
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
 
     if (params->auto_adjust_quorum_for_small_cluster_ && get_num_voting_members() == 2 &&
         chk_timer.timeout_and_reset()) {
@@ -120,7 +120,7 @@ bool raft_server::request_append_entries(ptr< peer > p) {
                 do_adjustment = true;
             }
             if (do_adjustment) {
-                ptr< raft_params > clone = cs_new< raft_params >(*params);
+                std::shared_ptr< raft_params > clone = std::make_shared< raft_params >(*params);
                 clone->custom_commit_quorum_size_ = 1;
                 clone->custom_election_quorum_size_ = 1;
                 ctx_->set_params(clone);
@@ -130,7 +130,7 @@ bool raft_server::request_append_entries(ptr< peer > p) {
             // Recovered, both cases should be clear.
             p_wn("2-node cluster's follower is responding now, "
                  "restore quorum with default value");
-            ptr< raft_params > clone = cs_new< raft_params >(*params);
+            std::shared_ptr< raft_params > clone = std::make_shared< raft_params >(*params);
             clone->custom_commit_quorum_size_ = 0;
             clone->custom_election_quorum_size_ = 0;
             ctx_->set_params(clone);
@@ -199,7 +199,7 @@ bool raft_server::request_append_entries(ptr< peer > p) {
         p_tr("send request to %d\n", (int)p->get_id());
 
         // If reserved message exists, process it first.
-        ptr< req_msg > msg = p->get_rsv_msg();
+        std::shared_ptr< req_msg > msg = p->get_rsv_msg();
         rpc_handler m_handler = p->get_rsv_msg_handler();
         if (msg) {
             // Clear the reserved message.
@@ -287,7 +287,7 @@ bool raft_server::request_append_entries(ptr< peer > p) {
     return false;
 }
 
-ptr< req_msg > raft_server::create_append_entries_req(ptr< peer >& pp) {
+std::shared_ptr< req_msg > raft_server::create_append_entries_req(std::shared_ptr< peer >& pp) {
     peer& p = *pp;
     ulong cur_nxt_idx(0L);
     ulong commit_idx(0L);
@@ -315,7 +315,7 @@ ptr< req_msg > raft_server::create_append_entries_req(ptr< peer >& pp) {
         p_er("Peer's lastLogIndex is too large %" PRIu64 " v.s. %" PRIu64 ", ", last_log_idx, cur_nxt_idx);
         ctx_->state_mgr_->system_exit(raft_err::N8_peer_last_log_idx_too_large);
         ::exit(-1);
-        return ptr< req_msg >();
+        return std::shared_ptr< req_msg >();
         // LCOV_EXCL_STOP
     }
 
@@ -352,9 +352,9 @@ ptr< req_msg > raft_server::create_append_entries_req(ptr< peer >& pp) {
         p.reset_cnt_not_applied();
     }
 
-    ptr< std::vector< ptr< log_entry > > > log_entries;
+    std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries;
     if ((last_log_idx + 1) >= cur_nxt_idx) {
-        log_entries = ptr< std::vector< ptr< log_entry > > >();
+        log_entries = std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >();
     } else if (entries_valid) {
         log_entries = log_store_->log_entries_ext(last_log_idx + 1, end_idx, p.get_next_batch_size_hint_in_bytes());
         if (log_entries == nullptr) {
@@ -367,7 +367,7 @@ ptr< req_msg > raft_server::create_append_entries_req(ptr< peer >& pp) {
         // Required log entries are missing. First, we try to use snapshot to recover.
         // To avoid inconsistency due to smart pointer, should have local varaible
         // to increase its ref count.
-        ptr< snapshot > snp_local = get_last_snapshot();
+        std::shared_ptr< snapshot > snp_local = get_last_snapshot();
 
         // Modified by Jung-Sang Ahn (Oct 11 2017):
         // As `reserved_log` has been newly added, need to check snapshot
@@ -390,20 +390,21 @@ ptr< req_msg > raft_server::create_append_entries_req(ptr< peer >& pp) {
              p.get_id(), last_log_idx, starting_idx);
 
         // Send out-of-log-range notification to this follower.
-        ptr< req_msg > req = cs_new< req_msg >(term, msg_type::custom_notification_request, id_, p.get_id(), 0,
-                                               last_log_idx, commit_idx);
+        std::shared_ptr< req_msg > req = std::make_shared< req_msg >(term, msg_type::custom_notification_request, id_,
+                                                                     p.get_id(), 0, last_log_idx, commit_idx);
 
         // Out-of-log message.
-        ptr< out_of_log_msg > ool_msg = cs_new< out_of_log_msg >();
+        std::shared_ptr< out_of_log_msg > ool_msg = std::make_shared< out_of_log_msg >();
         ool_msg->start_idx_of_leader_ = starting_idx;
 
         // Create a notification containing OOL message.
-        ptr< custom_notification_msg > custom_noti =
-            cs_new< custom_notification_msg >(custom_notification_msg::out_of_log_range_warning);
+        std::shared_ptr< custom_notification_msg > custom_noti =
+            std::make_shared< custom_notification_msg >(custom_notification_msg::out_of_log_range_warning);
         custom_noti->ctx_ = ool_msg->serialize();
 
         // Wrap it using log_entry.
-        ptr< log_entry > custom_noti_le = cs_new< log_entry >(0, custom_noti->serialize(), log_val_type::custom);
+        std::shared_ptr< log_entry > custom_noti_le =
+            std::make_shared< log_entry >(0, custom_noti->serialize(), log_val_type::custom);
 
         req->log_entries().push_back(custom_noti_le);
         return req;
@@ -429,16 +430,16 @@ ptr< req_msg > raft_server::create_append_entries_req(ptr< peer >& pp) {
         p_db("idx range: %" PRIu64 "-%" PRIu64, last_log_idx + 1, adjusted_end_idx - 1);
     }
 
-    ptr< req_msg > req(cs_new< req_msg >(term, msg_type::append_entries_request, id_, p.get_id(), last_log_term,
-                                         last_log_idx, commit_idx));
-    std::vector< ptr< log_entry > >& v = req->log_entries();
+    std::shared_ptr< req_msg > req(std::make_shared< req_msg >(term, msg_type::append_entries_request, id_, p.get_id(),
+                                                               last_log_term, last_log_idx, commit_idx));
+    std::vector< std::shared_ptr< log_entry > >& v = req->log_entries();
     if (log_entries) { v.insert(v.end(), log_entries->begin(), log_entries->end()); }
     p.set_last_sent_idx(last_log_idx + 1);
 
     return req;
 }
 
-ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
+std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
     bool supp_exp_warning = false;
     if (catching_up_) {
         // WARNING:
@@ -447,8 +448,8 @@ ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
         //   clear it before that, any membership change configs (which is
         //   already outdated but committed after the received snapshot)
         //   may cause stepping down of this node.
-        ptr< cluster_config > cur_config = get_config();
-        ptr< srv_config > my_config = cur_config->get_server(id_);
+        std::shared_ptr< cluster_config > cur_config = get_config();
+        std::shared_ptr< srv_config > my_config = cur_config->get_server(id_);
         if (my_config) {
             p_in("catch-up process is done, clearing the flag");
             catching_up_ = false;
@@ -498,10 +499,10 @@ ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
     //
     // In not accepted case, we will return log_store_->next_slot() for
     // the leader to quick jump to the index that might aligned.
-    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::append_entries_response, id_, req.get_src(),
-                                              log_store_->next_slot());
+    std::shared_ptr< resp_msg > resp = std::make_shared< resp_msg >(
+        state_->get_term(), msg_type::append_entries_response, id_, req.get_src(), log_store_->next_slot());
 
-    ptr< snapshot > local_snp = get_last_snapshot();
+    std::shared_ptr< snapshot > local_snp = get_last_snapshot();
     ulong log_term = 0;
     if (req.get_last_log_idx() < log_store_->next_slot()) { log_term = term_for_log(req.get_last_log_idx()); }
     bool log_okay = req.get_last_log_idx() == 0 || (log_term && req.get_last_log_term() == log_term) ||
@@ -598,9 +599,9 @@ ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
 
             for (uint64_t ii = 0; ii < my_last_log_idx - log_idx + 1; ++ii) {
                 uint64_t idx = my_last_log_idx - ii;
-                ptr< log_entry > old_entry = log_store_->entry_at(idx);
+                std::shared_ptr< log_entry > old_entry = log_store_->entry_at(idx);
                 if (old_entry->get_val_type() == log_val_type::app_log) {
-                    ptr< buffer > buf = old_entry->get_buf_ptr();
+                    std::shared_ptr< buffer > buf = old_entry->get_buf_ptr();
                     buf->pos(0);
                     state_machine_->rollback_ext(state_machine::ext_op_params(idx, buf));
                     p_in("rollback log %" PRIu64 ", term %" PRIu64, idx, old_entry->get_term());
@@ -614,13 +615,13 @@ ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
 
         // Dealing with overwrites (logs with different term).
         while (log_idx < log_store_->next_slot() && cnt < req.log_entries().size()) {
-            ptr< log_entry > entry = req.log_entries().at(cnt);
+            std::shared_ptr< log_entry > entry = req.log_entries().at(cnt);
             p_in("overwrite at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n", log_idx, entry->get_term(),
                  entry->get_timestamp());
             store_log_entry(entry, log_idx);
 
             if (entry->get_val_type() == log_val_type::app_log) {
-                ptr< buffer > buf = entry->get_buf_ptr();
+                std::shared_ptr< buffer > buf = entry->get_buf_ptr();
                 buf->pos(0);
                 state_machine_->pre_commit_ext(state_machine::ext_op_params(log_idx, buf));
 
@@ -642,7 +643,7 @@ ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
 
         // Append new log entries
         while (cnt < req.log_entries().size()) {
-            ptr< log_entry > entry = req.log_entries().at(cnt++);
+            std::shared_ptr< log_entry > entry = req.log_entries().at(cnt++);
             p_tr("append at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n", log_store_->next_slot(),
                  entry->get_term(), entry->get_timestamp());
             ulong idx_for_entry = store_log_entry(entry);
@@ -651,7 +652,7 @@ ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
                 config_changing_ = true;
 
             } else if (entry->get_val_type() == log_val_type::app_log) {
-                ptr< buffer > buf = entry->get_buf_ptr();
+                std::shared_ptr< buffer > buf = entry->get_buf_ptr();
                 buf->pos(0);
                 state_machine_->pre_commit_ext(state_machine::ext_op_params(idx_for_entry, buf));
             }
@@ -662,7 +663,7 @@ ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
         // End of batch.
         log_store_->end_of_append_batch(req.get_last_log_idx() + 1, req.log_entries().size());
 
-        ptr< raft_params > params = ctx_->get_params();
+        std::shared_ptr< raft_params > params = ctx_->get_params();
         if (params->parallel_log_appending_) {
             uint64_t last_durable_index = log_store_->last_durable_index();
             while (last_durable_index < req.get_last_log_idx() + req.log_entries().size()) {
@@ -793,7 +794,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     // continue to send appendEntries to this peer
     bool need_to_catchup = true;
 
-    ptr< peer > p = it->second;
+    std::shared_ptr< peer > p = it->second;
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %" PRIu64, (int)p->get_id(), resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
@@ -878,16 +879,17 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         hb_alive_ = false;
 
         // Send leadership takeover request to this follower.
-        ptr< req_msg > req = cs_new< req_msg >(state_->get_term(), msg_type::custom_notification_request, id_,
-                                               p->get_id(), term_for_log(log_store_->next_slot() - 1),
-                                               log_store_->next_slot() - 1, quick_commit_index_.load());
+        std::shared_ptr< req_msg > req = std::make_shared< req_msg >(
+            state_->get_term(), msg_type::custom_notification_request, id_, p->get_id(),
+            term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1, quick_commit_index_.load());
 
         // Create a notification.
-        ptr< custom_notification_msg > custom_noti =
-            cs_new< custom_notification_msg >(custom_notification_msg::leadership_takeover);
+        std::shared_ptr< custom_notification_msg > custom_noti =
+            std::make_shared< custom_notification_msg >(custom_notification_msg::leadership_takeover);
 
         // Wrap it using log_entry.
-        ptr< log_entry > custom_noti_le = cs_new< log_entry >(0, custom_noti->serialize(), log_val_type::custom);
+        std::shared_ptr< log_entry > custom_noti_le =
+            std::make_shared< log_entry >(0, custom_noti->serialize(), log_val_type::custom);
 
         req->log_entries().push_back(custom_noti_le);
         p->send_req(p, req, resp_handler_);
@@ -916,7 +918,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
 uint64_t raft_server::get_current_leader_index() {
     uint64_t leader_index = precommit_index_;
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     if (params->parallel_log_appending_) {
         // For parallel appending, take the smaller one.
         uint64_t durable_index = log_store_->last_durable_index();
@@ -938,7 +940,7 @@ ulong raft_server::get_expected_committed_log_idx() {
     aci_params.peer_index_map_[id_] = leader_index;
 
     for (auto& entry : peers_) {
-        ptr< peer >& p = entry.second;
+        std::shared_ptr< peer >& p = entry.second;
         aci_params.peer_index_map_[p->get_id()] = p->get_matched_idx();
 
         if (!is_regular_member(p)) continue;

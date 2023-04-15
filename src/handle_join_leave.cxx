@@ -34,9 +34,10 @@ limitations under the License.
 
 namespace nuraft {
 
-ptr< resp_msg > raft_server::handle_add_srv_req(req_msg& req) {
-    std::vector< ptr< log_entry > >& entries = req.log_entries();
-    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::add_server_response, id_, leader_);
+std::shared_ptr< resp_msg > raft_server::handle_add_srv_req(req_msg& req) {
+    std::vector< std::shared_ptr< log_entry > >& entries = req.log_entries();
+    std::shared_ptr< resp_msg > resp =
+        std::make_shared< resp_msg >(state_->get_term(), msg_type::add_server_response, id_, leader_);
 
     if (entries.size() != 1 || entries[0]->get_val_type() != log_val_type::cluster_server) {
         p_db("bad add server request as we are expecting one log entry "
@@ -53,7 +54,7 @@ ptr< resp_msg > raft_server::handle_add_srv_req(req_msg& req) {
 
     // Before checking duplicate ID, confirm srv_to_leave_ is gone.
     check_srv_to_leave_timeout();
-    ptr< srv_config > srv_conf = srv_config::deserialize(entries[0]->get_buf());
+    std::shared_ptr< srv_config > srv_conf = srv_config::deserialize(entries[0]->get_buf());
     if (peers_.find(srv_conf->get_id()) != peers_.end() || id_ == srv_conf->get_id()) {
         p_wn("the server to be added has a duplicated "
              "id with existing server %d",
@@ -91,27 +92,29 @@ ptr< resp_msg > raft_server::handle_add_srv_req(req_msg& req) {
     conf_to_add_ = std::move(srv_conf);
     timer_task< int32 >::executor exec =
         (timer_task< int32 >::executor)std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1);
-    srv_to_join_ = cs_new< peer, ptr< srv_config >&, context&, timer_task< int32 >::executor&, ptr< logger >& >(
-        conf_to_add_, *ctx_, exec, l_);
+    srv_to_join_ = std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32 >::executor&,
+                                     std::shared_ptr< logger >& >(conf_to_add_, *ctx_, exec, l_);
     invite_srv_to_join_cluster();
     resp->accept(log_store_->next_slot());
     return resp;
 }
 
 void raft_server::invite_srv_to_join_cluster() {
-    ptr< req_msg > req =
-        cs_new< req_msg >(state_->get_term(), msg_type::join_cluster_request, id_, srv_to_join_->get_id(), 0L,
-                          log_store_->next_slot() - 1, quick_commit_index_.load());
+    std::shared_ptr< req_msg > req =
+        std::make_shared< req_msg >(state_->get_term(), msg_type::join_cluster_request, id_, srv_to_join_->get_id(), 0L,
+                                    log_store_->next_slot() - 1, quick_commit_index_.load());
 
-    ptr< cluster_config > c_conf = get_config();
-    req->log_entries().push_back(cs_new< log_entry >(state_->get_term(), c_conf->serialize(), log_val_type::conf));
+    std::shared_ptr< cluster_config > c_conf = get_config();
+    req->log_entries().push_back(
+        std::make_shared< log_entry >(state_->get_term(), c_conf->serialize(), log_val_type::conf));
     srv_to_join_->send_req(srv_to_join_, req, ex_resp_handler_);
     p_in("sent join request to peer %d, %s", srv_to_join_->get_id(), srv_to_join_->get_endpoint().c_str());
 }
 
-ptr< resp_msg > raft_server::handle_join_cluster_req(req_msg& req) {
-    std::vector< ptr< log_entry > >& entries = req.log_entries();
-    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::join_cluster_response, id_, req.get_src());
+std::shared_ptr< resp_msg > raft_server::handle_join_cluster_req(req_msg& req) {
+    std::vector< std::shared_ptr< log_entry > >& entries = req.log_entries();
+    std::shared_ptr< resp_msg > resp =
+        std::make_shared< resp_msg >(state_->get_term(), msg_type::join_cluster_response, id_, req.get_src());
     if (entries.size() != 1 || entries[0]->get_val_type() != log_val_type::conf) {
         p_in("receive an invalid JoinClusterRequest as the log entry value "
              "doesn't meet the requirements");
@@ -151,7 +154,7 @@ ptr< resp_msg > raft_server::handle_join_cluster_req(req_msg& req) {
     follower_param.ctx = &my_term;
     (void)ctx_->cb_func_.call(cb_func::BecomeFollower, &follower_param);
 
-    ptr< cluster_config > c_config = cluster_config::deserialize(entries[0]->get_buf());
+    std::shared_ptr< cluster_config > c_config = cluster_config::deserialize(entries[0]->get_buf());
     // WARNING: We should make cluster config durable here. Otherwise, if
     //          this server gets restarted before receiving the first
     //          committed config (the first config that includes this server),
@@ -184,7 +187,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
          log_store_->start_index());
     // only sync committed logs
     ulong gap = (quick_commit_index_ > start_idx) ? (quick_commit_index_ - start_idx) : 0;
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     if ((params->log_sync_stop_gap_ > 0 && gap < (ulong)params->log_sync_stop_gap_) ||
         params->log_sync_stop_gap_ == 0) {
         p_in("[SYNC LOG] LogSync is done for server %d "
@@ -192,7 +195,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
              "now put the server into cluster",
              srv_to_join_->get_id(), gap, quick_commit_index_.load(), start_idx, params->log_sync_stop_gap_);
 
-        ptr< cluster_config > cur_conf = get_config();
+        std::shared_ptr< cluster_config > cur_conf = get_config();
 
         // WARNING:
         //   If there is any uncommitted changed config,
@@ -203,16 +206,17 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
             cur_conf = uncommitted_config_;
         }
 
-        ptr< cluster_config > new_conf = cs_new< cluster_config >(log_store_->next_slot(), cur_conf->get_log_idx());
+        std::shared_ptr< cluster_config > new_conf =
+            std::make_shared< cluster_config >(log_store_->next_slot(), cur_conf->get_log_idx());
         new_conf->get_servers().insert(new_conf->get_servers().end(), cur_conf->get_servers().begin(),
                                        cur_conf->get_servers().end());
         new_conf->get_servers().push_back(conf_to_add_);
         new_conf->set_user_ctx(cur_conf->get_user_ctx());
         new_conf->set_async_replication(cur_conf->is_async_replication());
 
-        ptr< buffer > new_conf_buf(new_conf->serialize());
-        ptr< log_entry > entry(cs_new< log_entry >(state_->get_term(), new_conf_buf, log_val_type::conf,
-                                                   timer_helper::get_timeofday_us()));
+        std::shared_ptr< buffer > new_conf_buf(new_conf->serialize());
+        std::shared_ptr< log_entry > entry(std::make_shared< log_entry >(
+            state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
         store_log_entry(entry);
         config_changing_ = true;
         uncommitted_config_ = new_conf;
@@ -220,7 +224,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
         return;
     }
 
-    ptr< req_msg > req;
+    std::shared_ptr< req_msg > req;
 
     // Modified by Jung-Sang Ahn, 12/22, 2017.
     // When snapshot transmission is still in progress, start_idx can be 0.
@@ -238,11 +242,12 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
 
     } else {
         int32 size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
-        ptr< buffer > log_pack = log_store_->pack(start_idx, size_to_sync);
+        std::shared_ptr< buffer > log_pack = log_store_->pack(start_idx, size_to_sync);
         p_db("size to sync: %d, log_pack size %zu\n", size_to_sync, log_pack->size());
-        req = cs_new< req_msg >(state_->get_term(), msg_type::sync_log_request, id_, srv_to_join_->get_id(), 0L,
-                                start_idx - 1, quick_commit_index_.load());
-        req->log_entries().push_back(cs_new< log_entry >(state_->get_term(), log_pack, log_val_type::log_pack));
+        req = std::make_shared< req_msg >(state_->get_term(), msg_type::sync_log_request, id_, srv_to_join_->get_id(),
+                                          0L, start_idx - 1, quick_commit_index_.load());
+        req->log_entries().push_back(
+            std::make_shared< log_entry >(state_->get_term(), log_pack, log_val_type::log_pack));
     }
 
     if (!params->use_bg_thread_for_snapshot_io_) {
@@ -254,10 +259,10 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     }
 }
 
-ptr< resp_msg > raft_server::handle_log_sync_req(req_msg& req) {
-    std::vector< ptr< log_entry > >& entries = req.log_entries();
-    ptr< resp_msg > resp(cs_new< resp_msg >(state_->get_term(), msg_type::sync_log_response, id_, req.get_src(),
-                                            log_store_->next_slot()));
+std::shared_ptr< resp_msg > raft_server::handle_log_sync_req(req_msg& req) {
+    std::vector< std::shared_ptr< log_entry > >& entries = req.log_entries();
+    std::shared_ptr< resp_msg > resp(std::make_shared< resp_msg >(state_->get_term(), msg_type::sync_log_response, id_,
+                                                                  req.get_src(), log_store_->next_slot()));
 
     p_db("entries size %d, type %d, catching_up %s\n", (int)entries.size(), (int)entries[0]->get_val_type(),
          (catching_up_) ? "true" : "false");
@@ -296,9 +301,10 @@ void raft_server::handle_log_sync_resp(resp_msg& resp) {
     }
 }
 
-ptr< resp_msg > raft_server::handle_rm_srv_req(req_msg& req) {
-    std::vector< ptr< log_entry > >& entries = req.log_entries();
-    ptr< resp_msg > resp = cs_new< resp_msg >(state_->get_term(), msg_type::remove_server_response, id_, leader_);
+std::shared_ptr< resp_msg > raft_server::handle_rm_srv_req(req_msg& req) {
+    std::vector< std::shared_ptr< log_entry > >& entries = req.log_entries();
+    std::shared_ptr< resp_msg > resp =
+        std::make_shared< resp_msg >(state_->get_term(), msg_type::remove_server_response, id_, leader_);
 
     if (entries.size() != 1 || entries[0]->get_buf().size() != sz_int) {
         p_wn("bad remove server request as we are expecting "
@@ -323,7 +329,7 @@ ptr< resp_msg > raft_server::handle_rm_srv_req(req_msg& req) {
     //   Although `srv_to_leave_` is not set, we should check if
     //   there is any peer whose leave flag is set.
     for (auto& entry : peers_) {
-        ptr< peer > pp = entry.second;
+        std::shared_ptr< peer > pp = entry.second;
         if (pp->is_leave_flag_set()) {
             p_wn("leave flag of server %d is set, but the server "
                  "has not left yet",
@@ -354,9 +360,10 @@ ptr< resp_msg > raft_server::handle_rm_srv_req(req_msg& req) {
         return resp;
     }
 
-    ptr< peer > p = pit->second;
-    ptr< req_msg > leave_req(cs_new< req_msg >(state_->get_term(), msg_type::leave_cluster_request, id_, srv_id, 0,
-                                               log_store_->next_slot() - 1, quick_commit_index_.load()));
+    std::shared_ptr< peer > p = pit->second;
+    std::shared_ptr< req_msg > leave_req(
+        std::make_shared< req_msg >(state_->get_term(), msg_type::leave_cluster_request, id_, srv_id, 0,
+                                    log_store_->next_slot() - 1, quick_commit_index_.load()));
     // WARNING:
     //   DO NOT reset HB counter to 0 as removing server
     //   may be requested multiple times, and anyway we should
@@ -375,8 +382,9 @@ ptr< resp_msg > raft_server::handle_rm_srv_req(req_msg& req) {
     return resp;
 }
 
-ptr< resp_msg > raft_server::handle_leave_cluster_req(req_msg& req) {
-    ptr< resp_msg > resp(cs_new< resp_msg >(state_->get_term(), msg_type::leave_cluster_response, id_, req.get_src()));
+std::shared_ptr< resp_msg > raft_server::handle_leave_cluster_req(req_msg& req) {
+    std::shared_ptr< resp_msg > resp(
+        std::make_shared< resp_msg >(state_->get_term(), msg_type::leave_cluster_response, id_, req.get_src()));
     if (!config_changing_) {
         p_db("leave cluster, set steps to down to 2");
         // NOTE: We don't call `RemovedFromCluster` callback here,
@@ -412,7 +420,7 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
         return;
     }
 
-    ptr< cluster_config > cur_conf = get_config();
+    std::shared_ptr< cluster_config > cur_conf = get_config();
 
     // NOTE: Need to honor uncommitted config,
     //       refer to comment in `sync_log_to_new_srv()`
@@ -422,7 +430,8 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
         cur_conf = uncommitted_config_;
     }
 
-    ptr< cluster_config > new_conf = cs_new< cluster_config >(log_store_->next_slot(), cur_conf->get_log_idx());
+    std::shared_ptr< cluster_config > new_conf =
+        std::make_shared< cluster_config >(log_store_->next_slot(), cur_conf->get_log_idx());
     for (auto it = cur_conf->get_servers().cbegin(); it != cur_conf->get_servers().cend(); ++it) {
         if ((*it)->get_id() != srv_id) { new_conf->get_servers().push_back(*it); }
     }
@@ -435,14 +444,14 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
 
     config_changing_ = true;
     uncommitted_config_ = new_conf;
-    ptr< buffer > new_conf_buf(new_conf->serialize());
-    ptr< log_entry > entry(
-        cs_new< log_entry >(state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
+    std::shared_ptr< buffer > new_conf_buf(new_conf->serialize());
+    std::shared_ptr< log_entry > entry(std::make_shared< log_entry >(
+        state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
     store_log_entry(entry);
 
     auto p_entry = peers_.find(srv_id);
     if (p_entry != peers_.end()) {
-        ptr< peer > pp = p_entry->second;
+        std::shared_ptr< peer > pp = p_entry->second;
         srv_to_leave_ = pp;
         srv_to_leave_target_idx_ = new_conf->get_log_idx();
         p_in("set srv_to_leave_, "
@@ -453,7 +462,7 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     request_append_entries();
 }
 
-void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr< peer > p) {
+void raft_server::handle_join_leave_rpc_err(msg_type t_msg, std::shared_ptr< peer > p) {
     if (t_msg == msg_type::leave_cluster_request) {
         p_in("rpc failed for removing server (%d), "
              "will remove this server directly",

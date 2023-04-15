@@ -19,7 +19,7 @@ limitations under the License.
 
 using namespace nuraft;
 
-using raft_result = cmd_result< ptr< buffer > >;
+using raft_result = cmd_result< std::shared_ptr< buffer > >;
 
 struct server_stuff {
     server_stuff() :
@@ -51,19 +51,19 @@ struct server_stuff {
     std::string endpoint_;
 
     // Logger.
-    ptr< logger > raft_logger_;
+    std::shared_ptr< logger > raft_logger_;
 
     // State machine.
-    ptr< state_machine > sm_;
+    std::shared_ptr< state_machine > sm_;
 
     // State manager.
-    ptr< state_mgr > smgr_;
+    std::shared_ptr< state_mgr > smgr_;
 
     // Raft launcher.
     raft_launcher launcher_;
 
     // Raft server instance.
-    ptr< raft_server > raft_instance_;
+    std::shared_ptr< raft_server > raft_instance_;
 };
 static server_stuff stuff;
 
@@ -81,7 +81,7 @@ void add_server(const std::string& cmd, const std::vector< std::string >& tokens
 
     std::string endpoint_to_add = tokens[2];
     srv_config srv_conf_to_add(server_id_to_add, endpoint_to_add);
-    ptr< raft_result > ret = stuff.raft_instance_->add_srv(srv_conf_to_add);
+    std::shared_ptr< raft_result > ret = stuff.raft_instance_->add_srv(srv_conf_to_add);
     if (!ret->get_accepted()) {
         std::cout << "failed to add server: " << ret->get_result_code() << std::endl;
         return;
@@ -90,13 +90,13 @@ void add_server(const std::string& cmd, const std::vector< std::string >& tokens
 }
 
 void server_list(const std::string& cmd, const std::vector< std::string >& tokens) {
-    std::vector< ptr< srv_config > > configs;
+    std::vector< std::shared_ptr< srv_config > > configs;
     stuff.raft_instance_->get_srv_config_all(configs);
 
     int leader_id = stuff.raft_instance_->get_leader();
 
     for (auto& entry : configs) {
-        ptr< srv_config >& srv = entry;
+        std::shared_ptr< srv_config >& srv = entry;
         std::cout << "server id " << srv->get_id() << ": " << srv->get_endpoint();
         if (srv->get_id() == leader_id) { std::cout << " (LEADER)"; }
         std::cout << std::endl;
@@ -134,14 +134,14 @@ void loop() {
     }
 }
 
-void init_raft(ptr< state_machine > sm_instance) {
+void init_raft(std::shared_ptr< state_machine > sm_instance) {
     // Logger.
     std::string log_file_name = "./srv" + std::to_string(stuff.server_id_) + ".log";
-    ptr< logger_wrapper > log_wrap = cs_new< logger_wrapper >(log_file_name, 4);
+    std::shared_ptr< logger_wrapper > log_wrap = std::make_shared< logger_wrapper >(log_file_name, 4);
     stuff.raft_logger_ = log_wrap;
 
     // State machine.
-    stuff.smgr_ = cs_new< inmem_state_mgr >(stuff.server_id_, stuff.endpoint_);
+    stuff.smgr_ = std::make_shared< inmem_state_mgr >(stuff.server_id_, stuff.endpoint_);
     // State manager.
     stuff.sm_ = sm_instance;
 

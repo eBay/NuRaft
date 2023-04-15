@@ -35,7 +35,6 @@ limitations under the License.
 #include "log_entry.hxx"
 #include "log_store.hxx"
 #include "logger.hxx"
-#include "ptr.hxx"
 #include "raft_params.hxx"
 #include "raft_server.hxx"
 #include "rpc_cli_factory.hxx"

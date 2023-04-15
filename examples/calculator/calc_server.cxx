@@ -41,7 +41,7 @@ static bool ASYNC_SNAPSHOT_CREATION = false;
 
 calc_state_machine* get_sm() { return static_cast< calc_state_machine* >(stuff.sm_.get()); }
 
-void handle_result(ptr< TestSuite::Timer > timer, raft_result& result, ptr< std::exception >& err) {
+void handle_result(std::shared_ptr< TestSuite::Timer > timer, raft_result& result, std::shared_ptr< std::exception >& err) {
     if (result.get_result_code() != cmd_result_code::OK) {
         // Something went wrong.
         // This means committing this log failed,
@@ -50,7 +50,7 @@ void handle_result(ptr< TestSuite::Timer > timer, raft_result& result, ptr< std:
                   << std::endl;
         return;
     }
-    ptr< buffer > buf = result.get();
+    std::shared_ptr< buffer > buf = result.get();
     uint64_t ret_value = buf->get_ulong();
     std::cout << "succeeded, " << TestSuite::usToString(timer->getTimeUs()) << ", return value: " << ret_value
               << ", state machine value: " << get_sm()->get_current_value() << std::endl;
@@ -83,13 +83,13 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
     };
 
     // Serialize and generate Raft log to append.
-    ptr< buffer > new_log = calc_state_machine::enc_log({op, operand});
+    std::shared_ptr< buffer > new_log = calc_state_machine::enc_log({op, operand});
 
     // To measure the elapsed time.
-    ptr< TestSuite::Timer > timer = cs_new< TestSuite::Timer >();
+    std::shared_ptr< TestSuite::Timer > timer = std::make_shared< TestSuite::Timer >();
 
     // Do append.
-    ptr< raft_result > ret = stuff.raft_instance_->append_entries({new_log});
+    std::shared_ptr< raft_result > ret = stuff.raft_instance_->append_entries({new_log});
 
     if (!ret->get_accepted()) {
         // Log append rejected, usually because this node is not a leader.
@@ -104,7 +104,7 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
         // Blocking mode:
         //   `append_entries` returns after getting a consensus,
         //   so that `ret` already has the result from state machine.
-        ptr< std::exception > err(nullptr);
+        std::shared_ptr< std::exception > err(nullptr);
         handle_result(timer, *ret, err);
 
     } else if (CALL_TYPE == raft_params::async_handler) {
@@ -120,7 +120,7 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
 }
 
 void print_status(const std::string& cmd, const std::vector< std::string >& tokens) {
-    ptr< log_store > ls = stuff.smgr_->load_log_store();
+    std::shared_ptr< log_store > ls = stuff.smgr_->load_log_store();
 
     std::cout << "my server id: " << stuff.server_id_ << std::endl
               << "leader id: " << stuff.raft_instance_->get_leader() << std::endl
@@ -225,7 +225,7 @@ int main(int argc, char** argv) {
     std::cout << "    Endpoint:     " << stuff.endpoint_ << std::endl;
     if (CALL_TYPE == raft_params::async_handler) { std::cout << "    async handler is enabled" << std::endl; }
     if (ASYNC_SNAPSHOT_CREATION) { std::cout << "    snapshots are created asynchronously" << std::endl; }
-    init_raft(cs_new< calc_state_machine >(ASYNC_SNAPSHOT_CREATION));
+    init_raft(std::make_shared< calc_state_machine >(ASYNC_SNAPSHOT_CREATION));
     loop();
 
     return 0;

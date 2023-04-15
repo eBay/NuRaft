@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace nuraft {
 
-void peer::send_req(ptr< peer > myself, ptr< req_msg >& req, rpc_handler& handler) {
+void peer::send_req(std::shared_ptr< peer > myself, std::shared_ptr< req_msg >& req, rpc_handler& handler) {
     if (abandoned_) {
         p_er("peer %d has been shut down, cannot send request", config_->get_id());
         return;
@@ -37,8 +37,8 @@ void peer::send_req(ptr< peer > myself, ptr< req_msg >& req, rpc_handler& handle
         p_tr("send req %d -> %d, type %s", req->get_src(), req->get_dst(), msg_type_to_string(req->get_type()).c_str());
     }
 
-    ptr< rpc_result > pending = cs_new< rpc_result >(handler);
-    ptr< rpc_client > rpc_local = nullptr;
+    std::shared_ptr< rpc_result > pending = std::make_shared< rpc_result >(handler);
+    std::shared_ptr< rpc_client > rpc_local = nullptr;
     {
         std::lock_guard< std::mutex > l(rpc_protector_);
         if (!rpc_) {
@@ -61,8 +61,9 @@ void peer::send_req(ptr< peer > myself, ptr< req_msg >& req, rpc_handler& handle
 //   for the case when
 //     1) this peer is removed before this callback function is invoked. OR
 //     2) RPC client has been reset and re-connected.
-void peer::handle_rpc_result(ptr< peer > myself, ptr< rpc_client > my_rpc_client, ptr< req_msg >& req,
-                             ptr< rpc_result >& pending_result, ptr< resp_msg >& resp, ptr< rpc_exception >& err) {
+void peer::handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rpc_client > my_rpc_client,
+                             std::shared_ptr< req_msg >& req, std::shared_ptr< rpc_result >& pending_result,
+                             std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err) {
     std::unordered_set< int > msg_types_to_free({msg_type::append_entries_request, msg_type::install_snapshot_request,
                                                  msg_type::request_vote_request, msg_type::pre_vote_request,
                                                  msg_type::leave_cluster_request, msg_type::custom_notification_request,
@@ -104,7 +105,7 @@ void peer::handle_rpc_result(ptr< peer > myself, ptr< rpc_client > my_rpc_client
             auto_lock(lock_);
             resume_hb_speed();
         }
-        ptr< rpc_exception > no_except;
+        std::shared_ptr< rpc_exception > no_except;
         resp->set_peer(myself);
         pending_result->set_result(resp, no_except);
 
@@ -121,7 +122,7 @@ void peer::handle_rpc_result(ptr< peer > myself, ptr< rpc_client > my_rpc_client
             auto_lock(lock_);
             slow_down_hb();
         }
-        ptr< resp_msg > no_resp;
+        std::shared_ptr< resp_msg > no_resp;
         pending_result->set_result(no_resp, err);
 
         // Destroy this connection, we MUST NOT re-use existing socket.
@@ -147,13 +148,13 @@ void peer::handle_rpc_result(ptr< peer > myself, ptr< rpc_client > my_rpc_client
     }
 }
 
-bool peer::recreate_rpc(ptr< srv_config >& config, context& ctx) {
+bool peer::recreate_rpc(std::shared_ptr< srv_config >& config, context& ctx) {
     if (abandoned_) {
         p_tr("peer %d is abandoned", config->get_id());
         return false;
     }
 
-    ptr< rpc_client_factory > factory = nullptr;
+    std::shared_ptr< rpc_client_factory > factory = nullptr;
     {
         std::lock_guard< std::mutex > l(ctx.ctx_lock_);
         factory = ctx.rpc_cli_factory_;

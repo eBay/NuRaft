@@ -33,7 +33,7 @@ limitations under the License.
 namespace nuraft {
 
 bool raft_server::check_cond_for_zp_election() {
-    ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
     if (params->allow_temporary_zero_priority_leader_ && target_priority_ == 1 && my_priority_ == 0 &&
         priority_change_timer_.get_ms() > (uint64_t)params->heart_beat_interval_ * 20) {
         return true;
@@ -42,12 +42,12 @@ bool raft_server::check_cond_for_zp_election() {
 }
 
 void raft_server::request_prevote() {
-    ptr< raft_params > params = ctx_->get_params();
-    ptr< cluster_config > c_config = get_config();
+    std::shared_ptr< raft_params > params = ctx_->get_params();
+    std::shared_ptr< cluster_config > c_config = get_config();
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        ptr< peer > pp = it->second;
+        std::shared_ptr< peer > pp = it->second;
         if (!is_regular_member(pp)) continue;
-        ptr< srv_config > s_config = c_config->get_server(pp->get_id());
+        std::shared_ptr< srv_config > s_config = c_config->get_server(pp->get_id());
 
         if (s_config) {
             bool recreate = false;
@@ -96,7 +96,7 @@ void raft_server::request_prevote() {
         // 2-node cluster's pre-vote failed due to offline node.
         p_wn("2-node cluster's pre-vote is failing long time, "
              "adjust quorum to 1");
-        ptr< raft_params > clone = cs_new< raft_params >(*params);
+        std::shared_ptr< raft_params > clone = std::make_shared< raft_params >(*params);
         clone->custom_commit_quorum_size_ = 1;
         clone->custom_election_quorum_size_ = 1;
         ctx_->set_params(clone);
@@ -127,15 +127,15 @@ void raft_server::request_prevote() {
          term_for_log(log_store_->next_slot() - 1), target_priority_, my_priority_);
 
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        ptr< peer > pp = it->second;
+        std::shared_ptr< peer > pp = it->second;
         if (!is_regular_member(pp)) {
             // Do not send voting request to learner.
             continue;
         }
 
-        ptr< req_msg > req(cs_new< req_msg >(state_->get_term(), msg_type::pre_vote_request, id_, pp->get_id(),
-                                             term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1,
-                                             quick_commit_index_.load()));
+        std::shared_ptr< req_msg > req(std::make_shared< req_msg >(
+            state_->get_term(), msg_type::pre_vote_request, id_, pp->get_id(),
+            term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1, quick_commit_index_.load()));
         if (pp->make_busy()) {
             pp->send_req(pp, req, resp_handler_);
         } else {
@@ -211,20 +211,21 @@ void raft_server::request_vote(bool force_vote) {
     }
 
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        ptr< peer > pp = it->second;
+        std::shared_ptr< peer > pp = it->second;
         if (!is_regular_member(pp)) {
             // Do not send voting request to learner.
             continue;
         }
-        ptr< req_msg > req = cs_new< req_msg >(state_->get_term(), msg_type::request_vote_request, id_, pp->get_id(),
-                                               term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1,
-                                               quick_commit_index_.load());
+        std::shared_ptr< req_msg > req = std::make_shared< req_msg >(
+            state_->get_term(), msg_type::request_vote_request, id_, pp->get_id(),
+            term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1, quick_commit_index_.load());
         if (force_vote) {
             // Add a special log entry to let receivers ignore the priority.
 
             // Force vote message, and wrap it using log_entry.
-            ptr< force_vote_msg > fv_msg = cs_new< force_vote_msg >();
-            ptr< log_entry > fv_msg_le = cs_new< log_entry >(0, fv_msg->serialize(), log_val_type::custom);
+            std::shared_ptr< force_vote_msg > fv_msg = std::make_shared< force_vote_msg >();
+            std::shared_ptr< log_entry > fv_msg_le =
+                std::make_shared< log_entry >(0, fv_msg->serialize(), log_val_type::custom);
 
             // Ship it.
             req->log_entries().push_back(fv_msg_le);
@@ -239,7 +240,7 @@ void raft_server::request_vote(bool force_vote) {
     }
 }
 
-ptr< resp_msg > raft_server::handle_vote_req(req_msg& req) {
+std::shared_ptr< resp_msg > raft_server::handle_vote_req(req_msg& req) {
     p_in("[VOTE REQ] my role %s, from peer %d, "
          "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "last idx: req %" PRIu64 " / mine %" PRIu64 ", term: req %" PRIu64 " / mine %" PRIu64 "\n"
@@ -248,7 +249,8 @@ ptr< resp_msg > raft_server::handle_vote_req(req_msg& req) {
          log_store_->last_entry()->get_term(), req.get_last_log_idx(), log_store_->next_slot() - 1, req.get_term(),
          state_->get_term(), target_priority_, my_priority_, state_->get_voted_for());
 
-    ptr< resp_msg > resp(cs_new< resp_msg >(state_->get_term(), msg_type::request_vote_response, id_, req.get_src()));
+    std::shared_ptr< resp_msg > resp(
+        std::make_shared< resp_msg >(state_->get_term(), msg_type::request_vote_response, id_, req.get_src()));
 
     bool log_okay = req.get_last_log_term() > log_store_->last_entry()->get_term() ||
         (req.get_last_log_term() == log_store_->last_entry()->get_term() &&
@@ -269,7 +271,7 @@ ptr< resp_msg > raft_server::handle_vote_req(req_msg& req) {
     }
 
     if (grant) {
-        ptr< cluster_config > c_conf = get_config();
+        std::shared_ptr< cluster_config > c_conf = get_config();
         for (auto& entry : c_conf->get_servers()) {
             srv_config* s_conf = entry.get();
             if (!ignore_priority && s_conf->get_id() == req.get_src() && s_conf->get_priority() &&
@@ -333,7 +335,7 @@ void raft_server::handle_vote_resp(resp_msg& resp) {
     }
 }
 
-ptr< resp_msg > raft_server::handle_prevote_req(req_msg& req) {
+std::shared_ptr< resp_msg > raft_server::handle_prevote_req(req_msg& req) {
     ulong next_idx_for_resp = 0;
     auto entry = peers_.find(req.get_src());
     if (entry == peers_.end()) {
@@ -349,8 +351,8 @@ ptr< resp_msg > raft_server::handle_prevote_req(req_msg& req) {
          log_store_->last_entry()->get_term(), req.get_last_log_idx(), log_store_->next_slot() - 1, req.get_term(),
          state_->get_term(), (hb_alive_) ? "HB alive" : "HB dead");
 
-    ptr< resp_msg > resp(
-        cs_new< resp_msg >(req.get_term(), msg_type::pre_vote_response, id_, req.get_src(), next_idx_for_resp));
+    std::shared_ptr< resp_msg > resp(std::make_shared< resp_msg >(req.get_term(), msg_type::pre_vote_response, id_,
+                                                                  req.get_src(), next_idx_for_resp));
 
     // NOTE:
     //   While `catching_up_` flag is on, this server does not get

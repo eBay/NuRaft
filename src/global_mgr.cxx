@@ -78,7 +78,7 @@ struct nuraft_global_mgr::worker_handle {
 
     size_t id_;
     EventAwaiter ea_;
-    ptr< std::thread > thread_;
+    std::shared_ptr< std::thread > thread_;
     std::atomic< bool > stopping_;
     std::atomic< status > status_;
 };
@@ -87,13 +87,13 @@ nuraft_global_mgr::nuraft_global_mgr() : asio_service_(nullptr), thread_id_count
 
 nuraft_global_mgr::~nuraft_global_mgr() {
     for (auto& entry : append_workers_) {
-        ptr< worker_handle >& wh = entry;
+        std::shared_ptr< worker_handle >& wh = entry;
         wh->shutdown();
     }
     append_workers_.clear();
 
     for (auto& entry : commit_workers_) {
-        ptr< worker_handle >& wh = entry;
+        std::shared_ptr< worker_handle >& wh = entry;
         wh->shutdown();
     }
     commit_workers_.clear();
@@ -118,20 +118,20 @@ nuraft_global_mgr* nuraft_global_mgr::get_instance() { return ngm_singleton::get
 
 void nuraft_global_mgr::init_thread_pool() {
     for (size_t ii = 0; ii < config_.num_commit_threads_; ++ii) {
-        ptr< worker_handle > w_hdl = cs_new< worker_handle >(thread_id_counter_.fetch_add(1));
-        w_hdl->thread_ = cs_new< std::thread >(&nuraft_global_mgr::commit_worker_loop, this, w_hdl);
+        std::shared_ptr< worker_handle > w_hdl = std::make_shared< worker_handle >(thread_id_counter_.fetch_add(1));
+        w_hdl->thread_ = std::make_shared< std::thread >(&nuraft_global_mgr::commit_worker_loop, this, w_hdl);
         commit_workers_.push_back(w_hdl);
     }
 
     for (size_t ii = 0; ii < config_.num_append_threads_; ++ii) {
-        ptr< worker_handle > w_hdl = cs_new< worker_handle >(thread_id_counter_.fetch_add(1));
-        w_hdl->thread_ = cs_new< std::thread >(&nuraft_global_mgr::append_worker_loop, this, w_hdl);
+        std::shared_ptr< worker_handle > w_hdl = std::make_shared< worker_handle >(thread_id_counter_.fetch_add(1));
+        w_hdl->thread_ = std::make_shared< std::thread >(&nuraft_global_mgr::append_worker_loop, this, w_hdl);
         append_workers_.push_back(w_hdl);
     }
 }
 
 void nuraft_global_mgr::init_raft_server(raft_server* server) {
-    ptr< logger >& l_ = server->l_;
+    std::shared_ptr< logger >& l_ = server->l_;
     p_in("global manager detected, %zu commit workers, %zu append workers", config_.num_commit_threads_,
          config_.num_append_threads_);
 }
@@ -170,11 +170,11 @@ void nuraft_global_mgr::close_raft_server(raft_server* server) {
         }
     }
 
-    ptr< logger >& l_ = server->l_;
+    std::shared_ptr< logger >& l_ = server->l_;
     p_in("global manager detected, %zu appends %zu commits are aborted", num_aborted_append, num_aborted_commit);
 }
 
-void nuraft_global_mgr::request_append(ptr< raft_server > server) {
+void nuraft_global_mgr::request_append(std::shared_ptr< raft_server > server) {
     {
         std::lock_guard< std::mutex > l(append_queue_lock_);
         // First search the set if the server is duplicate.
@@ -188,7 +188,7 @@ void nuraft_global_mgr::request_append(ptr< raft_server > server) {
         append_queue_.push_back(server);
         append_server_set_.insert(server);
 
-        ptr< logger >& l_ = server->l_;
+        std::shared_ptr< logger >& l_ = server->l_;
         p_tr("added append request to global queue, "
              "server %p, queue length %zu",
              server.get(), append_queue_.size());
@@ -196,7 +196,7 @@ void nuraft_global_mgr::request_append(ptr< raft_server > server) {
 
     // Find a sleeping worker and invoke.
     for (auto& entry : append_workers_) {
-        ptr< worker_handle >& wh = entry;
+        std::shared_ptr< worker_handle >& wh = entry;
         if (wh->status_ == worker_handle::SLEEPING) {
             wh->ea_.invoke();
             break;
@@ -205,7 +205,7 @@ void nuraft_global_mgr::request_append(ptr< raft_server > server) {
     // If all workers are working, nothing to do for now.
 }
 
-void nuraft_global_mgr::request_commit(ptr< raft_server > server) {
+void nuraft_global_mgr::request_commit(std::shared_ptr< raft_server > server) {
     {
         std::lock_guard< std::mutex > l(commit_queue_lock_);
         // First search the set if the server is duplicate.
@@ -219,7 +219,7 @@ void nuraft_global_mgr::request_commit(ptr< raft_server > server) {
         commit_queue_.push_back(server);
         commit_server_set_.insert(server);
 
-        ptr< logger >& l_ = server->l_;
+        std::shared_ptr< logger >& l_ = server->l_;
         p_tr("added commit request to global queue, "
              "server %p, queue length %zu",
              server.get(), commit_queue_.size());
@@ -227,7 +227,7 @@ void nuraft_global_mgr::request_commit(ptr< raft_server > server) {
 
     // Find a sleeping worker and invoke.
     for (auto& entry : commit_workers_) {
-        ptr< worker_handle >& wh = entry;
+        std::shared_ptr< worker_handle >& wh = entry;
         if (wh->status_ == worker_handle::SLEEPING) {
             wh->ea_.invoke();
             break;
@@ -236,7 +236,7 @@ void nuraft_global_mgr::request_commit(ptr< raft_server > server) {
     // If all workers are working, nothing to do for now.
 }
 
-void nuraft_global_mgr::commit_worker_loop(ptr< worker_handle > handle) {
+void nuraft_global_mgr::commit_worker_loop(std::shared_ptr< worker_handle > handle) {
     std::string thread_name = "nuraft_g_c" + std::to_string(handle->id_);
 #ifdef __linux__
     pthread_setname_np(pthread_self(), thread_name.c_str());
@@ -257,7 +257,7 @@ void nuraft_global_mgr::commit_worker_loop(ptr< worker_handle > handle) {
 
         skip_sleeping = false;
         size_t queue_length = 0;
-        ptr< raft_server > target = nullptr;
+        std::shared_ptr< raft_server > target = nullptr;
         {
             std::lock_guard< std::mutex > l(commit_queue_lock_);
             auto entry = commit_queue_.begin();
@@ -275,7 +275,7 @@ void nuraft_global_mgr::commit_worker_loop(ptr< worker_handle > handle) {
         }
         if (!target) continue;
 
-        ptr< logger >& l_ = target->l_;
+        std::shared_ptr< logger >& l_ = target->l_;
 
         // Whenever we find a task to execute, skip next sleeping for any tasks
         // that can be queued in the meantime.
@@ -310,7 +310,7 @@ void nuraft_global_mgr::commit_worker_loop(ptr< worker_handle > handle) {
     }
 }
 
-void nuraft_global_mgr::append_worker_loop(ptr< worker_handle > handle) {
+void nuraft_global_mgr::append_worker_loop(std::shared_ptr< worker_handle > handle) {
     std::string thread_name = "nuraft_g_a" + std::to_string(handle->id_);
 #ifdef __linux__
     pthread_setname_np(pthread_self(), thread_name.c_str());
@@ -331,7 +331,7 @@ void nuraft_global_mgr::append_worker_loop(ptr< worker_handle > handle) {
 
         skip_sleeping = false;
         size_t queue_length = 0;
-        ptr< raft_server > target = nullptr;
+        std::shared_ptr< raft_server > target = nullptr;
         {
             std::lock_guard< std::mutex > l(append_queue_lock_);
             auto entry = append_queue_.begin();
@@ -349,7 +349,7 @@ void nuraft_global_mgr::append_worker_loop(ptr< worker_handle > handle) {
         }
         if (!target) continue;
 
-        ptr< logger >& l_ = target->l_;
+        std::shared_ptr< logger >& l_ = target->l_;
 
         // Whenever we find a task to execute, skip next sleeping for any tasks
         // that can be queued in the meantime.

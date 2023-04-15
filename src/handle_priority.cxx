@@ -56,7 +56,7 @@ void raft_server::set_priority(const int srv_id, const int new_priority) {
     }
 
     // Clone current cluster config.
-    ptr< cluster_config > cur_config = get_config();
+    std::shared_ptr< cluster_config > cur_config = get_config();
 
     // NOTE: Need to honor uncommitted config,
     //       refer to comment in `sync_log_to_new_srv()`
@@ -66,10 +66,10 @@ void raft_server::set_priority(const int srv_id, const int new_priority) {
         cur_config = uncommitted_config_;
     }
 
-    ptr< buffer > enc_conf = cur_config->serialize();
-    ptr< cluster_config > cloned_config = cluster_config::deserialize(*enc_conf);
+    std::shared_ptr< buffer > enc_conf = cur_config->serialize();
+    std::shared_ptr< cluster_config > cloned_config = cluster_config::deserialize(*enc_conf);
 
-    std::list< ptr< srv_config > >& s_confs = cloned_config->get_servers();
+    std::list< std::shared_ptr< srv_config > >& s_confs = cloned_config->get_servers();
 
     for (auto& entry : s_confs) {
         srv_config* s_conf = entry.get();
@@ -81,9 +81,9 @@ void raft_server::set_priority(const int srv_id, const int new_priority) {
 
     // Create a log for new configuration, it should be replicated.
     cloned_config->set_log_idx(log_store_->next_slot());
-    ptr< buffer > new_conf_buf(cloned_config->serialize());
-    ptr< log_entry > entry(
-        cs_new< log_entry >(state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
+    std::shared_ptr< buffer > new_conf_buf(cloned_config->serialize());
+    std::shared_ptr< log_entry > entry(std::make_shared< log_entry >(
+        state_->get_term(), new_conf_buf, log_val_type::conf, timer_helper::get_timeofday_us()));
 
     config_changing_ = true;
     uncommitted_config_ = cloned_config;
@@ -94,7 +94,7 @@ void raft_server::set_priority(const int srv_id, const int new_priority) {
 
 void raft_server::broadcast_priority_change(const int srv_id, const int new_priority) {
     if (srv_id == id_) { my_priority_ = new_priority; }
-    ptr< cluster_config > cur_config = get_config();
+    std::shared_ptr< cluster_config > cur_config = get_config();
     for (auto& entry : cur_config->get_servers()) {
         srv_config* s_conf = entry.get();
         if (s_conf->get_id() == srv_id) {
@@ -106,22 +106,22 @@ void raft_server::broadcast_priority_change(const int srv_id, const int new_prio
     // If there is no live leader now,
     // broadcast this request to all peers.
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
-        ptr< req_msg > req(cs_new< req_msg >(state_->get_term(), msg_type::priority_change_request, id_,
-                                             it->second->get_id(), term_for_log(log_store_->next_slot() - 1),
-                                             log_store_->next_slot() - 1, quick_commit_index_.load()));
+        std::shared_ptr< req_msg > req(std::make_shared< req_msg >(
+            state_->get_term(), msg_type::priority_change_request, id_, it->second->get_id(),
+            term_for_log(log_store_->next_slot() - 1), log_store_->next_slot() - 1, quick_commit_index_.load()));
 
         // ID + priority
-        ptr< buffer > buf = buffer::alloc(sz_int * 2);
+        std::shared_ptr< buffer > buf = buffer::alloc(sz_int * 2);
         buf->pos(0);
         buf->put((int32)srv_id);
         buf->put((int32)new_priority);
         buf->pos(0);
-        ptr< log_entry > le = cs_new< log_entry >(state_->get_term(), buf);
+        std::shared_ptr< log_entry > le = std::make_shared< log_entry >(state_->get_term(), buf);
 
-        std::vector< ptr< log_entry > >& v = req->log_entries();
+        std::vector< std::shared_ptr< log_entry > >& v = req->log_entries();
         v.push_back(le);
 
-        ptr< peer > pp = it->second;
+        std::shared_ptr< peer > pp = it->second;
         if (pp->make_busy()) {
             pp->send_req(pp, req, resp_handler_);
         } else {
@@ -130,11 +130,12 @@ void raft_server::broadcast_priority_change(const int srv_id, const int new_prio
     }
 }
 
-ptr< resp_msg > raft_server::handle_priority_change_req(req_msg& req) {
+std::shared_ptr< resp_msg > raft_server::handle_priority_change_req(req_msg& req) {
     // NOTE: now this function is protected by lock.
-    ptr< resp_msg > resp(cs_new< resp_msg >(req.get_term(), msg_type::priority_change_response, id_, req.get_src()));
+    std::shared_ptr< resp_msg > resp(
+        std::make_shared< resp_msg >(req.get_term(), msg_type::priority_change_response, id_, req.get_src()));
 
-    std::vector< ptr< log_entry > >& v = req.log_entries();
+    std::vector< std::shared_ptr< log_entry > >& v = req.log_entries();
     if (!v.size()) {
         p_wn("no log entry");
         return resp;
@@ -156,7 +157,7 @@ ptr< resp_msg > raft_server::handle_priority_change_req(req_msg& req) {
 
     if (t_id == id_) { my_priority_ = t_priority; }
 
-    ptr< cluster_config > c_conf = get_config();
+    std::shared_ptr< cluster_config > c_conf = get_config();
     for (auto& entry : c_conf->get_servers()) {
         srv_config* s_conf = entry.get();
         if (s_conf->get_id() == t_id) {

@@ -24,7 +24,6 @@ limitations under the License.
 #include "basic_types.hxx"
 #include "buffer.hxx"
 #include "log_val_type.hxx"
-#include "ptr.hxx"
 
 #ifdef _NO_EXCEPTION
 #include <cassert>
@@ -35,7 +34,7 @@ namespace nuraft {
 
 class log_entry {
 public:
-    log_entry(ulong term, const ptr< buffer >& buff, log_val_type value_type = log_val_type::app_log,
+    log_entry(ulong term, const std::shared_ptr< buffer >& buff, log_val_type value_type = log_val_type::app_log,
               uint64_t log_timestamp = 0) :
             term_(term), value_type_(value_type), buff_(buff), timestamp_us_(log_timestamp) {}
 
@@ -66,15 +65,15 @@ public:
         return *buff_;
     }
 
-    ptr< buffer > get_buf_ptr() const { return buff_; }
+    std::shared_ptr< buffer > get_buf_ptr() const { return buff_; }
 
     uint64_t get_timestamp() const { return timestamp_us_; }
 
     void set_timestamp(uint64_t t) { timestamp_us_ = t; }
 
-    ptr< buffer > serialize() {
+    std::shared_ptr< buffer > serialize() {
         buff_->pos(0);
-        ptr< buffer > buf = buffer::alloc(sizeof(ulong) + sizeof(char) + buff_->size());
+        std::shared_ptr< buffer > buf = buffer::alloc(sizeof(ulong) + sizeof(char) + buff_->size());
         buf->put(term_);
         buf->put((static_cast< byte >(value_type_)));
         buf->put(*buff_);
@@ -82,11 +81,11 @@ public:
         return buf;
     }
 
-    static ptr< log_entry > deserialize(buffer& buf) {
+    static std::shared_ptr< log_entry > deserialize(buffer& buf) {
         ulong term = buf.get_ulong();
         log_val_type t = static_cast< log_val_type >(buf.get_byte());
-        ptr< buffer > data = buffer::copy(buf);
-        return cs_new< log_entry >(term, data, t);
+        std::shared_ptr< buffer > data = buffer::copy(buf);
+        return std::make_shared< log_entry >(term, data, t);
     }
 
     static ulong term_in_buffer(buffer& buf) {
@@ -109,7 +108,7 @@ private:
     /**
      * Actual data that this log entry carries.
      */
-    ptr< buffer > buff_;
+    std::shared_ptr< buffer > buff_;
 
     /**
      * The timestamp (since epoch) when this log entry was generated
