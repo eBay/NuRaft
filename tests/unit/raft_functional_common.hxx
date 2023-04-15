@@ -17,7 +17,6 @@ limitations under the License.
 
 #pragma once
 
-#include "attr_unused.hxx"
 #include "in_memory_log_store.hxx"
 #include "logger_wrapper.hxx"
 
@@ -30,9 +29,9 @@ limitations under the License.
 #include <set>
 #include <sstream>
 
-#define INT_UNUSED int ATTR_UNUSED
-#define VOID_UNUSED void ATTR_UNUSED
-#define STR_UNUSED std::string ATTR_UNUSED
+#define INT_UNUSED int
+#define VOID_UNUSED void
+#define STR_UNUSED std::string
 #define _msg(...) TestSuite::_msg(__VA_ARGS__);
 
 using namespace nuraft;
@@ -58,7 +57,9 @@ public:
         return ret;
     }
 
-    void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) { lastCommittedConfigIdx = log_idx; }
+    void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) {
+        lastCommittedConfigIdx = log_idx;
+    }
 
     std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
         std::lock_guard< std::mutex > ll(dataLock);
@@ -361,7 +362,8 @@ class TestMgr : public state_mgr {
 public:
     TestMgr(int srv_id, const std::string& endpoint) :
             myId(srv_id), myEndpoint(endpoint), curLogStore(std::make_shared< inmem_log_store >()) {
-        mySrvConfig = std::make_shared< srv_config >(srv_id, 1, endpoint, "server " + std::to_string(srv_id), false, 50);
+        mySrvConfig =
+            std::make_shared< srv_config >(srv_id, 1, endpoint, "server " + std::to_string(srv_id), false, 50);
 
         savedConfig = std::make_shared< cluster_config >();
         savedConfig->get_servers().push_back(mySrvConfig);

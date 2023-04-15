@@ -23,8 +23,7 @@ limitations under the License.
 using namespace nuraft;
 using namespace raft_functional_common;
 
-static size_t ATTR_UNUSED COMMIT_TIME_MS = 50;
-static size_t ATTR_UNUSED COMMIT_TIMEOUT_SEC = 3;
+static size_t COMMIT_TIMEOUT_SEC = 3;
 
 class RaftPkg {
 public:
@@ -153,7 +152,7 @@ static std::vector< RaftPkg* > pkgs_to_watch;
 static std::mutex pkgs_to_watch_lock;
 static EventAwaiter ea_wait_for_commit;
 
-static bool ATTR_UNUSED check_pkgs() {
+static bool check_pkgs() {
     // Check if all current committed logs are executed in
     // their state machines.
     std::lock_guard< std::mutex > l(pkgs_to_watch_lock);
@@ -163,7 +162,7 @@ static bool ATTR_UNUSED check_pkgs() {
     return true;
 }
 
-static int ATTR_UNUSED wait_for_sm_exec(const std::vector< RaftPkg* >& pkgs, size_t timeout_sec) {
+static int wait_for_sm_exec(const std::vector< RaftPkg* >& pkgs, size_t timeout_sec) {
     {
         std::lock_guard< std::mutex > l(pkgs_to_watch_lock);
         pkgs_to_watch = pkgs;
@@ -186,7 +185,7 @@ static int ATTR_UNUSED wait_for_sm_exec(const std::vector< RaftPkg* >& pkgs, siz
     return -1;
 }
 
-static cb_func::ReturnCode ATTR_UNUSED cb_default(cb_func::Type type, cb_func::Param* param) {
+static cb_func::ReturnCode cb_default(cb_func::Type type, cb_func::Param* param) {
     if (type == cb_func::Type::StateMachineExecution) {
         if (check_pkgs()) {
             // Multiple commit threads may enter here at the same time,

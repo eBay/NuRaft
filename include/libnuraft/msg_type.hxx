@@ -18,14 +18,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _MESSAGE_TYPE_HXX_
-#define _MESSAGE_TYPE_HXX_
+#pragma once
 
 #include <string>
 
 namespace nuraft {
-
-#include "attr_unused.hxx"
 
 // NOTE:
 //   need to change `msg_type_to_string()` as well
@@ -62,13 +59,13 @@ enum msg_type {
     custom_notification_response = 29,
 };
 
-inline bool ATTR_UNUSED is_valid_msg(msg_type type) {
+inline bool is_valid_msg(msg_type type) {
     if (type >= request_vote_request && type <= other_response) { return true; }
     return false;
 }
 
 // for tracing and debugging
-inline std::string ATTR_UNUSED msg_type_to_string(msg_type type) {
+inline std::string msg_type_to_string(msg_type type) {
     switch (type) {
     case request_vote_request:
         return "request_vote_request";
@@ -134,5 +131,3 @@ inline std::string ATTR_UNUSED msg_type_to_string(msg_type type) {
 }
 
 } // namespace nuraft
-
-#endif //_MESSAGE_TYPE_HXX_
