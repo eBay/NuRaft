@@ -174,8 +174,8 @@ bool peer::recreate_rpc(std::shared_ptr< srv_config >& config, context& ctx) {
     // we use exponential backoff (x2) from 1 ms to heartbeat interval.
     if (backoff_timer_disabled || reconn_backoff_.timeout()) {
         reconn_backoff_.reset();
-        size_t new_duration_ms = reconn_backoff_.get_duration_us() / 1000;
-        new_duration_ms = std::min(hb_interval_, (int32)new_duration_ms * 2);
+        auto new_duration_ms = reconn_backoff_.get_duration_us() / 1000u;
+        new_duration_ms = std::min(static_cast< uint64_t >(hb_interval_), new_duration_ms * 2);
         if (!new_duration_ms) new_duration_ms = 1;
         reconn_backoff_.set_duration_ms(new_duration_ms);
 

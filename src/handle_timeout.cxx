@@ -51,7 +51,7 @@ void raft_server::check_srv_to_leave_timeout() {
     }
 }
 
-void raft_server::handle_hb_timeout(int32 srv_id) {
+void raft_server::handle_hb_timeout(int32_t srv_id) {
     recur_lock(lock_);
 
     check_srv_to_leave_timeout();
@@ -105,7 +105,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
         // Leave request has been sent but not removed yet,
         // increase the counter.
         p->inc_hb_cnt_since_leave();
-        int32 cur_cnt = p->get_hb_cnt_since_leave();
+        auto cur_cnt = p->get_hb_cnt_since_leave();
         p_in("peer %d is not responding for %d HBs since leave request", p->get_id(), cur_cnt);
 
         if (cur_cnt >= raft_server::raft_limits_.leave_limit_) {
@@ -253,7 +253,7 @@ void raft_server::handle_election_timeout() {
         return;
     }
 
-    int time_ms = last_election_timer_reset_.get_us() / 1000;
+    auto time_ms = last_election_timer_reset_.get_us() / 1000;
     if (serving_req_ || time_ms < ctx_->get_params()->election_timeout_lower_bound_) {
         // Handling appending entries is now taking long time,
         // so that server keeps skipping sending heartbeat.
@@ -324,7 +324,7 @@ void raft_server::cancel_schedulers() {
     scheduler_.reset();
 }
 
-void raft_server::schedule_task(std::shared_ptr< delayed_task >& task, int32 milliseconds) {
+void raft_server::schedule_task(std::shared_ptr< delayed_task >& task, int32_t milliseconds) {
     if (stopping_) return;
 
     if (!scheduler_) {

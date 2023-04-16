@@ -155,7 +155,7 @@ class FakeTimer : public delayed_task_scheduler {
 public:
     FakeTimer(const std::string& endpoint, SimpleLogger* logger = nullptr);
 
-    void schedule(std::shared_ptr< delayed_task >& task, int32 milliseconds);
+    void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) override;
 
     void cancel(std::shared_ptr< delayed_task >& task);
 

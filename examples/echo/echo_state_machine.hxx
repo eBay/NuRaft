@@ -72,7 +72,7 @@ public:
     int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         // Put dummy data.
-        data_out = buffer::alloc(sizeof(int32));
+        data_out = buffer::alloc(sizeof(int32_t));
         buffer_serializer bs(data_out);
         bs.put_i32(0);
 

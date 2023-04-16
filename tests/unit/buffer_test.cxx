@@ -35,13 +35,13 @@ int buffer_basic_test(size_t buf_size) {
 
     uint seed = (uint)std::chrono::system_clock::now().time_since_epoch().count();
     std::default_random_engine engine(seed);
-    std::uniform_int_distribution< int32 > distribution(1, 10000);
+    std::uniform_int_distribution< int32_t > distribution(1, 10000);
     auto rnd = std::bind(distribution, engine);
 
     // store int32 values into buffer
-    std::vector< int32 > vals;
+    std::vector< int32_t > vals;
     for (int i = 0; i < 100; ++i) {
-        int32 val = rnd();
+        auto val = rnd();
         vals.push_back(val);
         buf->put(val);
     }
@@ -75,13 +75,13 @@ int buffer_basic_test(size_t buf_size) {
     buf->pos(0);
 
     for (int i = 0; i < 100; ++i) {
-        int32 val = buf->get_int();
+        auto val = buf->get_int();
         CHK_EQ(vals[i], val);
     }
 
     buf3->pos(0);
     for (int i = 0; i < 100; ++i) {
-        int32 val = buf3->get_int();
+        auto val = buf3->get_int();
         CHK_EQ(vals[i], val);
     }
 
@@ -123,7 +123,7 @@ int buffer_basic_test(size_t buf_size) {
     }
     buf4->pos(0);
     for (int i = 0; i < 200; ++i) {
-        int32 val = buf4->get_int();
+        auto val = buf4->get_int();
         CHK_EQ(i, val);
     }
     return 0;

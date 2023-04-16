@@ -129,7 +129,7 @@ public:
 
         if (obj_id == 0) {
             // Object ID == 0: first object, put dummy data.
-            data_out = buffer::alloc(sizeof(int32));
+            data_out = buffer::alloc(sizeof(int32_t));
             buffer_serializer bs(data_out);
             bs.put_i32(0);
             is_last_obj = false;

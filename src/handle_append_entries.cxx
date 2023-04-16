@@ -137,18 +137,18 @@ bool raft_server::request_append_entries(std::shared_ptr< peer > p) {
         }
     }
 
-    bool need_to_reconnect = p->need_to_reconnect();
-    int32 last_active_time_ms = p->get_active_timer_us() / 1000;
+    auto need_to_reconnect = p->need_to_reconnect();
+    auto last_active_time_ms = p->get_active_timer_us() / 1000ul;
     if (last_active_time_ms > params->heart_beat_interval_ * raft_server::raft_limits_.reconnect_limit_) {
         if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) {
             // We should not re-establish the connection to
             // to-be-removed server, as it will block removing it
             // from `peers_` list.
-            p_wn("connection to peer %d is not active long time: %d ms, "
+            p_wn("connection to peer %d is not active long time: %lu ms, "
                  "but this peer should be removed. do nothing",
                  p->get_id(), last_active_time_ms);
         } else {
-            p_wn("connection to peer %d is not active long time: %d ms, "
+            p_wn("connection to peer %d is not active long time: %lu ms, "
                  "force re-connect",
                  p->get_id(), last_active_time_ms);
             need_to_reconnect = true;
@@ -225,10 +225,10 @@ bool raft_server::request_append_entries(std::shared_ptr< peer > p) {
         if (!p->is_manual_free()) {
             // Actual recovery.
             if (p->get_long_puase_warnings() >= raft_server::raft_limits_.warning_limit_) {
-                int32 last_ts_ms = p->get_ls_timer_us() / 1000;
+                auto last_ts_ms = p->get_ls_timer_us() / 1000;
                 p->inc_recovery_cnt();
                 p_wn("recovered from long pause to peer %d, %d warnings, "
-                     "%d ms, %d times",
+                     "%lu ms, %d times",
                      p->get_id(), p->get_long_puase_warnings(), last_ts_ms, p->get_recovery_cnt());
 
                 if (p->get_recovery_cnt() >= 10) {
@@ -269,13 +269,13 @@ bool raft_server::request_append_entries(std::shared_ptr< peer > p) {
     p_db("Server %d is busy, skip the request", p->get_id());
     check_snapshot_timeout(p);
 
-    int32 last_ts_ms = p->get_ls_timer_us() / 1000;
+    auto last_ts_ms = p->get_ls_timer_us() / 1000;
     if (last_ts_ms > params->heart_beat_interval_) {
         // Waiting time becomes longer than HB interval, warning.
         p->inc_long_pause_warnings();
         if (p->get_long_puase_warnings() < raft_server::raft_limits_.warning_limit_) {
             p_wn("skipped sending msg to %d too long time, "
-                 "last msg sent %d ms ago",
+                 "last msg sent %lu ms ago",
                  p->get_id(), last_ts_ms);
 
         } else if (p->get_long_puase_warnings() == raft_server::raft_limits_.warning_limit_) {
@@ -341,7 +341,7 @@ std::shared_ptr< req_msg > raft_server::create_append_entries_req(std::shared_pt
     //       Only when end_idx - start_idx > 1, and 5th try.
     ulong peer_last_sent_idx = p.get_last_sent_idx();
     if (last_log_idx + 1 == peer_last_sent_idx && last_log_idx + 2 < end_idx) {
-        int32 cur_cnt = p.inc_cnt_not_applied();
+        auto cur_cnt = p.inc_cnt_not_applied();
         p_db("last sent log (%" PRIu64 ") to peer %d is not applied, cnt %d", peer_last_sent_idx, p.get_id(), cur_cnt);
         if (cur_cnt >= 5) {
             ulong prev_end_idx = end_idx;
@@ -730,10 +730,10 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
 
     resp->accept(target_precommit_index + 1);
 
-    int32 time_ms = tt.get_us() / 1000;
+    auto time_ms = tt.get_us() / 1000;
     if (time_ms >= ctx_->get_params()->heart_beat_interval_) {
         // Append entries took longer than HB interval. Warning.
-        p_wn("appending entries from peer %d took long time (%d ms)\n"
+        p_wn("appending entries from peer %d took long time (%lu ms)\n"
              "req type: %d, req term: %" PRIu64 ", "
              "req l idx: %" PRIu64 " (%zu), req c idx: %" PRIu64 ", "
              "my term: %" PRIu64 ", my role: %d",
@@ -745,7 +745,7 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
     // Restart election timer here, as this function may take long time.
     if (req.get_term() == state_->get_term() && role_ == srv_role::follower) { restart_election_timer(); }
 
-    int64 bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
+    auto bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
     p_tr("batch size hint: %" PRId64 " bytes", bs_hint);
 
@@ -797,7 +797,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     std::shared_ptr< peer > p = it->second;
     p_tr("handle append entries resp (from %d), resp.get_next_idx(): %" PRIu64, (int)p->get_id(), resp.get_next_idx());
 
-    int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
+    auto bs_hint = resp.get_next_batch_size_hint_in_bytes();
     p_tr("peer %d batch size hint: %" PRId64 " bytes", p->get_id(), bs_hint);
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
@@ -868,7 +868,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
         // To avoid this node becomes next leader again, set timeout
         // value bigger than any others, just once at this time.
-        rand_timeout_ = [this]() -> int32 {
+        rand_timeout_ = [this]() -> auto {
             return this->ctx_->get_params()->election_timeout_upper_bound_ +
                 this->ctx_->get_params()->election_timeout_lower_bound_;
         };
@@ -947,7 +947,7 @@ ulong raft_server::get_expected_committed_log_idx() {
         matched_indexes.push_back(p->get_matched_idx());
     }
     int voting_members = get_num_voting_members();
-    assert((int32)matched_indexes.size() == voting_members);
+    assert((int32_t)matched_indexes.size() == voting_members);
 
     // NOTE: Descending order.
     //       e.g.) 100 100 99 95 92

@@ -101,7 +101,7 @@ public:
         // obj id should be always the same as log index.
         assert(log_idx == obj_id);
 
-        int32 data_size = bs.get_i32();
+        auto data_size = bs.get_i32();
         std::shared_ptr< buffer > data_commit = buffer::alloc(data_size);
         bs.get_buffer(data_commit);
 
@@ -170,10 +170,10 @@ public:
             bs.put_u64(obj_id);
         } else {
             std::shared_ptr< buffer > local_data = entry->second;
-            data_out = buffer::alloc(sizeof(ulong) + sizeof(int32) + local_data->size());
+            data_out = buffer::alloc(sizeof(ulong) + sizeof(int32_t) + local_data->size());
             buffer_serializer bs(data_out);
             bs.put_u64(obj_id);
-            bs.put_i32((int32)local_data->size());
+            bs.put_i32((int32_t)local_data->size());
             bs.put_buffer(*local_data);
         }
 
@@ -226,7 +226,7 @@ public:
 
     void set_next_batch_size_hint_in_bytes(ulong to) { customBatchSize = to; }
 
-    int64 get_next_batch_size_hint_in_bytes() { return customBatchSize; }
+    int64_t get_next_batch_size_hint_in_bytes() { return customBatchSize; }
 
     uint64_t adjust_commit_index(const adjust_commit_index_params& params) {
         std::lock_guard< std::mutex > l(serversForCommitLock);
@@ -381,7 +381,7 @@ public:
     }
     std::shared_ptr< srv_state > read_state() { return savedState; }
     std::shared_ptr< log_store > load_log_store() { return curLogStore; }
-    int32 server_id() { return myId; }
+    int32_t server_id() override { return myId; }
     void system_exit(const int exit_code) { abort(); }
 
     std::shared_ptr< srv_config > get_srv_config() const { return mySrvConfig; }
@@ -391,7 +391,7 @@ public:
     std::shared_ptr< inmem_log_store > get_inmem_log_store() const { return curLogStore; }
 
 private:
-    int myId;
+    int32_t myId;
     std::string myEndpoint;
     std::shared_ptr< inmem_log_store > curLogStore;
     std::shared_ptr< srv_config > mySrvConfig;

@@ -296,7 +296,7 @@ bool FakeClient::is_abandoned() const { return false; }
 
 FakeTimer::FakeTimer(const std::string& endpoint, SimpleLogger* logger) : myEndpoint(endpoint), myLog(logger) {}
 
-void FakeTimer::schedule(std::shared_ptr< delayed_task >& task, int32 milliseconds) {
+void FakeTimer::schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) {
     std::lock_guard< std::mutex > l(tasksLock);
     _log_info(myLog, " --- schedule timer for %s %d %p ---", myEndpoint.c_str(), task->get_type(), task.get());
     task->reset();

@@ -113,8 +113,8 @@ public:
      * @return The log entries between [start, end) and limited by the total size
      *         given by the batch_size_hint_in_bytes.
      */
-    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries_ext(ulong start, ulong end,
-                                                                   int64 batch_size_hint_in_bytes = 0) {
+    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >
+    log_entries_ext(ulong start, ulong end, int64_t batch_size_hint_in_bytes = 0) {
         return log_entries(start, end);
     }
 
@@ -143,7 +143,7 @@ public:
      * @param cnt The number of logs to pack.
      * @return Packed (encoded) logs.
      */
-    virtual std::shared_ptr< buffer > pack(ulong index, int32 cnt) = 0;
+    virtual std::shared_ptr< buffer > pack(ulong index, int32_t cnt) = 0;
 
     /**
      * Apply the log pack to current log store, starting from index.

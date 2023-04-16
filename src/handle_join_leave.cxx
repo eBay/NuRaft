@@ -90,9 +90,9 @@ std::shared_ptr< resp_msg > raft_server::handle_add_srv_req(req_msg& req) {
     }
 
     conf_to_add_ = std::move(srv_conf);
-    timer_task< int32 >::executor exec =
-        (timer_task< int32 >::executor)std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1);
-    srv_to_join_ = std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32 >::executor&,
+    auto exec = static_cast< timer_task< int32_t >::executor >(
+        std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1));
+    srv_to_join_ = std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32_t >::executor&,
                                      std::shared_ptr< logger >& >(conf_to_add_, *ctx_, exec, l_);
     invite_srv_to_join_cluster();
     resp->accept(log_store_->next_slot());
@@ -150,7 +150,7 @@ std::shared_ptr< resp_msg > raft_server::handle_join_cluster_req(req_msg& req) {
     ctx_->state_mgr_->save_state(*state_);
 
     cb_func::Param follower_param(id_, leader_);
-    uint64_t my_term = state_->get_term();
+    auto my_term = state_->get_term();
     follower_param.ctx = &my_term;
     (void)ctx_->cb_func_.call(cb_func::BecomeFollower, &follower_param);
 
@@ -241,9 +241,9 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
         }
 
     } else {
-        int32 size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
-        std::shared_ptr< buffer > log_pack = log_store_->pack(start_idx, size_to_sync);
-        p_db("size to sync: %d, log_pack size %zu\n", size_to_sync, log_pack->size());
+        auto size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
+        auto log_pack = log_store_->pack(start_idx, size_to_sync);
+        p_db("size to sync: %lu, log_pack size %zu\n", size_to_sync, log_pack->size());
         req = std::make_shared< req_msg >(state_->get_term(), msg_type::sync_log_request, id_, srv_to_join_->get_id(),
                                           0L, start_idx - 1, quick_commit_index_.load());
         req->log_entries().push_back(
@@ -346,7 +346,7 @@ std::shared_ptr< resp_msg > raft_server::handle_rm_srv_req(req_msg& req) {
         return resp;
     }
 
-    int32 srv_id = entries[0]->get_buf().get_int();
+    auto srv_id = entries[0]->get_buf().get_int();
     if (srv_id == id_) {
         p_wn("cannot request to remove leader");
         resp->set_result_code(cmd_result_code::CANNOT_REMOVE_LEADER);
@@ -412,7 +412,7 @@ void raft_server::handle_leave_cluster_resp(resp_msg& resp) {
     rm_srv_from_cluster(resp.get_src());
 }
 
-void raft_server::rm_srv_from_cluster(int32 srv_id) {
+void raft_server::rm_srv_from_cluster(int32_t srv_id) {
     if (srv_to_leave_) {
         p_wn("to-be-removed server %d already exists, "
              "cannot remove server %d for now",

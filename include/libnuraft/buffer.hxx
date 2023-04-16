@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _BUFFER_HXX_
-#define _BUFFER_HXX_
+#pragma once
 
 #include "basic_types.hxx"
 #include "pp_util.hxx"
@@ -140,7 +139,7 @@ public:
      *
      * @return 4-byte singed integer.
      */
-    int32 get_int();
+    int32_t get_int();
 
     /**
      * Get 8-byte unsigned integer.
@@ -216,7 +215,7 @@ public:
      *
      * @param val 4-byte signed integer.
      */
-    void put(int32 val);
+    void put(int32_t val);
 
     /**
      * Put an 8-byte unsigned integer.
@@ -273,4 +272,3 @@ std::ostream& operator<<(std::ostream& out, buffer& buf);
 std::istream& operator>>(std::istream& in, buffer& buf);
 
 } // namespace nuraft
-#endif //_BUFFER_HXX_

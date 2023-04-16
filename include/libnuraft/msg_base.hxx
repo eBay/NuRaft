@@ -37,17 +37,17 @@ public:
 
     msg_type get_type() const { return this->type_; }
 
-    int32 get_src() const { return this->src_; }
+    int32_t get_src() const { return this->src_; }
 
-    int32 get_dst() const { return this->dst_; }
+    int32_t get_dst() const { return this->dst_; }
 
     __nocopy__(msg_base);
 
 private:
     ulong term_;
     msg_type type_;
-    int32 src_;
-    int32 dst_;
+    int32_t src_;
+    int32_t dst_;
 };
 
 } // namespace nuraft

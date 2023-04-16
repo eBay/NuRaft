@@ -163,14 +163,14 @@ byte* buffer::data() const { return __data_of_block(this); }
 
 byte* buffer::data_begin() const { return __entire_data_of_block(this); }
 
-int32 buffer::get_int() {
+int32_t buffer::get_int() {
     size_t avail = size() - pos();
-    if (avail < sz_int) { throw std::overflow_error("insufficient buffer available for an int32 value"); }
+    if (avail < sz_int) { throw std::overflow_error("insufficient buffer available for an int32_t value"); }
 
     byte* d = data();
-    int32 val = 0;
+    int32_t val = 0;
     for (size_t i = 0; i < sz_int; ++i) {
-        int32 byte_val = (int32) * (d + i);
+        int32_t byte_val = (int32_t) * (d + i);
         val += (byte_val << (i * 8));
     }
 
@@ -204,12 +204,12 @@ byte buffer::get_byte() {
 
 const byte* buffer::get_bytes(size_t& len) {
     size_t avail = size() - pos();
-    if (avail < sz_int) { throw std::overflow_error("insufficient buffer available for a bytes length (int32)"); }
+    if (avail < sz_int) { throw std::overflow_error("insufficient buffer available for a bytes length (int32_t)"); }
 
     byte* d = data();
-    int32 val = 0;
+    int32_t val = 0;
     for (size_t i = 0; i < sz_int; ++i) {
-        int32 byte_val = (int32) * (d + i);
+        int32_t byte_val = (int32_t) * (d + i);
         val += (byte_val << (i * 8));
     }
 
@@ -256,8 +256,8 @@ void buffer::put(byte b) {
 void buffer::put(const char* ba, size_t len) { put((const byte*)ba, len); }
 
 void buffer::put(const byte* ba, size_t len) {
-    // put length as int32 first
-    if (size() - pos() < sz_int) { throw std::overflow_error("insufficient buffer to store int32 length"); }
+    // put length as int32_t first
+    if (size() - pos() < sz_int) { throw std::overflow_error("insufficient buffer to store int32_t length"); }
 
     byte* d = data();
     for (size_t i = 0; i < sz_int; ++i) {
@@ -270,8 +270,8 @@ void buffer::put(const byte* ba, size_t len) {
     put_raw(ba, len);
 }
 
-void buffer::put(int32 val) {
-    if (size() - pos() < sz_int) { throw std::overflow_error("insufficient buffer to store int32"); }
+void buffer::put(int32_t val) {
+    if (size() - pos() < sz_int) { throw std::overflow_error("insufficient buffer to store int32_t"); }
 
     byte* d = data();
     for (size_t i = 0; i < sz_int; ++i) {

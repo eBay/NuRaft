@@ -64,7 +64,7 @@ public:
 
     std::shared_ptr< log_store > load_log_store() { return cur_log_store_; }
 
-    int32 server_id() { return my_id_; }
+    int32_t server_id() override { return my_id_; }
 
     void system_exit(const int exit_code) {}
 

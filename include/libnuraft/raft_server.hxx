@@ -107,44 +107,44 @@ public:
          * If pre-vote rejection count is greater than this limit,
          * Raft will re-establish the network connection;
          */
-        std::atomic< int32 > pre_vote_rejection_limit_{20};
+        std::atomic< int32_t > pre_vote_rejection_limit_{20};
 
         /**
          * Max number of warnings before suppressing it.
          */
-        std::atomic< int32 > warning_limit_{20};
+        std::atomic< int32_t > warning_limit_{20};
 
         /**
          * If a node is not responding more than this limit,
          * we treat that node as dead.
          */
-        std::atomic< int32 > response_limit_{20};
+        std::atomic< int32_t > response_limit_{20};
 
         /**
          * Default value of leadership expiration
          * (multiplied by heartbeat interval).
          */
-        std::atomic< int32 > leadership_limit_{20};
+        std::atomic< int32_t > leadership_limit_{20};
 
         /**
          * If connection is silent longer than this limit
          * (multiplied by heartbeat interval), we re-establish
          * the connection.
          */
-        std::atomic< int32 > reconnect_limit_{50};
+        std::atomic< int32_t > reconnect_limit_{50};
 
         /**
          * If removed node is not responding more than this limit,
          * just force remove it from server list.
          */
-        std::atomic< int32 > leave_limit_{5};
+        std::atomic< int32_t > leave_limit_{5};
 
         /**
          * For 2-node cluster, if the other peer is not responding for
          * pre-vote more than this limit, adjust quorum size.
          * Active only when `auto_adjust_quorum_for_small_cluster_` is enabled.
          */
-        std::atomic< int32 > vote_limit_{5};
+        std::atomic< int32_t > vote_limit_{5};
     };
 
     explicit raft_server(context* ctx);
@@ -363,7 +363,7 @@ public:
      *
      * @return Server ID.
      */
-    int32 get_id() const { return id_; }
+    int32_t get_id() const { return id_; }
 
     /**
      * Get the current term of this server.
@@ -446,7 +446,7 @@ public:
      * @return -1 if given server ID does not exist.
      *          0 if data center ID was not assigned.
      */
-    int32 get_dc_id(int32 srv_id) const;
+    int32_t get_dc_id(int32_t srv_id) const;
 
     /**
      * Get auxiliary context stored in the server config.
@@ -454,7 +454,7 @@ public:
      * @param srv_id Server ID.
      * @return Auxiliary context.
      */
-    std::string get_aux(int32 srv_id) const;
+    std::string get_aux(int32_t srv_id) const;
 
     /**
      * Get the ID of current leader.
@@ -462,7 +462,7 @@ public:
      * @return Leader ID
      *         -1 if there is no live leader.
      */
-    int32 get_leader() const {
+    int32_t get_leader() const {
         // We should handle the case when `role_` is already
         // updated, but `leader_` value is stale.
         if (leader_ == id_ && role_ != srv_role::leader) return -1;
@@ -495,7 +495,7 @@ public:
      * @param srv_id Server ID.
      * @return Server configuration.
      */
-    std::shared_ptr< srv_config > get_srv_config(int32 srv_id) const;
+    std::shared_ptr< srv_config > get_srv_config(int32_t srv_id) const;
 
     /**
      * Get the configuration of all servers.
@@ -513,7 +513,7 @@ public:
         /**
          * Peer ID.
          */
-        int32 id_;
+        int32_t id_;
 
         /**
          * The last log index that the peer has, from this server's point of view.
@@ -533,7 +533,7 @@ public:
      * @param srv_id Server ID.
      * @return Peer info.
      */
-    peer_info get_peer_info(int32 srv_id) const;
+    peer_info get_peer_info(int32_t srv_id) const;
 
     /**
      * Get the info of all peers. Only leader will return peer info.
@@ -716,7 +716,7 @@ public:
     ulong get_last_snapshot_idx() const;
 
 protected:
-    typedef std::unordered_map< int32, std::shared_ptr< peer > >::const_iterator peer_itor;
+    typedef std::unordered_map< int32_t, std::shared_ptr< peer > >::const_iterator peer_itor;
 
     struct commit_ret_elem;
 
@@ -729,19 +729,19 @@ protected:
         }
         ulong term_;
         std::atomic< bool > done_;
-        std::atomic< int32 > live_;
-        std::atomic< int32 > dead_;
-        std::atomic< int32 > abandoned_;
+        std::atomic< int32_t > live_;
+        std::atomic< int32_t > dead_;
+        std::atomic< int32_t > abandoned_;
 
         /**
          * Number of pre-vote rejections by quorum.
          */
-        std::atomic< int32 > quorum_reject_count_;
+        std::atomic< int32_t > quorum_reject_count_;
 
         /**
          * Number of pre-vote failures due to not-responding peers.
          */
-        std::atomic< int32 > failure_count_;
+        std::atomic< int32_t > failure_count_;
     };
 
     /**
@@ -760,7 +760,7 @@ protected:
 
     void apply_and_log_current_params();
     void cancel_schedulers();
-    void schedule_task(std::shared_ptr< delayed_task >& task, int32 milliseconds);
+    void schedule_task(std::shared_ptr< delayed_task >& task, int32_t milliseconds);
     void cancel_task(std::shared_ptr< delayed_task >& task);
     bool check_leadership_validity();
     void check_leadership_transfer();
@@ -768,10 +768,10 @@ protected:
     void cancel_global_requests();
 
     bool is_regular_member(const std::shared_ptr< peer >& p);
-    int32 get_num_voting_members();
-    int32 get_quorum_for_election();
-    int32 get_quorum_for_commit();
-    int32 get_leadership_expiry();
+    uint32_t get_num_voting_members();
+    int32_t get_quorum_for_election();
+    uint32_t get_quorum_for_commit();
+    int32_t get_leadership_expiry();
     size_t get_not_responding_peers();
     size_t get_num_stale_peers();
 
@@ -844,12 +844,12 @@ protected:
     void check_srv_to_leave_timeout();
     void enable_hb_for_peer(peer& p);
     void stop_election_timer();
-    void handle_hb_timeout(int32 srv_id);
+    void handle_hb_timeout(int32_t srv_id);
     void reset_peer_info();
     void handle_election_timeout();
     void sync_log_to_new_srv(ulong start_idx);
     void invite_srv_to_join_cluster();
-    void rm_srv_from_cluster(int32 srv_id);
+    void rm_srv_from_cluster(int32_t srv_id);
     int get_snapshot_sync_block_size() const;
     void on_snapshot_completed(std::shared_ptr< snapshot >& s, bool result, std::shared_ptr< std::exception >& err);
     void on_retryable_req_err(std::shared_ptr< peer >& p, std::shared_ptr< req_msg >& req);
@@ -931,23 +931,23 @@ protected:
      * Current leader ID.
      * If leader currently does not exist, it will be -1.
      */
-    std::atomic< int32 > leader_;
+    std::atomic< int32_t > leader_;
 
     /**
      * (Read-only)
      * ID of this server.
      */
-    int32 id_;
+    int32_t id_;
 
     /**
      * Current priority of this server, protected by `lock_`.
      */
-    int32 my_priority_;
+    int32_t my_priority_;
 
     /**
      * Current target priority for vote, protected by `lock_`.
      */
-    int32 target_priority_;
+    int32_t target_priority_;
 
     /**
      * Timer that will be reset on `target_priority_` change.
@@ -957,12 +957,12 @@ protected:
     /**
      * Number of servers responded my vote request, protected by `lock_`.
      */
-    int32 votes_responded_;
+    uint32_t votes_responded_;
 
     /**
      * Number of servers voted for me, protected by `lock_`.
      */
-    int32 votes_granted_;
+    int32_t votes_granted_;
 
     /**
      * Last pre-committed index.
@@ -1087,7 +1087,7 @@ protected:
      * Server ID indicates the candidate for the next leader,
      * as a part of leadership takeover task.
      */
-    std::atomic< int32 > next_leader_candidate_;
+    std::atomic< int32_t > next_leader_candidate_;
 
     /**
      * Timer that will start at pausing write.
@@ -1112,7 +1112,7 @@ protected:
      * Will be triggered once this server is removed from the cluster.
      * Protected by `lock_`.
      */
-    int32 steps_to_down_;
+    int32_t steps_to_down_;
 
     /**
      * `true` if this server is creating a snapshot.
@@ -1150,18 +1150,18 @@ protected:
      * Map of {Server ID, `peer` instance},
      * protected by `lock_`.
      */
-    std::unordered_map< int32, std::shared_ptr< peer > > peers_;
+    std::unordered_map< int32_t, std::shared_ptr< peer > > peers_;
 
     /**
      * Map of {server ID, connection to corresponding server},
      * protected by `lock_`.
      */
-    std::unordered_map< int32, std::shared_ptr< rpc_client > > rpc_clients_;
+    std::unordered_map< int32_t, std::shared_ptr< rpc_client > > rpc_clients_;
 
     /**
      * Map of {server ID, auto-forwarding components}.
      */
-    std::unordered_map< int32, std::shared_ptr< auto_fwd_pkg > > auto_fwd_pkgs_;
+    std::unordered_map< int32_t, std::shared_ptr< auto_fwd_pkg > > auto_fwd_pkgs_;
 
     /**
      * Definition of request-response pairs.
@@ -1239,7 +1239,7 @@ protected:
      * (Read-only)
      * Random generator for timeout.
      */
-    std::function< int32() > rand_timeout_;
+    std::function< int32_t() > rand_timeout_;
 
     /**
      * Previous config for debugging purpose, protected by `config_lock_`.

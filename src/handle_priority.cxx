@@ -113,8 +113,8 @@ void raft_server::broadcast_priority_change(const int srv_id, const int new_prio
         // ID + priority
         std::shared_ptr< buffer > buf = buffer::alloc(sz_int * 2);
         buf->pos(0);
-        buf->put((int32)srv_id);
-        buf->put((int32)new_priority);
+        buf->put(srv_id);
+        buf->put(new_priority);
         buf->pos(0);
         std::shared_ptr< log_entry > le = std::make_shared< log_entry >(state_->get_term(), buf);
 
@@ -152,8 +152,8 @@ std::shared_ptr< resp_msg > raft_server::handle_priority_change_req(req_msg& req
         return resp;
     }
 
-    int32 t_id = buf.get_int();
-    int32 t_priority = buf.get_int();
+    auto t_id = buf.get_int();
+    auto t_priority = buf.get_int();
 
     if (t_id == id_) { my_priority_ = t_priority; }
 
@@ -181,7 +181,7 @@ void raft_server::decay_target_priority() {
     int gap = std::max((int)10, target_priority_ / 5);
 
     // Should be bigger than 0.
-    int32 prev_priority = target_priority_;
+    auto prev_priority = target_priority_;
     target_priority_ = std::max(1, target_priority_ - gap);
     p_in("[PRIORITY] decay, target %d -> %d, mine %d", prev_priority, target_priority_, my_priority_);
 
@@ -192,11 +192,11 @@ void raft_server::decay_target_priority() {
 
 void raft_server::update_target_priority() {
     // Get max priority among all peers, including myself.
-    int32 max_priority = my_priority_;
+    auto max_priority = my_priority_;
     for (auto& entry : peers_) {
         peer* peer_elem = entry.second.get();
         const srv_config& s_conf = peer_elem->get_config();
-        int32 cur_priority = s_conf.get_priority();
+        auto cur_priority = s_conf.get_priority();
         max_priority = std::max(max_priority, cur_priority);
     }
     if (max_priority > 0) {

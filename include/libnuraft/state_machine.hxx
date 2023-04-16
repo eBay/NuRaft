@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _STATE_MACHINE_HXX_
-#define _STATE_MACHINE_HXX_
+#pragma once
 
 #include "async.hxx"
 #include "basic_types.hxx"
@@ -65,7 +64,9 @@ public:
      * Extended version of `commit`, for users want to keep
      * the data without any extra memory copy.
      */
-    virtual std::shared_ptr< buffer > commit_ext(const ext_op_params& params) { return commit(params.log_idx, *params.data); }
+    virtual std::shared_ptr< buffer > commit_ext(const ext_op_params& params) {
+        return commit(params.log_idx, *params.data);
+    }
 
     /**
      * (Optional)
@@ -135,7 +136,7 @@ public:
      *         `negative value` indicates no log should be sent since this
      *         follower is busy handling pending logs.
      */
-    virtual int64 get_next_batch_size_hint_in_bytes() { return 0; }
+    virtual int64_t get_next_batch_size_hint_in_bytes() { return 0; }
 
     /**
      * (Deprecated)
@@ -223,8 +224,8 @@ public:
      * @param[out] is_last_obj Set `true` if this is the last object.
      * @return Negative number if failed.
      */
-    virtual int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
-                                     bool& is_last_obj) {
+    virtual int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id,
+                                     std::shared_ptr< buffer >& data_out, bool& is_last_obj) {
         data_out = buffer::alloc(4); // A dummy buffer.
         is_last_obj = true;
         return 0;
@@ -333,5 +334,3 @@ public:
 };
 
 } // namespace nuraft
-
-#endif //_STATE_MACHINE_HXX_

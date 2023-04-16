@@ -50,13 +50,14 @@ public:
 
     std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(ulong start, ulong end);
 
-    std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries_ext(ulong start, ulong end, int64 batch_size_hint_in_bytes = 0);
+    std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >
+    log_entries_ext(ulong start, ulong end, int64_t batch_size_hint_in_bytes = 0);
 
     std::shared_ptr< log_entry > entry_at(ulong index);
 
     ulong term_at(ulong index);
 
-    std::shared_ptr< buffer > pack(ulong index, int32 cnt);
+    std::shared_ptr< buffer > pack(ulong index, int32_t cnt) override;
 
     void apply_pack(ulong index, buffer& pack);
 

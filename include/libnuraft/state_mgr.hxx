@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _STATE_MGR_HXX_
-#define _STATE_MGR_HXX_
+#pragma once
 
 #include "basic_types.hxx"
 #include "pp_util.hxx"
@@ -84,7 +83,7 @@ public:
      *
      * @return Server ID.
      */
-    virtual int32 server_id() = 0;
+    virtual int32_t server_id() = 0;
 
     /**
      * System exit handler. This function will be invoked on
@@ -96,5 +95,3 @@ public:
 };
 
 } // namespace nuraft
-
-#endif //_STATE_MGR_HXX_

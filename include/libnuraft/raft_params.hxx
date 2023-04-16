@@ -66,9 +66,9 @@ struct raft_params {
     };
 
     raft_params() :
-            election_timeout_upper_bound_(500),
-            election_timeout_lower_bound_(250),
-            heart_beat_interval_(125),
+            election_timeout_upper_bound_(500u),
+            election_timeout_lower_bound_(250u),
+            heart_beat_interval_(125u),
             rpc_failure_backoff_(50),
             log_sync_batch_size_(1000),
             log_sync_stop_gap_(99999),
@@ -80,8 +80,8 @@ struct raft_params {
             client_req_timeout_(3000),
             fresh_log_gap_(200),
             stale_log_gap_(2000),
-            custom_commit_quorum_size_(0),
-            custom_election_quorum_size_(0),
+            custom_commit_quorum_size_(0u),
+            custom_election_quorum_size_(0u),
             leadership_expiry_(0),
             leadership_transfer_min_wait_time_(0),
             allow_temporary_zero_priority_leader_(true),
@@ -104,7 +104,7 @@ struct raft_params {
      * @param timeout
      * @return self
      */
-    raft_params& with_election_timeout_upper(int32 timeout) {
+    raft_params& with_election_timeout_upper(uint32_t timeout) {
         election_timeout_upper_bound_ = timeout;
         return *this;
     }
@@ -115,7 +115,7 @@ struct raft_params {
      * @param timeout
      * @return self
      */
-    raft_params& with_election_timeout_lower(int32 timeout) {
+    raft_params& with_election_timeout_lower(uint32_t timeout) {
         election_timeout_lower_bound_ = timeout;
         return *this;
     }
@@ -126,7 +126,7 @@ struct raft_params {
      * @param hb_interval
      * @return self
      */
-    raft_params& with_hb_interval(int32 hb_interval) {
+    raft_params& with_hb_interval(uint32_t hb_interval) {
         heart_beat_interval_ = hb_interval;
         return *this;
     }
@@ -137,7 +137,7 @@ struct raft_params {
      * @param backoff
      * @return self
      */
-    raft_params& with_rpc_failure_backoff(int32 backoff) {
+    raft_params& with_rpc_failure_backoff(int32_t backoff) {
         rpc_failure_backoff_ = backoff;
         return *this;
     }
@@ -148,7 +148,7 @@ struct raft_params {
      * @param size
      * @return self
      */
-    raft_params& with_max_append_size(int32 size) {
+    raft_params& with_max_append_size(int32_t size) {
         max_append_size_ = size;
         return *this;
     }
@@ -161,7 +161,7 @@ struct raft_params {
      * @param batch_size
      * @return self
      */
-    raft_params& with_log_sync_batch_size(int32 batch_size) {
+    raft_params& with_log_sync_batch_size(int32_t batch_size) {
         log_sync_batch_size_ = batch_size;
         return *this;
     }
@@ -177,7 +177,7 @@ struct raft_params {
      * @param gap
      * @return self
      */
-    raft_params& with_log_sync_stopping_gap(int32 gap) {
+    raft_params& with_log_sync_stopping_gap(int32_t gap) {
         log_sync_stop_gap_ = gap;
         return *this;
     }
@@ -189,7 +189,7 @@ struct raft_params {
      *     Log distance to compact between two snapshots.
      * @return self
      */
-    raft_params& with_snapshot_enabled(int32 commit_distance) {
+    raft_params& with_snapshot_enabled(int32_t commit_distance) {
         snapshot_distance_ = commit_distance;
         return *this;
     }
@@ -212,7 +212,7 @@ struct raft_params {
      * @param size
      * @return self
      */
-    raft_params& with_snapshot_sync_block_size(int32 size) {
+    raft_params& with_snapshot_sync_block_size(int32_t size) {
         snapshot_block_size_ = size;
         return *this;
     }
@@ -259,7 +259,7 @@ struct raft_params {
      * @param new_gap New threshold.
      * @return self
      */
-    raft_params& with_fresh_log_gap(int32 new_gap) {
+    raft_params& with_fresh_log_gap(int32_t new_gap) {
         fresh_log_gap_ = new_gap;
         return *this;
     }
@@ -272,7 +272,7 @@ struct raft_params {
      * @param new_gap New threshold.
      * @return self
      */
-    raft_params& with_stale_log_gap(int32 new_gap) {
+    raft_params& with_stale_log_gap(int32_t new_gap) {
         stale_log_gap_ = new_gap;
         return *this;
     }
@@ -292,7 +292,7 @@ struct raft_params {
      * @param new_size New custom commit quorum size.
      * @return self
      */
-    raft_params& with_custom_commit_quorum_size(int32 new_size) {
+    raft_params& with_custom_commit_quorum_size(uint32_t new_size) {
         custom_commit_quorum_size_ = new_size;
         return *this;
     }
@@ -312,7 +312,7 @@ struct raft_params {
      * @param new_size New custom election quorum size.
      * @return self
      */
-    raft_params& with_custom_election_quorum_size(int32 new_size) {
+    raft_params& with_custom_election_quorum_size(uint32_t new_size) {
         custom_election_quorum_size_ = new_size;
         return *this;
     }
@@ -323,7 +323,7 @@ struct raft_params {
      * @param expiry_ms New leadership expiration in millisecond.
      * @return self
      */
-    raft_params& with_leadership_expiry(int32 expiry_ms) {
+    raft_params& with_leadership_expiry(int32_t expiry_ms) {
         leadership_expiry_ = expiry_ms;
         return *this;
     }
@@ -334,7 +334,7 @@ struct raft_params {
      * @param timeout_ms New timeout in millisecond.
      * @return self
      */
-    raft_params& with_auto_forwarding_req_timeout(int32 timeout_ms) {
+    raft_params& with_auto_forwarding_req_timeout(int32_t timeout_ms) {
         auto_forwarding_req_timeout_ = timeout_ms;
         return *this;
     }
@@ -346,36 +346,36 @@ struct raft_params {
      *
      * @return Heartbeat interval in millisecond.
      */
-    int max_hb_interval() const {
-        return std::max(heart_beat_interval_, election_timeout_lower_bound_ - (heart_beat_interval_ / 2));
+    auto max_hb_interval() const {
+        return std::max(heart_beat_interval_, election_timeout_lower_bound_ - (heart_beat_interval_ / 2u));
     }
 
 public:
     /**
      * Upper bound of election timer, in millisecond.
      */
-    int32 election_timeout_upper_bound_;
+    uint32_t election_timeout_upper_bound_;
 
     /**
      * Lower bound of election timer, in millisecond.
      */
-    int32 election_timeout_lower_bound_;
+    uint32_t election_timeout_lower_bound_;
 
     /**
      * Heartbeat interval, in millisecond.
      */
-    int32 heart_beat_interval_;
+    uint32_t heart_beat_interval_;
 
     /**
      * Backoff time when RPC failure happens, in millisecond.
      */
-    int32 rpc_failure_backoff_;
+    int32_t rpc_failure_backoff_;
 
     /**
      * Max number of logs that can be packed in a RPC
      * for catch-up of joining an empty node.
      */
-    int32 log_sync_batch_size_;
+    int32_t log_sync_batch_size_;
 
     /**
      * Log gap (the number of logs) to stop catch-up of
@@ -386,17 +386,17 @@ public:
      * If zero, the new node will be added to the peer list
      * immediately.
      */
-    int32 log_sync_stop_gap_;
+    int32_t log_sync_stop_gap_;
 
     /**
      * Log gap (the number of logs) to create a Raft snapshot.
      */
-    int32 snapshot_distance_;
+    int32_t snapshot_distance_;
 
     /**
      * (Deprecated).
      */
-    int32 snapshot_block_size_;
+    int32_t snapshot_block_size_;
 
     /**
      * Enable randomized snapshot creation which will avoid
@@ -411,43 +411,43 @@ public:
      * Max number of logs that can be packed in a RPC
      * for append entry request.
      */
-    int32 max_append_size_;
+    int32_t max_append_size_;
 
     /**
      * Minimum number of logs that will be preserved
      * (i.e., protected from log compaction) since the
      * last Raft snapshot.
      */
-    int32 reserved_log_items_;
+    int32_t reserved_log_items_;
 
     /**
      * Client request timeout in millisecond.
      */
-    int32 client_req_timeout_;
+    int32_t client_req_timeout_;
 
     /**
      * Log gap (compared to the leader's latest log)
      * for treating this node as fresh.
      */
-    int32 fresh_log_gap_;
+    int32_t fresh_log_gap_;
 
     /**
      * Log gap (compared to the leader's latest log)
      * for treating this node as stale.
      */
-    int32 stale_log_gap_;
+    int32_t stale_log_gap_;
 
     /**
      * Custom quorum size for commit.
      * If set to zero, the default quorum size will be used.
      */
-    int32 custom_commit_quorum_size_;
+    uint32_t custom_commit_quorum_size_;
 
     /**
      * Custom quorum size for leader election.
      * If set to zero, the default quorum size will be used.
      */
-    int32 custom_election_quorum_size_;
+    uint32_t custom_election_quorum_size_;
 
     /**
      * Expiration time of leadership in millisecond.
@@ -458,7 +458,7 @@ public:
      * If negative number, leadership will never be expired
      * (the same as the original Raft logic).
      */
-    int32 leadership_expiry_;
+    int32_t leadership_expiry_;
 
     /**
      * Minimum wait time required for transferring the leadership
@@ -473,7 +473,7 @@ public:
      * then the current leader will transfer its leadership to the peer
      * with the highest priority.
      */
-    int32 leadership_transfer_min_wait_time_;
+    int32_t leadership_transfer_min_wait_time_;
 
     /**
      * If true, zero-priority member can initiate vote
@@ -495,7 +495,7 @@ public:
     /**
      * The maximum number of connections for auto forwarding (if enabled).
      */
-    int32 auto_forwarding_max_connections_;
+    int32_t auto_forwarding_max_connections_;
 
     /**
      * If true, creating replication (append_entries) requests will be
@@ -535,7 +535,7 @@ public:
      * must be larger than client_req_timeout_.
      * If 0, there will be no timeout for auto forwarding.
      */
-    int32 auto_forwarding_req_timeout_;
+    int32_t auto_forwarding_req_timeout_;
 
     /**
      * If non-zero, any server whose state machine's commit index is
@@ -547,7 +547,7 @@ public:
      * machine is still catching up with the committed logs and does
      * not contain the latest data yet) being a leader.
      */
-    int32 grace_period_of_lagging_state_machine_;
+    int32_t grace_period_of_lagging_state_machine_;
 
     /**
      * (Experimental)

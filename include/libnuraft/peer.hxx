@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _PEER_HXX_
-#define _PEER_HXX_
+#pragma once
 
 #include "context.hxx"
 #include "delayed_task_scheduler.hxx"
@@ -36,7 +35,7 @@ namespace nuraft {
 class snapshot;
 class peer {
 public:
-    peer(std::shared_ptr< srv_config >& config, const context& ctx, timer_task< int32 >::executor& hb_exec,
+    peer(std::shared_ptr< srv_config >& config, const context& ctx, timer_task< int32_t >::executor& hb_exec,
          std::shared_ptr< logger >& logger) :
             config_(config),
             scheduler_(ctx.scheduler_),
@@ -52,7 +51,7 @@ public:
             busy_flag_(false),
             pending_commit_flag_(false),
             hb_enabled_(false),
-            hb_task_(std::make_shared< timer_task< int32 >, timer_task< int32 >::executor&, int32 >(
+            hb_task_(std::make_shared< timer_task< int32_t >, timer_task< int32_t >::executor&, int32_t >(
                 hb_exec, config->get_id(), timer_task_type::heartbeat_timer)),
             snp_sync_ctx_(nullptr),
             lock_(),
@@ -80,7 +79,7 @@ public:
     __nocopy__(peer);
 
 public:
-    int32 get_id() const { return config_->get_id(); }
+    auto get_id() const { return config_->get_id(); }
 
     const std::string& get_endpoint() const { return config_->get_endpoint(); }
 
@@ -94,7 +93,7 @@ public:
 
     std::mutex& get_lock() { return lock_; }
 
-    int32 get_current_hb_interval() const { return current_hb_interval_; }
+    auto get_current_hb_interval() const { return current_hb_interval_.load(); }
 
     bool make_busy() {
         bool f = false;
@@ -122,9 +121,9 @@ public:
 
     void set_last_accepted_log_idx(uint64_t to) { last_accepted_log_idx_ = to; }
 
-    int64 get_next_batch_size_hint_in_bytes() const { return next_batch_size_hint_in_bytes_; }
+    auto get_next_batch_size_hint_in_bytes() const { return next_batch_size_hint_in_bytes_.load(); }
 
-    void set_next_batch_size_hint_in_bytes(int64 batch_size) { next_batch_size_hint_in_bytes_ = batch_size; }
+    void set_next_batch_size_hint_in_bytes(int64_t batch_size) { next_batch_size_hint_in_bytes_ = batch_size; }
 
     ulong get_matched_idx() const { return matched_idx_; }
 
@@ -155,7 +154,7 @@ public:
 
     void resume_hb_speed() { current_hb_interval_ = hb_interval_; }
 
-    void set_hb_interval(int32 new_interval) { hb_interval_ = new_interval; }
+    void set_hb_interval(uint32_t new_interval) { hb_interval_ = new_interval; }
 
     void send_req(std::shared_ptr< peer > myself, std::shared_ptr< req_msg >& req, rpc_handler& handler);
 
@@ -171,15 +170,15 @@ public:
 
     // Time of the last network activity from peer (including failure).
     void reset_active_timer() { last_active_timer_.reset(); }
-    uint64_t get_active_timer_us() { return last_active_timer_.get_us(); }
+    auto get_active_timer_us() { return last_active_timer_.get_us(); }
 
     void reset_long_pause_warnings() { long_pause_warnings_ = 0; }
     void inc_long_pause_warnings() { long_pause_warnings_.fetch_add(1); }
-    int32 get_long_puase_warnings() { return long_pause_warnings_; }
+    auto get_long_puase_warnings() { return long_pause_warnings_.load(); }
 
     void reset_recovery_cnt() { network_recoveries_ = 0; }
     void inc_recovery_cnt() { network_recoveries_.fetch_add(1); }
-    int32 get_recovery_cnt() const { return network_recoveries_; }
+    auto get_recovery_cnt() const { return network_recoveries_.load(); }
 
     void reset_manual_free() { manual_free_ = false; }
     void set_manual_free() { manual_free_ = true; }
@@ -189,17 +188,17 @@ public:
 
     void reset_rpc_errs() { rpc_errs_ = 0; }
     void inc_rpc_errs() { rpc_errs_.fetch_add(1); }
-    int32 get_rpc_errs() { return rpc_errs_; }
+    auto get_rpc_errs() { return rpc_errs_.load(); }
 
     void set_last_sent_idx(ulong to) { last_sent_idx_ = to; }
     ulong get_last_sent_idx() const { return last_sent_idx_.load(); }
 
     void reset_cnt_not_applied() { cnt_not_applied_ = 0; }
-    int32 inc_cnt_not_applied() {
+    auto inc_cnt_not_applied() {
         cnt_not_applied_++;
-        return cnt_not_applied_;
+        return cnt_not_applied_.load();
     }
-    int32 get_cnt_not_applied() const { return cnt_not_applied_; }
+    auto get_cnt_not_applied() const { return cnt_not_applied_.load(); }
 
     void step_down() { stepping_down_ = true; }
     bool is_stepping_down() const { return stepping_down_.load(); }
@@ -208,7 +207,7 @@ public:
     bool is_leave_flag_set() const { return leave_requested_.load(); }
 
     void inc_hb_cnt_since_leave() { hb_cnt_since_leave_.fetch_add(1); }
-    int32 get_hb_cnt_since_leave() const { return hb_cnt_since_leave_; }
+    auto get_hb_cnt_since_leave() const { return hb_cnt_since_leave_.load(); }
 
     void schedule_reconnection() {
         reconn_timer_.set_duration_sec(3);
@@ -269,22 +268,22 @@ private:
     /**
      * Current heartbeat interval after adding back-off.
      */
-    std::atomic< int32 > current_hb_interval_;
+    std::atomic< uint32_t > current_hb_interval_;
 
     /**
      * Original heartbeat interval.
      */
-    int32 hb_interval_;
+    uint32_t hb_interval_;
 
     /**
      * RPC backoff.
      */
-    int32 rpc_backoff_;
+    uint32_t rpc_backoff_;
 
     /**
      * Upper limit of heartbeat interval.
      */
-    int32 max_hb_interval_;
+    uint32_t max_hb_interval_;
 
     /**
      * Next log index of this server.
@@ -299,7 +298,7 @@ private:
     /**
      * Hint of the next log batch size in bytes.
      */
-    std::atomic< int64 > next_batch_size_hint_in_bytes_;
+    std::atomic< int64_t > next_batch_size_hint_in_bytes_;
 
     /**
      * The last log index whose term matches up with the leader.
@@ -362,12 +361,12 @@ private:
     /**
      * Counter of long pause warnings.
      */
-    std::atomic< int32 > long_pause_warnings_;
+    std::atomic< int32_t > long_pause_warnings_;
 
     /**
      * Counter of recoveries after long pause.
      */
-    std::atomic< int32 > network_recoveries_;
+    std::atomic< int32_t > network_recoveries_;
 
     /**
      * `true` if user manually clear the `busy_flag_` before
@@ -378,7 +377,7 @@ private:
     /**
      * For tracking RPC error.
      */
-    std::atomic< int32 > rpc_errs_;
+    std::atomic< int32_t > rpc_errs_;
 
     /**
      * Start log index of the last sent append entries request.
@@ -388,7 +387,7 @@ private:
     /**
      * Number of count where start log index is the same as previous.
      */
-    std::atomic< int32 > cnt_not_applied_;
+    std::atomic< int32_t > cnt_not_applied_;
 
     /**
      * `true` if leave request has been sent to this peer.
@@ -398,7 +397,7 @@ private:
     /**
      * Number of HB timeout after leave requested.
      */
-    std::atomic< int32 > hb_cnt_since_leave_;
+    std::atomic< int32_t > hb_cnt_since_leave_;
 
     /**
      * `true` if this peer responded to leave request so that
@@ -451,5 +450,3 @@ private:
 };
 
 } // namespace nuraft
-
-#endif //_PEER_HXX_

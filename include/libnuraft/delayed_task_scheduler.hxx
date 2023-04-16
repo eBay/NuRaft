@@ -30,7 +30,7 @@ class delayed_task_scheduler {
     __interface_body__(delayed_task_scheduler);
 
 public:
-    virtual void schedule(std::shared_ptr< delayed_task >& task, int32 milliseconds) = 0;
+    virtual void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) = 0;
 
     void cancel(std::shared_ptr< delayed_task >& task) {
         cancel_impl(task);

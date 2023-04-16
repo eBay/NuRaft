@@ -30,11 +30,11 @@ using namespace nuraft;
 
 namespace serialization_test {
 
-int32 rnd() {
+int32_t rnd() {
     static uint seed = (uint)std::chrono::system_clock::now().time_since_epoch().count();
     static std::default_random_engine engine(seed);
-    static std::uniform_int_distribution< int32 > distribution(1, 10000);
-    static std::function< int32() > rnd_func = std::bind(distribution, engine);
+    static std::uniform_int_distribution< int32_t > distribution(1, 10000);
+    static std::function< int32_t() > rnd_func = std::bind(distribution, engine);
     return rnd_func();
 }
 
@@ -116,7 +116,8 @@ int snapshot_sync_req_test(bool done) {
     rnd_buf->pos(0);
 
     std::shared_ptr< snapshot > snp = generate_random_snapshot();
-    std::shared_ptr< snapshot_sync_req > sync_req(std::make_shared< snapshot_sync_req >(snp, long_val(rnd()), rnd_buf, done));
+    std::shared_ptr< snapshot_sync_req > sync_req(
+        std::make_shared< snapshot_sync_req >(snp, long_val(rnd()), rnd_buf, done));
     std::shared_ptr< buffer > sync_req_buf(sync_req->serialize());
 
     std::shared_ptr< snapshot_sync_req > sync_req1(snapshot_sync_req::deserialize(*sync_req_buf));
@@ -145,7 +146,8 @@ int snapshot_sync_req_test(bool done) {
 
 int snapshot_sync_req_zero_buffer_test(bool done) {
     std::shared_ptr< snapshot > snp = generate_random_snapshot();
-    std::shared_ptr< snapshot_sync_req > sync_req(std::make_shared< snapshot_sync_req >(snp, long_val(rnd()), buffer::alloc(0), done));
+    std::shared_ptr< snapshot_sync_req > sync_req(
+        std::make_shared< snapshot_sync_req >(snp, long_val(rnd()), buffer::alloc(0), done));
     std::shared_ptr< buffer > sync_req_buf(sync_req->serialize());
 
     std::shared_ptr< snapshot_sync_req > sync_req1(snapshot_sync_req::deserialize(*sync_req_buf));
@@ -169,7 +171,8 @@ int log_entry_test() {
         data->put(static_cast< byte >(rnd() % 255));
     }
 
-    std::shared_ptr< log_entry > entry = std::make_shared< log_entry >(long_val(rnd()), data, static_cast< log_val_type >(1 + rnd() % 5));
+    std::shared_ptr< log_entry > entry =
+        std::make_shared< log_entry >(long_val(rnd()), data, static_cast< log_val_type >(1 + rnd() % 5));
     std::shared_ptr< buffer > buf2 = entry->serialize();
 
     std::shared_ptr< log_entry > entry1 = log_entry::deserialize(*buf2);

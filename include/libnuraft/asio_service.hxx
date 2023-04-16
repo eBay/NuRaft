@@ -47,7 +47,7 @@ public:
     __nocopy__(asio_service);
 
 public:
-    virtual void schedule(std::shared_ptr< delayed_task >& task, int32 milliseconds) __override__;
+    virtual void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) __override__;
 
     virtual std::shared_ptr< rpc_client > create_client(const std::string& endpoint) __override__;
 

@@ -136,7 +136,7 @@ std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > inmem_log_store::
 }
 
 std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >
-inmem_log_store::log_entries_ext(ulong start, ulong end, int64 batch_size_hint_in_bytes) {
+inmem_log_store::log_entries_ext(ulong start, ulong end, int64_t batch_size_hint_in_bytes) {
     std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > ret =
         std::make_shared< std::vector< std::shared_ptr< log_entry > > >();
 
@@ -183,7 +183,7 @@ ulong inmem_log_store::term_at(ulong index) {
     return term;
 }
 
-std::shared_ptr< buffer > inmem_log_store::pack(ulong index, int32 cnt) {
+std::shared_ptr< buffer > inmem_log_store::pack(ulong index, int32_t cnt) {
     std::vector< std::shared_ptr< buffer > > logs;
 
     size_t size_total = 0;
@@ -199,13 +199,13 @@ std::shared_ptr< buffer > inmem_log_store::pack(ulong index, int32 cnt) {
         logs.push_back(buf);
     }
 
-    std::shared_ptr< buffer > buf_out = buffer::alloc(sizeof(int32) + cnt * sizeof(int32) + size_total);
+    std::shared_ptr< buffer > buf_out = buffer::alloc(sizeof(int32_t) + cnt * sizeof(int32_t) + size_total);
     buf_out->pos(0);
-    buf_out->put((int32)cnt);
+    buf_out->put((int32_t)cnt);
 
     for (auto& entry : logs) {
         std::shared_ptr< buffer >& bb = entry;
-        buf_out->put((int32)bb->size());
+        buf_out->put((int32_t)bb->size());
         buf_out->put(*bb);
     }
     return buf_out;
@@ -213,11 +213,11 @@ std::shared_ptr< buffer > inmem_log_store::pack(ulong index, int32 cnt) {
 
 void inmem_log_store::apply_pack(ulong index, buffer& pack) {
     pack.pos(0);
-    int32 num_logs = pack.get_int();
+    auto num_logs = pack.get_int();
 
-    for (int32 ii = 0; ii < num_logs; ++ii) {
+    for (auto ii = 0l; ii < num_logs; ++ii) {
         ulong cur_idx = index + ii;
-        int32 buf_size = pack.get_int();
+        auto buf_size = pack.get_int();
 
         std::shared_ptr< buffer > buf_local = buffer::alloc(buf_size);
         pack.get(buf_local);

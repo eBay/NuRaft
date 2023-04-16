@@ -589,7 +589,6 @@ void raft_server::reconfigure(const std::shared_ptr< cluster_config >& new_confi
     bool invoke_join_cb = (!cur_config->get_server(id_) && new_config->get_server(id_));
 
     // we only allow one server to be added or removed at a time
-    std::vector< int32 > srvs_removed;
     std::vector< std::shared_ptr< srv_config > > srvs_added;
     std::list< std::shared_ptr< srv_config > >& new_srvs(new_config->get_servers());
     for (std::list< std::shared_ptr< srv_config > >::const_iterator it = new_srvs.begin(); it != new_srvs.end(); ++it) {
@@ -609,6 +608,7 @@ void raft_server::reconfigure(const std::shared_ptr< cluster_config >& new_confi
         }
     }
 
+    std::vector< int32_t > srvs_removed;
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
         if (!new_config->get_server(it->first)) { srvs_removed.push_back(it->first); }
     }
@@ -619,11 +619,10 @@ void raft_server::reconfigure(const std::shared_ptr< cluster_config >& new_confi
     for (std::vector< std::shared_ptr< srv_config > >::const_iterator it = srvs_added.begin(); it != srvs_added.end();
          ++it) {
         std::shared_ptr< srv_config > srv_added = *it;
-        timer_task< int32 >::executor exec =
-            (timer_task< int32 >::executor)std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1);
-        std::shared_ptr< peer > p =
-            std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32 >::executor&,
-                              std::shared_ptr< logger >& >(srv_added, *ctx_, exec, l_);
+        auto exec = static_cast< timer_task< int32_t >::executor >(
+            std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1));
+        auto p = std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32_t >::executor&,
+                                   std::shared_ptr< logger >& >(srv_added, *ctx_, exec, l_);
         p->set_next_log_idx(log_store_->next_slot());
 
         str_buf << "add peer " << srv_added->get_id() << ", " << srv_added->get_endpoint() << ", "
@@ -644,8 +643,8 @@ void raft_server::reconfigure(const std::shared_ptr< cluster_config >& new_confi
     }
 
     // ===== Removing server =====
-    for (std::vector< int32 >::const_iterator it = srvs_removed.begin(); it != srvs_removed.end(); ++it) {
-        int32 srv_removed = *it;
+    for (auto it = srvs_removed.begin(); it != srvs_removed.end(); ++it) {
+        auto const srv_removed = *it;
         if (srv_removed == id_ && !catching_up_) {
             p_in("this server (%d) has been removed from the cluster, "
                  "will step down itself soon. config log idx %" PRIu64,

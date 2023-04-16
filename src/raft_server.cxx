@@ -123,7 +123,7 @@ raft_server::raft_server(context* ctx, raft_server::init_options const& opt) :
             std::swap(*first++, *last);
 
         std::default_random_engine engine(seed);
-        std::uniform_int_distribution< int32 > distribution(
+        std::uniform_int_distribution< int32_t > distribution(
             params->snapshot_distance_ / 2, std::max(params->snapshot_distance_ / 2, params->snapshot_distance_ - 1));
 
         first_snapshot_distance_ = distribution(engine);
@@ -195,11 +195,11 @@ raft_server::raft_server(context* ctx, raft_server::init_options const& opt) :
     for (auto it = c_conf->get_servers().begin(); it != srvs_end; ++it) {
         std::shared_ptr< srv_config > cur_srv = *it;
         if (cur_srv->get_id() != id_) {
-            timer_task< int32 >::executor exec =
-                (timer_task< int32 >::executor)std::bind(&raft_server::handle_hb_timeout, this, std::placeholders::_1);
+            auto exec = (timer_task< int32_t >::executor)std::bind(&raft_server::handle_hb_timeout, this,
+                                                                   std::placeholders::_1);
             peers_.insert(std::make_pair(
                 cur_srv->get_id(),
-                std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32 >::executor&,
+                std::make_shared< peer, std::shared_ptr< srv_config >&, context&, timer_task< int32_t >::executor&,
                                   std::shared_ptr< logger >& >(cur_srv, *ctx_, exec, l_)));
         } else {
             // Myself.
@@ -297,8 +297,8 @@ void raft_server::update_rand_timeout() {
     std::shared_ptr< raft_params > params = ctx_->get_params();
     uint seed = (uint)(std::chrono::system_clock::now().time_since_epoch().count() * id_);
     std::default_random_engine engine(seed);
-    std::uniform_int_distribution< int32 > distribution(params->election_timeout_lower_bound_,
-                                                        params->election_timeout_upper_bound_);
+    std::uniform_int_distribution< int32_t > distribution(params->election_timeout_lower_bound_,
+                                                          params->election_timeout_upper_bound_);
     rand_timeout_ = std::bind(distribution, engine);
     p_in("new timeout range: %d -- %d", params->election_timeout_lower_bound_, params->election_timeout_upper_bound_);
 }
@@ -475,8 +475,8 @@ bool raft_server::is_regular_member(const std::shared_ptr< peer >& p) {
 }
 
 // Number of nodes that are able to vote, including leader itself.
-int32 raft_server::get_num_voting_members() {
-    int32 count = 0;
+uint32_t raft_server::get_num_voting_members() {
+    auto count = 0u;
     for (auto& entry : peers_) {
         std::shared_ptr< peer >& p = entry.second;
         auto_lock(p->get_lock());
@@ -490,18 +490,18 @@ int32 raft_server::get_num_voting_members() {
 // NOTE: Below two functions return the size of quorum
 //       EXCLUDING the leader.
 //       e.g.) 7 nodes, quorum 4: return 3.
-int32 raft_server::get_quorum_for_election() {
+int32_t raft_server::get_quorum_for_election() {
     std::shared_ptr< raft_params > params = ctx_->get_params();
-    int32 num_voting_members = get_num_voting_members();
+    auto num_voting_members = get_num_voting_members();
     if (params->custom_election_quorum_size_ <= 0 || params->custom_election_quorum_size_ > num_voting_members) {
         return num_voting_members / 2;
     }
     return params->custom_election_quorum_size_ - 1;
 }
 
-int32 raft_server::get_quorum_for_commit() {
+uint32_t raft_server::get_quorum_for_commit() {
     std::shared_ptr< raft_params > params = ctx_->get_params();
-    int32 num_voting_members = get_num_voting_members();
+    auto num_voting_members = get_num_voting_members();
 
     if (params->exclude_snp_receiver_from_quorum_) {
         // If the option is on, exclude any peer who is
@@ -518,7 +518,7 @@ int32 raft_server::get_quorum_for_commit() {
     return params->custom_commit_quorum_size_ - 1;
 }
 
-int32 raft_server::get_leadership_expiry() {
+int32_t raft_server::get_leadership_expiry() {
     std::shared_ptr< raft_params > params = ctx_->get_params();
     int expiry = params->leadership_expiry_;
     if (expiry == 0) {
@@ -534,7 +534,7 @@ size_t raft_server::get_not_responding_peers() {
     size_t num_not_resp_nodes = 0;
 
     std::shared_ptr< raft_params > params = ctx_->get_params();
-    int expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
+    auto expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
 
     // Check the number of not responding peers.
     for (auto& entry : peers_) {
@@ -542,7 +542,7 @@ size_t raft_server::get_not_responding_peers() {
 
         if (!is_regular_member(p)) continue;
 
-        int32 resp_elapsed_ms = (int32)(p->get_resp_timer_us() / 1000);
+        auto resp_elapsed_ms = p->get_resp_timer_us() / 1000u;
         if (resp_elapsed_ms > expiry) { num_not_resp_nodes++; }
     }
     return num_not_resp_nodes;
@@ -672,7 +672,7 @@ void raft_server::reset_peer_info() {
 void raft_server::handle_peer_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err) {
     recur_lock(lock_);
     if (err) {
-        int32 peer_id = err->req()->get_dst();
+        auto peer_id = err->req()->get_dst();
         std::shared_ptr< peer > pp = nullptr;
         auto entry = peers_.find(peer_id);
         if (entry != peers_.end()) pp = entry->second;
@@ -802,7 +802,7 @@ void raft_server::send_reconnect_request() {
 }
 
 std::shared_ptr< resp_msg > raft_server::handle_reconnect_req(req_msg& req) {
-    int32 srv_id = req.get_src();
+    auto srv_id = req.get_src();
     std::shared_ptr< resp_msg > resp(
         std::make_shared< resp_msg >(state_->get_term(), msg_type::reconnect_response, id_, srv_id));
     if (role_ != srv_role::leader) {
@@ -937,17 +937,17 @@ bool raft_server::check_leadership_validity() {
     if (role_ != leader) return false;
 
     // Check if quorum is not responding.
-    int32 num_voting_members = get_num_voting_members();
+    auto num_voting_members = get_num_voting_members();
 
     int leadership_expiry = get_leadership_expiry();
-    int32 nr_peers = (int32)get_not_responding_peers();
+    auto nr_peers = get_not_responding_peers();
     if (leadership_expiry < 0) {
         // Negative expiry: leadership will never expire.
         nr_peers = 0;
     }
-    int32 min_quorum_size = get_quorum_for_commit() + 1;
+    auto min_quorum_size = get_quorum_for_commit() + 1;
     if ((num_voting_members - nr_peers) < min_quorum_size) {
-        p_er("%d nodes (out of %d, %zu including learners) are not "
+        p_er("%lu nodes (out of %d, %zu including learners) are not "
              "responding longer than %d ms, "
              "at least %d nodes (including leader) should be alive "
              "to proceed commit",
@@ -984,13 +984,13 @@ void raft_server::check_leadership_transfer() {
 
     recur_lock(lock_);
 
-    int32 successor_id = -1;
-    int32 max_priority = my_priority_;
+    auto successor_id = -1;
+    auto max_priority = my_priority_;
     ulong cur_commit_idx = quick_commit_index_;
     for (auto& entry : peers_) {
         std::shared_ptr< peer > peer_elem = entry.second;
         const srv_config& s_conf = peer_elem->get_config();
-        int32 cur_priority = s_conf.get_priority();
+        auto cur_priority = s_conf.get_priority();
         if (cur_priority > max_priority) {
             max_priority = cur_priority;
             successor_id = s_conf.get_id();
@@ -1060,7 +1060,7 @@ void raft_server::yield_leadership(bool immediate_yield, int successor_id) {
         // If successor is given, find that one.
         auto entry = peers_.find(successor_id);
         if (entry != peers_.end()) {
-            int32 srv_id = entry->first;
+            auto srv_id = entry->first;
             std::shared_ptr< peer >& pp = entry->second;
             max_priority = pp->get_config().get_priority();
             candidate_id = srv_id;
@@ -1073,7 +1073,7 @@ void raft_server::yield_leadership(bool immediate_yield, int successor_id) {
     // find the highest priority node whose response time is not expired.
     if (candidate_id == -1) {
         for (auto& entry : peers_) {
-            int32 srv_id = entry.first;
+            auto srv_id = entry.first;
             std::shared_ptr< peer >& pp = entry.second;
             uint64_t pp_last_resp_ms = pp->get_resp_timer_us() / 1000;
 
@@ -1320,7 +1320,7 @@ void raft_server::handle_ext_resp_err(rpc_exception& err) {
 
     std::shared_ptr< peer > p;
     msg_type t_msg = req->get_type();
-    int32 peer_id = req->get_dst();
+    auto peer_id = req->get_dst();
     if (t_msg == msg_type::leave_cluster_request) {
         peer_itor pit = peers_.find(peer_id);
         if (pit != peers_.end()) { p = pit->second; }
@@ -1398,7 +1398,7 @@ std::string raft_server::get_user_ctx() const {
     return c_conf->get_user_ctx();
 }
 
-int32 raft_server::get_dc_id(int32 srv_id) const {
+int32_t raft_server::get_dc_id(int32_t srv_id) const {
     std::shared_ptr< cluster_config > c_conf = get_config();
     std::shared_ptr< srv_config > s_conf = c_conf->get_server(srv_id);
     if (!s_conf) return -1; // Not found.
@@ -1406,7 +1406,7 @@ int32 raft_server::get_dc_id(int32 srv_id) const {
     return s_conf->get_dc_id();
 }
 
-std::string raft_server::get_aux(int32 srv_id) const {
+std::string raft_server::get_aux(int32_t srv_id) const {
     std::shared_ptr< cluster_config > c_conf = get_config();
     std::shared_ptr< srv_config > s_conf = c_conf->get_server(srv_id);
     if (!s_conf) return std::string();
@@ -1414,7 +1414,7 @@ std::string raft_server::get_aux(int32 srv_id) const {
     return s_conf->get_aux();
 }
 
-std::shared_ptr< srv_config > raft_server::get_srv_config(int32 srv_id) const {
+std::shared_ptr< srv_config > raft_server::get_srv_config(int32_t srv_id) const {
     std::shared_ptr< cluster_config > c_conf = get_config();
     return c_conf->get_server(srv_id);
 }
@@ -1426,7 +1426,7 @@ void raft_server::get_srv_config_all(std::vector< std::shared_ptr< srv_config > 
         configs_out.push_back(entry);
 }
 
-raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
+raft_server::peer_info raft_server::get_peer_info(int32_t srv_id) const {
     if (!is_leader()) return peer_info();
 
     recur_lock(lock_);

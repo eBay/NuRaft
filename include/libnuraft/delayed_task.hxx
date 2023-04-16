@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _DELAYED_TASK_HXX_
-#define _DELAYED_TASK_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "pp_util.hxx"
 
 #include <atomic>
@@ -31,7 +29,7 @@ namespace nuraft {
 
 class delayed_task {
 public:
-    delayed_task(int32 type = 0) : cancelled_(false), impl_ctx_(nilptr), impl_ctx_del_(), type_(type) {}
+    delayed_task(int32_t type = 0) : cancelled_(false), impl_ctx_(nilptr), impl_ctx_del_(), type_(type) {}
 
     virtual ~delayed_task() {
         if (impl_ctx_ != nilptr) {
@@ -57,7 +55,7 @@ public:
         impl_ctx_del_ = del;
     }
 
-    int32 get_type() const { return type_; }
+    int32_t get_type() const { return type_; }
 
 protected:
     virtual void exec() = 0;
@@ -66,9 +64,7 @@ private:
     std::atomic< bool > cancelled_;
     void* impl_ctx_;
     std::function< void(void*) > impl_ctx_del_;
-    int32 type_;
+    int32_t type_;
 };
 
 } // namespace nuraft
-
-#endif

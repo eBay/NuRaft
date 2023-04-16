@@ -60,9 +60,9 @@ void raft_server::request_prevote() {
                 recreate = pp->need_to_reconnect();
 
                 // Or if it is not active long time, reconnect as well.
-                int32 last_active_time_ms = pp->get_active_timer_us() / 1000;
+                auto last_active_time_ms = pp->get_active_timer_us() / 1000;
                 if (last_active_time_ms > params->heart_beat_interval_ * raft_server::raft_limits_.reconnect_limit_) {
-                    p_wn("connection to peer %d is not active long time: %d ms, "
+                    p_wn("connection to peer %d is not active long time: %lu ms, "
                          "need reconnection for prevote",
                          pp->get_id(), last_active_time_ms);
                     recreate = true;
@@ -319,7 +319,7 @@ void raft_server::handle_vote_resp(resp_msg& resp) {
 
     if (votes_responded_ >= get_num_voting_members()) { election_completed_ = true; }
 
-    int32 election_quorum_size = get_quorum_for_election() + 1;
+    auto election_quorum_size = get_quorum_for_election() + 1;
 
     p_in("[VOTE RESP] peer %d (%s), resp term %" PRIu64 ", my role %s, "
          "granted %d, responded %d, "
@@ -398,7 +398,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
         }
     }
 
-    int32 election_quorum_size = get_quorum_for_election() + 1;
+    auto election_quorum_size = get_quorum_for_election() + 1;
 
     p_in("[PRE-VOTE RESP] peer %d (%s), term %" PRIu64 ", resp term %" PRIu64 ", "
          "my role %s, dead %d, live %d, abandoned %d, "

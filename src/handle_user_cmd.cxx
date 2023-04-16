@@ -102,7 +102,7 @@ raft_server::append_entries_ext(const std::vector< std::shared_ptr< buffer > >& 
 
 std::shared_ptr< cmd_result< std::shared_ptr< buffer > > >
 raft_server::send_msg_to_leader(std::shared_ptr< req_msg >& req, const req_ext_params& ext_params) {
-    int32 leader_id = leader_;
+    auto leader_id = leader_.load();
     std::shared_ptr< buffer > result = nullptr;
     if (leader_id == -1) {
         p_in("return null as leader does not exist in the current group");

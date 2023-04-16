@@ -28,14 +28,14 @@ std::shared_ptr< srv_config > srv_config::deserialize(buffer& buf) {
 }
 
 std::shared_ptr< srv_config > srv_config::deserialize(buffer_serializer& bs) {
-    int32 id = bs.get_i32();
-    int32 dc_id = bs.get_i32();
+    auto id = bs.get_i32();
+    auto dc_id = bs.get_i32();
     const char* endpoint_char = bs.get_cstr();
     const char* aux_char = bs.get_cstr();
     std::string endpoint((endpoint_char) ? endpoint_char : std::string());
     std::string aux((aux_char) ? aux_char : std::string());
     byte is_learner = bs.get_u8();
-    int32 priority = bs.get_i32();
+    auto priority = bs.get_i32();
     return std::make_shared< srv_config >(id, dc_id, endpoint, aux, is_learner, priority);
 }
 

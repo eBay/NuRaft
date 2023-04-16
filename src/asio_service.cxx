@@ -81,13 +81,13 @@ using ssl_context = asio::ssl::context;
 // request header:
 //     byte         marker (req = 0x0)  (1),
 //     msg_type     type                (1),
-//     int32        src                 (4),
-//     int32        dst                 (4),
+//     int32_t        src                 (4),
+//     int32_t        dst                 (4),
 //     ulong        term                (8),
 //     ulong        last_log_term       (8),
 //     ulong        last_log_idx        (8),
 //     ulong        commit_idx          (8),
-//     int32        log data size       (4),
+//     int32_t        log data size       (4),
 //     ulong        flags + CRC32       (8),
 //     -------------------------------------
 //                  total               (54)
@@ -96,12 +96,12 @@ using ssl_context = asio::ssl::context;
 // response header:
 //     byte         marker (resp = 0x1) (1),
 //     msg_type     type                (1),
-//     int32        src                 (4),
-//     int32        dst                 (4),
+//     int32_t        src                 (4),
+//     int32_t        dst                 (4),
 //     ulong        term                (8),
 //     ulong        next_idx            (8),
 //     bool         accepted            (1),
-//     int32        ctx data dize       (4),
+//     int32_t        ctx data dize       (4),
 //     ulong        flags + CRC32       (8),
 //     -------------------------------------
 //                  total               (39)
@@ -318,7 +318,7 @@ public:
                      }
 
                      header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
-                     int32 data_size = header_->get_int();
+                     int32_t data_size = header_->get_int();
                      // Up to 1GB.
                      if (data_size < 0 || data_size > 0x40000000) {
                          p_er("bad log data size in the header %d, stop "
@@ -394,8 +394,8 @@ private:
         try {
             hdr->pos(1);
             msg_type t = (msg_type)hdr->get_byte();
-            int32 src = hdr->get_int();
-            int32 dst = hdr->get_int();
+            int32_t src = hdr->get_int();
+            int32_t dst = hdr->get_int();
             ulong term = hdr->get_ulong();
             ulong last_term = hdr->get_ulong();
             ulong last_idx = hdr->get_ulong();
@@ -428,7 +428,8 @@ private:
             }
 
             std::string meta_str;
-            std::shared_ptr< req_msg > req = std::make_shared< req_msg >(term, t, src, dst, last_term, last_idx, commit_idx);
+            std::shared_ptr< req_msg > req =
+                std::make_shared< req_msg >(term, t, src, dst, last_term, last_idx, commit_idx);
             if (hdr->get_int() > 0 && log_ctx) {
                 buffer_serializer ss(log_ctx);
                 size_t log_ctx_size = log_ctx->size();
@@ -527,7 +528,7 @@ private:
 
         try {
             std::shared_ptr< buffer > resp_ctx = resp->get_ctx();
-            int32 resp_ctx_size = (resp_ctx) ? resp_ctx->size() : 0;
+            int32_t resp_ctx_size = (resp_ctx) ? resp_ctx->size() : 0;
 
             uint32_t flags = 0x0;
             size_t resp_meta_size = 0;
@@ -537,7 +538,7 @@ private:
                 if (!resp_meta_str.empty()) {
                     // Meta callback for response is given, set the flag.
                     flags |= INCLUDE_META;
-                    resp_meta_size = sizeof(int32) + resp_meta_str.size();
+                    resp_meta_size = sizeof(int32_t) + resp_meta_str.size();
                 }
             }
 
@@ -546,7 +547,7 @@ private:
                 // Hint is given, set the flag.
                 flags |= INCLUDE_HINT;
                 // For future extension, we will put 2-byte version and 2-byte length.
-                resp_hint_size += sizeof(uint16_t) * 2 + sizeof(int64);
+                resp_hint_size += sizeof(uint16_t) * 2 + sizeof(int64_t);
             }
 
             size_t carried_data_size = resp_meta_size + resp_hint_size + resp_ctx_size;
@@ -628,7 +629,7 @@ private:
      * Note that this ID should not be changed throughout the life time
      * of the session.
      */
-    int32 src_id_;
+    int32_t src_id_;
 
     /**
      * `true` if the endpoint server was leader when it was last seen.
@@ -694,8 +695,8 @@ private:
         std::shared_ptr< asio_rpc_listener > self(this->shared_from_this());
         session_closed_callback cb = std::bind(&asio_rpc_listener::remove_session, self, std::placeholders::_1);
 
-        std::shared_ptr< rpc_session > session = std::make_shared< rpc_session >(session_id_cnt_.fetch_add(1), impl_, io_svc_,
-                                                                       ssl_ctx_, ssl_enabled_, handler_, l_, cb);
+        std::shared_ptr< rpc_session > session = std::make_shared< rpc_session >(
+            session_id_cnt_.fetch_add(1), impl_, io_svc_, ssl_ctx_, ssl_enabled_, handler_, l_, cb);
 
         acceptor_.async_accept(
             session->socket(),
@@ -859,7 +860,8 @@ public:
                      host_.c_str(), port_.c_str(), num_send_fails_.load());
                 num_send_fails_.fetch_add(1);
 
-                std::shared_ptr< asio::steady_timer > timer = std::make_shared< asio::steady_timer >(impl_->get_io_svc());
+                std::shared_ptr< asio::steady_timer > timer =
+                    std::make_shared< asio::steady_timer >(impl_->get_io_svc());
                 timer->expires_after(
                     std::chrono::duration_cast< std::chrono::nanoseconds >(std::chrono::milliseconds(SEND_RETRY_MS)));
                 timer->async_wait(std::bind(&asio_rpc_client::send_retry, this, self, timer, req, when_done,
@@ -884,12 +886,12 @@ public:
                             execute_resolver(self, req, resolved_host, resolved_port, when_done, send_timeout_ms);
                         } else {
                             std::shared_ptr< resp_msg > rsp;
-                            std::shared_ptr< rpc_exception > except(
-                                std::make_shared< rpc_exception >(lstrfmt("failed to resolve host %s by given "
-                                                                "custom resolver "
-                                                                "due to error %d, %s")
-                                                            .fmt(host_.c_str(), err.value(), err.message().c_str()),
-                                                        req));
+                            std::shared_ptr< rpc_exception > except(std::make_shared< rpc_exception >(
+                                lstrfmt("failed to resolve host %s by given "
+                                        "custom resolver "
+                                        "due to error %d, %s")
+                                    .fmt(host_.c_str(), err.value(), err.message().c_str()),
+                                req));
                             when_done(rsp, except);
                         }
                     });
@@ -923,7 +925,7 @@ public:
 
         // serialize req, send and read response
         std::vector< std::shared_ptr< buffer > > log_entry_bufs;
-        int32 log_data_size(0);
+        int32_t log_data_size(0);
 
         uint32_t flags = 0x0;
         size_t LOG_ENTRY_SIZE = 8 + 1 + 4;
@@ -938,7 +940,7 @@ public:
 #if 0
             entry_buf->put( le->get_term() );
             entry_buf->put( (byte)le->get_val_type() );
-            entry_buf->put( (int32)le->get_buf().size() );
+            entry_buf->put( (int32_t)le->get_buf().size() );
             le->get_buf().pos(0);
             entry_buf->put( le->get_buf() );
             entry_buf->pos( 0 );
@@ -951,7 +953,7 @@ public:
             ss.put_raw(le->get_buf().data_begin(), le->get_buf().size());
 #endif
             log_entry_bufs.push_back(entry_buf);
-            log_data_size += (int32)entry_buf->size();
+            log_data_size += (int32_t)entry_buf->size();
         }
 
         size_t meta_size = 0;
@@ -961,7 +963,7 @@ public:
             if (!meta_str.empty()) {
                 // If callback for meta is given, set flag.
                 flags |= INCLUDE_META;
-                meta_size = sizeof(int32) + meta_str.size();
+                meta_size = sizeof(int32_t) + meta_str.size();
             }
         }
 
@@ -979,7 +981,7 @@ public:
         req_buf->put(req->get_last_log_term());
         req_buf->put(req->get_last_log_idx());
         req_buf->put(req->get_commit_idx());
-        req_buf->put((int32)meta_size + log_data_size);
+        req_buf->put((int32_t)meta_size + log_data_size);
 
         // Calculate CRC32 on header-only.
         uint32_t crc_val = crc32_8(req_buf_data, RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN, 0);
@@ -1027,9 +1029,9 @@ private:
                     std::shared_ptr< resp_msg > rsp;
                     std::shared_ptr< rpc_exception > except(
                         std::make_shared< rpc_exception >(lstrfmt("failed to resolve host %s "
-                                                        "due to error %d, %s")
-                                                    .fmt(host.c_str(), err.value(), err.message().c_str()),
-                                                req));
+                                                                  "due to error %d, %s")
+                                                              .fmt(host.c_str(), err.value(), err.message().c_str()),
+                                                          req));
                     when_done(rsp, except);
                 }
             });
@@ -1186,11 +1188,11 @@ private:
 
         if (crc_local != crc_buf) {
             std::shared_ptr< resp_msg > rsp;
-            std::shared_ptr< rpc_exception > except(
-                std::make_shared< rpc_exception >(sstrfmt("CRC mismatch in response from peer %d, %s:%s, "
-                                                "local calculation %x, from buffer %x")
-                                            .fmt(req->get_dst(), host_.c_str(), port_.c_str(), crc_local, crc_buf),
-                                        req));
+            std::shared_ptr< rpc_exception > except(std::make_shared< rpc_exception >(
+                sstrfmt("CRC mismatch in response from peer %d, %s:%s, "
+                        "local calculation %x, from buffer %x")
+                    .fmt(req->get_dst(), host_.c_str(), port_.c_str(), crc_local, crc_buf),
+                req));
             close_socket();
             when_done(rsp, except);
             return;
@@ -1198,12 +1200,12 @@ private:
 
         bs.pos(1);
         byte msg_type_val = bs.get_u8();
-        int32 src = bs.get_i32();
-        int32 dst = bs.get_i32();
+        int32_t src = bs.get_i32();
+        int32_t dst = bs.get_i32();
         ulong term = bs.get_u64();
         ulong nxt_idx = bs.get_u64();
         byte accepted_val = bs.get_u8();
-        int32 carried_data_size = bs.get_i32();
+        int32_t carried_data_size = bs.get_i32();
         std::shared_ptr< resp_msg > rsp(
             std::make_shared< resp_msg >(term, (msg_type)msg_type_val, src, dst, nxt_idx, accepted_val == 1));
 
@@ -1261,7 +1263,7 @@ private:
                                                        std::string((const char*)resp_meta_raw, resp_meta_len));
                 if (!meta_ok) return;
             }
-            remaining_len -= sizeof(int32) + resp_meta_len;
+            remaining_len -= sizeof(int32_t) + resp_meta_len;
         }
 
         // 2) Hint.
@@ -1298,9 +1300,9 @@ private:
             std::shared_ptr< resp_msg > rsp;
             std::shared_ptr< rpc_exception > except(
                 std::make_shared< rpc_exception >(sstrfmt("response meta verification failed: "
-                                                "from peer %d, %s:%s")
-                                            .fmt(req->get_dst(), host_.c_str(), port_.c_str()),
-                                        req));
+                                                          "from peer %d, %s:%s")
+                                                      .fmt(req->get_dst(), host_.c_str(), port_.c_str()),
+                                                  req));
             close_socket();
             when_done(rsp, except);
             return false;
@@ -1392,7 +1394,8 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt, std::sha
     if (!cpu_cnt) { cpu_cnt = 1; }
 
     for (unsigned int i = 0; i < cpu_cnt; ++i) {
-        std::shared_ptr< std::thread > t = std::make_shared< std::thread >(std::bind(&asio_service_impl::worker_entry, this));
+        std::shared_ptr< std::thread > t =
+            std::make_shared< std::thread >(std::bind(&asio_service_impl::worker_entry, this));
         worker_handles_.push_back(t);
     }
 }
@@ -1504,7 +1507,7 @@ asio_service::asio_service(const options& _opt, std::shared_ptr< logger > _l) :
 
 asio_service::~asio_service() { delete impl_; }
 
-void asio_service::schedule(std::shared_ptr< delayed_task >& task, int32 milliseconds) {
+void asio_service::schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) {
     if (task->get_impl_context() == nilptr) {
         task->set_impl_context(new asio::steady_timer(impl_->io_svc_), &_free_timer_);
     }
@@ -1563,13 +1566,13 @@ std::shared_ptr< rpc_client > asio_service::create_client(const std::string& end
     }
 
     return std::make_shared< asio_rpc_client >(impl_, impl_->io_svc_, impl_->ssl_client_ctx_, hostname, port,
-                                     impl_->my_opt_.enable_ssl_, l_);
+                                               impl_->my_opt_.enable_ssl_, l_);
 }
 
 std::shared_ptr< rpc_listener > asio_service::create_rpc_listener(ushort listening_port, std::shared_ptr< logger >& l) {
     try {
         return std::make_shared< asio_rpc_listener >(impl_, impl_->io_svc_, impl_->ssl_server_ctx_, listening_port,
-                                           impl_->my_opt_.enable_ssl_, l);
+                                                     impl_->my_opt_.enable_ssl_, l);
     } catch (std::exception& ee) {
         // Most likely exception happens due to wrong endpoint.
         p_er("got exception: %s", ee.what());

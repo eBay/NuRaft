@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _PP_UTIL_HXX_
-#define _PP_UTIL_HXX_
+#pragma once
 
 #define __override__ override
 
@@ -39,8 +38,6 @@ public:                                                                         
 #define auto_lock(lock) std::lock_guard< std::mutex > guard(lock)
 #define recur_lock(lock) std::unique_lock< std::recursive_mutex > guard(lock)
 
-#define sz_int sizeof(int32)
-#define sz_ulong sizeof(ulong)
-#define sz_byte sizeof(byte)
-
-#endif //_PP_UTIL_HXX_
+#define sz_int sizeof(int32_t)
+#define sz_ulong sizeof(uint64_t)
+#define sz_byte sizeof(unsigned char)

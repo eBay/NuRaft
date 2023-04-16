@@ -35,8 +35,8 @@ limitations under the License.
 
 namespace nuraft {
 
-int32 raft_server::get_snapshot_sync_block_size() const {
-    int32 block_size = ctx_->get_params()->snapshot_block_size_;
+int32_t raft_server::get_snapshot_sync_block_size() const {
+    auto block_size = ctx_->get_params()->snapshot_block_size_;
     return block_size == 0 ? default_snapshot_sync_block_size : block_size;
 }
 
@@ -163,9 +163,9 @@ std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr
         // Raw binary snapshot (original)
         ulong offset = p.get_snapshot_sync_ctx()->get_offset();
         ulong sz_left = (snp->size() > offset) ? (snp->size() - offset) : 0;
-        int32 blk_sz = get_snapshot_sync_block_size();
+        auto blk_sz = get_snapshot_sync_block_size();
         data = buffer::alloc((size_t)(std::min((ulong)blk_sz, sz_left)));
-        int32 sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
+        auto sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
         if ((size_t)sz_rd < data->size()) {
             // LCOV_EXCL_START
             p_er("only %d bytes could be read from snapshot while %zu "

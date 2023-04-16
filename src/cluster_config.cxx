@@ -39,7 +39,7 @@ std::shared_ptr< buffer > cluster_config::serialize() const {
     result->put(prev_log_idx_);
     result->put((byte)(async_replication_ ? 1 : 0));
     result->put((byte*)user_ctx_.data(), user_ctx_.size());
-    result->put((int32)servers_.size());
+    result->put((int32_t)servers_.size());
     for (size_t i = 0; i < srv_buffs.size(); ++i) {
         result->put(*srv_buffs[i]);
     }
@@ -64,7 +64,7 @@ std::shared_ptr< cluster_config > cluster_config::deserialize(buffer_serializer&
     const byte* ctx_data = (const byte*)bs.get_bytes(ctx_len);
     std::string user_ctx = std::string((const char*)ctx_data, ctx_len);
 
-    int32 cnt = bs.get_i32();
+    int32_t cnt = bs.get_i32();
     std::shared_ptr< cluster_config > conf = std::make_shared< cluster_config >(log_idx, prev_log_idx, ec);
     while (cnt-- > 0) {
         conf->get_servers().push_back(srv_config::deserialize(bs));
