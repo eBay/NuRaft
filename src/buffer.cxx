@@ -233,7 +233,7 @@ const char* buffer::get_str() {
     size_t s = size();
     size_t i = 0;
     byte* d = data();
-    while ((p + i) < s && *(d + i))
+    while ((p + i) < s && (*(d + i) != byte{0x0}))
         ++i;
     if (i == 0) {
         // Empty string, move forward 1 byte for NULL character.

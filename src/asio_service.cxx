@@ -309,8 +309,7 @@ public:
                      }
 
                      header_->pos(0);
-                     byte marker = header_->get_byte();
-                     if (marker == 0x1) {
+                     if (header_->get_byte() == byte{0x1}) {
                          // Means that this is RPC_RESP, shouldn't happen.
                          p_er("Wrong packet: expected REQ, got RESP");
                          this->stop();
@@ -556,7 +555,7 @@ private:
             std::shared_ptr< buffer > resp_buf = buffer::alloc(buf_size);
             buffer_serializer bs(resp_buf);
 
-            const byte RESP_MARKER = 0x1;
+            auto const RESP_MARKER = byte{0x1};
             bs.put_u8(RESP_MARKER);
             bs.put_u8(resp->get_type());
             bs.put_i32(resp->get_src());
@@ -947,7 +946,7 @@ public:
 #else
             buffer_serializer ss(entry_buf);
             ss.put_u64(le->get_term());
-            ss.put_u8(le->get_val_type());
+            ss.put_u8(static_cast< uint8_t >(le->get_val_type()));
             if (impl_->get_options().replicate_log_timestamp_) { ss.put_u64(le->get_timestamp()); }
             ss.put_i32(le->get_buf().size());
             ss.put_raw(le->get_buf().data_begin(), le->get_buf().size());
@@ -972,7 +971,7 @@ public:
         req_buf->pos(0);
         byte* req_buf_data = req_buf->data();
 
-        byte marker = 0x0;
+        auto marker = byte{0x0};
         req_buf->put(marker);
         req_buf->put((byte)req->get_type());
         req_buf->put(req->get_src());
@@ -1199,15 +1198,15 @@ private:
         }
 
         bs.pos(1);
-        byte msg_type_val = bs.get_u8();
+        auto msg_type_val = byte{bs.get_u8()};
         int32_t src = bs.get_i32();
         int32_t dst = bs.get_i32();
         uint64_t term = bs.get_u64();
         uint64_t nxt_idx = bs.get_u64();
-        byte accepted_val = bs.get_u8();
+        auto accepted_val = byte{bs.get_u8()};
         int32_t carried_data_size = bs.get_i32();
         std::shared_ptr< resp_msg > rsp(
-            std::make_shared< resp_msg >(term, (msg_type)msg_type_val, src, dst, nxt_idx, accepted_val == 1));
+            std::make_shared< resp_msg >(term, (msg_type)msg_type_val, src, dst, nxt_idx, accepted_val == byte{1}));
 
         if (!(flags & INCLUDE_META) && impl_->get_options().read_resp_meta_ &&
             impl_->get_options().invoke_resp_cb_on_empty_meta_) {

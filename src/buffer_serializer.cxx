@@ -23,134 +23,88 @@ limitations under the License.
 
 #define put16l(val, ptr)                                                                                               \
     {                                                                                                                  \
-        ptr[0] = (val >> 0) & 0xff;                                                                                    \
-        ptr[1] = (val >> 8) & 0xff;                                                                                    \
+        ptr[0] = static_cast< byte >(val & 0xff);                                                                      \
+        ptr[1] = static_cast< byte >(val >> 8);                                                                        \
     }
 
 #define put16b(val, ptr)                                                                                               \
     {                                                                                                                  \
-        ptr[1] = (val >> 0) & 0xff;                                                                                    \
-        ptr[0] = (val >> 8) & 0xff;                                                                                    \
+        ptr[1] = static_cast< byte >(val & 0xff);                                                                      \
+        ptr[0] = static_cast< byte >(val >> 8);                                                                        \
     }
 
 #define put32l(val, ptr)                                                                                               \
     {                                                                                                                  \
-        ptr[0] = (val >> 0) & 0xff;                                                                                    \
-        ptr[1] = (val >> 8) & 0xff;                                                                                    \
-        ptr[2] = (val >> 16) & 0xff;                                                                                   \
-        ptr[3] = (val >> 24) & 0xff;                                                                                   \
+        put16l(static_cast< uint16_t >(val & 0xffff), ptr);                                                            \
+        put16l(static_cast< uint16_t >(val >> 16), (ptr + sizeof(uint16_t)));                                          \
     }
 
 #define put32b(val, ptr)                                                                                               \
     {                                                                                                                  \
-        ptr[3] = (val >> 0) & 0xff;                                                                                    \
-        ptr[2] = (val >> 8) & 0xff;                                                                                    \
-        ptr[1] = (val >> 16) & 0xff;                                                                                   \
-        ptr[0] = (val >> 24) & 0xff;                                                                                   \
+        put16b(static_cast< uint16_t >(val & 0xffff), (ptr + sizeof(uint16_t)));                                       \
+        put16b(static_cast< uint16_t >(val >> 16), ptr);                                                               \
     }
 
 #define put64l(val, ptr)                                                                                               \
     {                                                                                                                  \
-        ptr[0] = (val >> 0) & 0xff;                                                                                    \
-        ptr[1] = (val >> 8) & 0xff;                                                                                    \
-        ptr[2] = (val >> 16) & 0xff;                                                                                   \
-        ptr[3] = (val >> 24) & 0xff;                                                                                   \
-        ptr[4] = (val >> 32) & 0xff;                                                                                   \
-        ptr[5] = (val >> 40) & 0xff;                                                                                   \
-        ptr[6] = (val >> 48) & 0xff;                                                                                   \
-        ptr[7] = (val >> 56) & 0xff;                                                                                   \
+        put32l(static_cast< uint32_t >(val & 0xffffffff), ptr);                                                        \
+        put32l(static_cast< uint32_t >(val >> 32), (ptr + sizeof(uint32_t)));                                          \
     }
 
 #define put64b(val, ptr)                                                                                               \
     {                                                                                                                  \
-        ptr[7] = (val >> 0) & 0xff;                                                                                    \
-        ptr[6] = (val >> 8) & 0xff;                                                                                    \
-        ptr[5] = (val >> 16) & 0xff;                                                                                   \
-        ptr[4] = (val >> 24) & 0xff;                                                                                   \
-        ptr[3] = (val >> 32) & 0xff;                                                                                   \
-        ptr[2] = (val >> 40) & 0xff;                                                                                   \
-        ptr[1] = (val >> 48) & 0xff;                                                                                   \
-        ptr[0] = (val >> 56) & 0xff;                                                                                   \
+        put32b(static_cast< uint32_t >(val & 0xffffffff), (ptr + sizeof(uint32_t)));                                   \
+        put32b(static_cast< uint32_t >(val >> 32), ptr);                                                               \
     }
 
 #define get16l(ptr, val)                                                                                               \
     {                                                                                                                  \
-        uint16_t tmp = ptr[1];                                                                                         \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[0];                                                                                                 \
-        val = tmp;                                                                                                     \
+        val = std::to_integer< uint16_t >(ptr[1]);                                                                     \
+        val <<= 8;                                                                                                     \
+        val |= std::to_integer< uint16_t >(ptr[0]);                                                                    \
     }
 
 #define get16b(ptr, val)                                                                                               \
     {                                                                                                                  \
-        uint16_t tmp = ptr[0];                                                                                         \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[1];                                                                                                 \
-        val = tmp;                                                                                                     \
+        val = std::to_integer< uint16_t >(ptr[0]);                                                                     \
+        val <<= 8;                                                                                                     \
+        val |= std::to_integer< uint16_t >(ptr[1]);                                                                    \
     }
 
 #define get32l(ptr, val)                                                                                               \
     {                                                                                                                  \
-        uint32_t tmp = ptr[3];                                                                                         \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[2];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[1];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[0];                                                                                                 \
-        val = tmp;                                                                                                     \
+        get16l((ptr + sizeof(uint16_t)), val);                                                                         \
+        val <<= 16;                                                                                                    \
+        uint16_t tmp;                                                                                                  \
+        get16l((ptr), tmp);                                                                                            \
+        val |= tmp;                                                                                                    \
     }
 
 #define get32b(ptr, val)                                                                                               \
     {                                                                                                                  \
-        uint32_t tmp = ptr[0];                                                                                         \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[1];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[2];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[3];                                                                                                 \
-        val = tmp;                                                                                                     \
+        get16b((ptr + sizeof(uint16_t)), val);                                                                         \
+        val <<= 16;                                                                                                    \
+        uint16_t tmp;                                                                                                  \
+        get16b((ptr), tmp);                                                                                            \
+        val |= tmp;                                                                                                    \
     }
 
 #define get64l(ptr, val)                                                                                               \
     {                                                                                                                  \
-        uint64_t tmp = ptr[7];                                                                                         \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[6];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[5];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[4];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[3];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[2];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[1];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[0];                                                                                                 \
-        val = tmp;                                                                                                     \
+        get32l((ptr + sizeof(uint32_t)), val);                                                                         \
+        val <<= 32;                                                                                                    \
+        uint32_t tmp;                                                                                                  \
+        get32l((ptr), tmp);                                                                                            \
+        val |= tmp;                                                                                                    \
     }
 
 #define get64b(ptr, val)                                                                                               \
     {                                                                                                                  \
-        uint64_t tmp = ptr[0];                                                                                         \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[1];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[2];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[3];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[4];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[5];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[6];                                                                                                 \
-        tmp <<= 8;                                                                                                     \
-        tmp |= ptr[7];                                                                                                 \
-        val = tmp;                                                                                                     \
+        get32b((ptr + sizeof(uint32_t)), val);                                                                         \
+        val <<= 32;                                                                                                    \
+        uint32_t tmp;                                                                                                  \
+        get32b((ptr), tmp);                                                                                            \
+        val |= tmp;                                                                                                    \
     }
 
 #define chk_length(val)                                                                                                \
@@ -183,14 +137,21 @@ bool buffer_serializer::is_valid(size_t len) const {
 
 void buffer_serializer::put_u8(uint8_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
+    ptr[0] = std::byte{val};
+    pos(pos() + sizeof(std::byte));
+}
+
+void buffer_serializer::put_u8(std::byte val) {
+    chk_length(val);
+    auto ptr = buf_.data_begin() + pos_;
     ptr[0] = val;
     pos(pos() + sizeof(val));
 }
 
 void buffer_serializer::put_u16(uint16_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         put16l(val, ptr);
     } else {
@@ -201,7 +162,7 @@ void buffer_serializer::put_u16(uint16_t val) {
 
 void buffer_serializer::put_u32(uint32_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         put32l(val, ptr);
     } else {
@@ -212,7 +173,7 @@ void buffer_serializer::put_u32(uint32_t val) {
 
 void buffer_serializer::put_u64(uint64_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         put64l(val, ptr);
     } else {
@@ -223,14 +184,14 @@ void buffer_serializer::put_u64(uint64_t val) {
 
 void buffer_serializer::put_i8(int8_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
-    ptr[0] = val;
+    auto ptr = buf_.data_begin() + pos_;
+    ptr[0] = static_cast< byte >(val);
     pos(pos() + sizeof(val));
 }
 
 void buffer_serializer::put_i16(int16_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         put16l(val, ptr);
     } else {
@@ -241,7 +202,7 @@ void buffer_serializer::put_i16(int16_t val) {
 
 void buffer_serializer::put_i32(int32_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         put32l(val, ptr);
     } else {
@@ -252,7 +213,7 @@ void buffer_serializer::put_i32(int32_t val) {
 
 void buffer_serializer::put_i64(int64_t val) {
     chk_length(val);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         put64l(val, ptr);
     } else {
@@ -301,8 +262,8 @@ void buffer_serializer::put_cstr(const char* str) {
 uint8_t buffer_serializer::get_u8() {
     uint8_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
-    ret = ptr[0];
+    auto ptr = buf_.data_begin() + pos_;
+    ret = std::to_integer< uint8_t >(ptr[0]);
     pos(pos() + sizeof(ret));
     return ret;
 }
@@ -310,7 +271,7 @@ uint8_t buffer_serializer::get_u8() {
 uint16_t buffer_serializer::get_u16() {
     uint16_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         get16l(ptr, ret);
     } else {
@@ -323,7 +284,7 @@ uint16_t buffer_serializer::get_u16() {
 uint32_t buffer_serializer::get_u32() {
     uint32_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         get32l(ptr, ret);
     } else {
@@ -336,7 +297,7 @@ uint32_t buffer_serializer::get_u32() {
 uint64_t buffer_serializer::get_u64() {
     uint64_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         get64l(ptr, ret);
     } else {
@@ -349,8 +310,8 @@ uint64_t buffer_serializer::get_u64() {
 int8_t buffer_serializer::get_i8() {
     int8_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
-    ret = ptr[0];
+    auto ptr = buf_.data_begin() + pos_;
+    ret = std::to_integer< int8_t >(ptr[0]);
     pos(pos() + sizeof(ret));
     return ret;
 }
@@ -358,7 +319,7 @@ int8_t buffer_serializer::get_i8() {
 int16_t buffer_serializer::get_i16() {
     int16_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         get16l(ptr, ret);
     } else {
@@ -371,7 +332,7 @@ int16_t buffer_serializer::get_i16() {
 int32_t buffer_serializer::get_i32() {
     int32_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         get32l(ptr, ret);
     } else {
@@ -384,7 +345,7 @@ int32_t buffer_serializer::get_i32() {
 int64_t buffer_serializer::get_i64() {
     int64_t ret = 0;
     chk_length(ret);
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     if (endian_ == LITTLE) {
         get64l(ptr, ret);
     } else {
@@ -395,7 +356,7 @@ int64_t buffer_serializer::get_i64() {
 }
 
 void* buffer_serializer::get_raw(size_t len) {
-    uint8_t* ptr = buf_.data_begin() + pos_;
+    auto ptr = buf_.data_begin() + pos_;
     pos(pos() + len);
     return ptr;
 }

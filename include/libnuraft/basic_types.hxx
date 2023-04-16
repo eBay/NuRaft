@@ -20,8 +20,10 @@ limitations under the License.
 
 #pragma once
 
+#include <cstddef>
+
 namespace nuraft {
 
-typedef unsigned char byte;
+using std::byte;
 
 } // namespace nuraft

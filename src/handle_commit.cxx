@@ -415,7 +415,7 @@ bool raft_server::apply_config_log_entry(std::shared_ptr< log_entry >& le, std::
         return false;
     }
     if (le->get_val_type() != log_val_type::conf) {
-        err_msg = "Invalid log type: " + std::to_string(le->get_val_type());
+        err_msg = "Invalid log type: " + std::to_string(static_cast< uint8_t >(le->get_val_type()));
         return false;
     }
     if (le->is_buf_null()) {

@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace nuraft {
 
-enum log_val_type : byte {
+enum class log_val_type : uint8_t {
     app_log = 1,
     conf = 2,
     cluster_server = 3,

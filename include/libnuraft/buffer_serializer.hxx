@@ -74,6 +74,7 @@ public:
      * @param val 1-byte unsigned integer.
      */
     void put_u8(uint8_t val);
+    void put_u8(std::byte val);
 
     /**
      * Put 2-byte unsigned integer.

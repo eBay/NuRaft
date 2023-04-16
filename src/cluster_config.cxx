@@ -57,7 +57,7 @@ std::shared_ptr< cluster_config > cluster_config::deserialize(buffer_serializer&
     uint64_t log_idx = bs.get_u64();
     uint64_t prev_log_idx = bs.get_u64();
 
-    byte ec_byte = bs.get_u8();
+    auto ec_byte = bs.get_u8();
     bool ec = ec_byte ? true : false;
 
     size_t ctx_len;
