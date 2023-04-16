@@ -399,6 +399,7 @@ private:
     std::shared_ptr< srv_state > savedState;
 };
 
+[[maybe_unused]]
 static VOID_UNUSED reset_log_files() {
     std::stringstream ss;
     ss << "srv*.log ";

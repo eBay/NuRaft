@@ -28,8 +28,6 @@ namespace nuraft {
 typedef uint64_t ulong;
 typedef void* any_ptr;
 typedef unsigned char byte;
-typedef uint16_t ushort;
-typedef uint32_t uint;
 
 } // namespace nuraft
 

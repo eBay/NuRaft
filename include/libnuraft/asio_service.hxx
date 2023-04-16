@@ -51,7 +51,7 @@ public:
 
     virtual std::shared_ptr< rpc_client > create_client(const std::string& endpoint) __override__;
 
-    std::shared_ptr< rpc_listener > create_rpc_listener(ushort listening_port, std::shared_ptr< logger >& l);
+    std::shared_ptr< rpc_listener > create_rpc_listener(uint16_t listening_port, std::shared_ptr< logger >& l);
 
     void stop();
 

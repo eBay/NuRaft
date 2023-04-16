@@ -30,17 +30,17 @@ limitations under the License.
     ((type*)(ptr))[0] = (type)len;                                                                                     \
     ((type*)(ptr))[1] = 0
 
-#define __init_s_block(p, l) __init_block(p, l, ushort)
+#define __init_s_block(p, l) __init_block(p, l, uint16_t)
 
 #define __init_b_block(p, l)                                                                                           \
     __init_block(p, l, uint);                                                                                          \
     *((uint*)(p)) |= 0x80000000
 
-#define __pos_of_s_block(p) ((ushort*)(p))[1]
+#define __pos_of_s_block(p) ((uint16_t*)(p))[1]
 
 #define __pos_of_b_block(p) ((uint*)(p))[1]
 
-#define __size_of_block(p) (__is_big_block(p)) ? (*((uint*)(p)) ^ 0x80000000) : *((ushort*)(p))
+#define __size_of_block(p) (__is_big_block(p)) ? (*((uint*)(p)) ^ 0x80000000) : *((uint16_t*)(p))
 
 #define __pos_of_block(p) (__is_big_block(p)) ? __pos_of_b_block(p) : __pos_of_s_block(p)
 
@@ -48,22 +48,22 @@ limitations under the License.
     if (__is_big_block(ptr)) {                                                                                         \
         ((uint*)(ptr))[1] += (delta);                                                                                  \
     } else {                                                                                                           \
-        ((ushort*)(ptr))[1] += (ushort)(delta);                                                                        \
+        ((uint16_t*)(ptr))[1] += (uint16_t)(delta);                                                                    \
     }
 
 #define __set_block_pos(ptr, pos)                                                                                      \
     if (__is_big_block(ptr)) {                                                                                         \
         ((uint*)(ptr))[1] = (pos);                                                                                     \
     } else {                                                                                                           \
-        ((ushort*)(ptr))[1] = (ushort)(pos);                                                                           \
+        ((uint16_t*)(ptr))[1] = (uint16_t)(pos);                                                                       \
     }
 
 #define __data_of_block(p)                                                                                             \
     (__is_big_block(p)) ? (byte*)(((byte*)(((uint*)(p)) + 2)) + __pos_of_b_block(p))                                   \
-                        : (byte*)(((byte*)(((ushort*)(p)) + 2)) + __pos_of_s_block(p))
+                        : (byte*)(((byte*)(((uint16_t*)(p)) + 2)) + __pos_of_s_block(p))
 
 #define __entire_data_of_block(p)                                                                                      \
-    (__is_big_block(p)) ? (byte*)((byte*)(((uint*)(p)) + 2)) : (byte*)((byte*)(((ushort*)(p)) + 2))
+    (__is_big_block(p)) ? (byte*)((byte*)(((uint*)(p)) + 2)) : (byte*)((byte*)(((uint16_t*)(p)) + 2))
 
 namespace nuraft {
 
@@ -104,7 +104,7 @@ std::shared_ptr< buffer > buffer::alloc(const size_t size) {
         return buf;
     }
 
-    size_t len = size + sizeof(ushort) * 2;
+    size_t len = size + sizeof(uint16_t) * 2;
     std::shared_ptr< buffer > buf(reinterpret_cast< buffer* >(new char[len]), &free_buffer);
     amount_allocs += len;
     amount_active += len;
@@ -152,7 +152,7 @@ std::shared_ptr< buffer > buffer::expand(const buffer& buf, uint32_t new_size) {
 }
 
 size_t buffer::container_size() const {
-    return (size_t)(__size_of_block(this) + ((__is_big_block(this)) ? sizeof(uint) * 2 : sizeof(ushort) * 2));
+    return (size_t)(__size_of_block(this) + ((__is_big_block(this)) ? sizeof(uint) * 2 : sizeof(uint16_t) * 2));
 }
 
 size_t buffer::size() const { return (size_t)(__size_of_block(this)); }

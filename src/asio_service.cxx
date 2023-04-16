@@ -643,7 +643,7 @@ private:
 // rpc listener implementation
 class asio_rpc_listener : public rpc_listener, public std::enable_shared_from_this< asio_rpc_listener > {
 public:
-    asio_rpc_listener(asio_service_impl* _impl, asio::io_service& io, ssl_context& ssl_ctx, ushort port,
+    asio_rpc_listener(asio_service_impl* _impl, asio::io_service& io, ssl_context& ssl_ctx, uint16_t port,
                       bool _enable_ssl, std::shared_ptr< logger >& l) :
             impl_(_impl),
             io_svc_(io),
@@ -1569,7 +1569,8 @@ std::shared_ptr< rpc_client > asio_service::create_client(const std::string& end
                                                impl_->my_opt_.enable_ssl_, l_);
 }
 
-std::shared_ptr< rpc_listener > asio_service::create_rpc_listener(ushort listening_port, std::shared_ptr< logger >& l) {
+std::shared_ptr< rpc_listener > asio_service::create_rpc_listener(uint16_t listening_port,
+                                                                  std::shared_ptr< logger >& l) {
     try {
         return std::make_shared< asio_rpc_listener >(impl_, impl_->io_svc_, impl_->ssl_server_ctx_, listening_port,
                                                      impl_->my_opt_.enable_ssl_, l);
