@@ -25,6 +25,7 @@ limitations under the License.
 #include "pp_util.hxx"
 
 #include <algorithm>
+#include <cstdint>
 
 namespace nuraft {
 

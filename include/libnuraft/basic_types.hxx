@@ -18,16 +18,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _BASIC_TYPES_HXX_
-#define _BASIC_TYPES_HXX_
-
-#include <cstdint>
+#pragma once
 
 namespace nuraft {
 
-typedef void* any_ptr;
 typedef unsigned char byte;
 
 } // namespace nuraft
-
-#endif // _BASIC_TYPES_HXX_
