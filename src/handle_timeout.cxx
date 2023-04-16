@@ -40,8 +40,8 @@ void raft_server::enable_hb_for_peer(peer& p) {
 
 void raft_server::check_srv_to_leave_timeout() {
     if (!srv_to_leave_) return;
-    ulong last_resp_ms = srv_to_leave_->get_resp_timer_us() / 1000;
-    if (last_resp_ms > (ulong)raft_server::raft_limits_.leave_limit_ * ctx_->get_params()->heart_beat_interval_) {
+    uint64_t last_resp_ms = srv_to_leave_->get_resp_timer_us() / 1000;
+    if (last_resp_ms > (uint64_t)raft_server::raft_limits_.leave_limit_ * ctx_->get_params()->heart_beat_interval_) {
         // Timeout: remove peer.
         p_wn("server to be removed %d, response timeout %" PRIu64 " ms. "
              "force remove now",
@@ -277,10 +277,10 @@ void raft_server::handle_election_timeout() {
             decay_target_priority();
         }
 
-        ulong last_log_term = 0;
+        uint64_t last_log_term = 0;
         if (log_store_ && log_store_->last_entry()) { last_log_term = log_store_->last_entry()->get_term(); }
 
-        ulong state_term = state_->get_term();
+        uint64_t state_term = state_->get_term();
 
         p_in("[ELECTION TIMEOUT] current role: %s, log last term %" PRIu64 ", "
              "state term %" PRIu64 ", target p %d, my p %d, %s, %s",

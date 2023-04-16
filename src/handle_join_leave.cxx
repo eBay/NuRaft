@@ -74,13 +74,13 @@ std::shared_ptr< resp_msg > raft_server::handle_add_srv_req(req_msg& req) {
         // Adding server is already in progress.
 
         // Check the last active time of that server.
-        ulong last_active_ms = srv_to_join_->get_active_timer_us() / 1000;
+        uint64_t last_active_ms = srv_to_join_->get_active_timer_us() / 1000;
         p_wn("previous adding server (%d) is in progress, "
              "last activity: %" PRIu64 " ms ago",
              srv_to_join_->get_id(), last_active_ms);
 
         if (last_active_ms <=
-            (ulong)raft_server::raft_limits_.response_limit_ * ctx_->get_params()->heart_beat_interval_) {
+            (uint64_t)raft_server::raft_limits_.response_limit_ * ctx_->get_params()->heart_beat_interval_) {
             resp->set_result_code(cmd_result_code::SERVER_IS_JOINING);
             return resp;
         }
@@ -182,13 +182,13 @@ void raft_server::handle_join_cluster_resp(resp_msg& resp) {
     }
 }
 
-void raft_server::sync_log_to_new_srv(ulong start_idx) {
+void raft_server::sync_log_to_new_srv(uint64_t start_idx) {
     p_db("[SYNC LOG] peer %d start idx %" PRIu64 ", my log start idx %" PRIu64, srv_to_join_->get_id(), start_idx,
          log_store_->start_index());
     // only sync committed logs
-    ulong gap = (quick_commit_index_ > start_idx) ? (quick_commit_index_ - start_idx) : 0;
+    uint64_t gap = (quick_commit_index_ > start_idx) ? (quick_commit_index_ - start_idx) : 0;
     std::shared_ptr< raft_params > params = ctx_->get_params();
-    if ((params->log_sync_stop_gap_ > 0 && gap < (ulong)params->log_sync_stop_gap_) ||
+    if ((params->log_sync_stop_gap_ > 0 && gap < (uint64_t)params->log_sync_stop_gap_) ||
         params->log_sync_stop_gap_ == 0) {
         p_in("[SYNC LOG] LogSync is done for server %d "
              "with log gap %" PRIu64 " (%" PRIu64 " - %" PRIu64 ", limit %d), "
@@ -241,7 +241,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
         }
 
     } else {
-        auto size_to_sync = std::min(gap, (ulong)params->log_sync_batch_size_);
+        auto size_to_sync = std::min(gap, (uint64_t)params->log_sync_batch_size_);
         auto log_pack = log_store_->pack(start_idx, size_to_sync);
         p_db("size to sync: %lu, log_pack size %zu\n", size_to_sync, log_pack->size());
         req = std::make_shared< req_msg >(state_->get_term(), msg_type::sync_log_request, id_, srv_to_join_->get_id(),

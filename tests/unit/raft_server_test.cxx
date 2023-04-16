@@ -2184,7 +2184,7 @@ static int async_handler(std::list< ulong >* idx_list,
 
     if (expected_code == cmd_result_code::OK) {
         result->pos(0);
-        ulong idx = result->get_ulong();
+        ulong idx = result->get_uint64();
         if (idx_list) { idx_list->push_back(idx); }
 
     } else {

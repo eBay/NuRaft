@@ -35,7 +35,7 @@ class srv_state {
 public:
     srv_state() : term_(0L), voted_for_(-1), election_timer_allowed_(true) {}
 
-    srv_state(ulong term, int voted_for, bool et_allowed) :
+    srv_state(uint64_t term, int voted_for, bool et_allowed) :
             term_(term), voted_for_(voted_for), election_timer_allowed_(et_allowed) {}
 
     /**
@@ -44,19 +44,19 @@ public:
      * @param Current term.
      * @return New term, it should be greater than current term.
      */
-    using inc_term_func = std::function< ulong(ulong) >;
+    using inc_term_func = std::function< uint64_t(uint64_t) >;
 
     __nocopy__(srv_state);
 
 public:
     static std::shared_ptr< srv_state > deserialize(buffer& buf) {
-        if (buf.size() > sz_ulong + sz_int) { return deserialize_v1p(buf); }
+        if (buf.size() > sz_uint64_t + sz_int) { return deserialize_v1p(buf); }
         // Backward compatibility.
         return deserialize_v0(buf);
     }
 
     static std::shared_ptr< srv_state > deserialize_v0(buffer& buf) {
-        ulong term = buf.get_ulong();
+        uint64_t term = buf.get_uint64();
         int voted_for = buf.get_int();
         return std::make_shared< srv_state >(term, voted_for, true);
     }
@@ -65,7 +65,7 @@ public:
         buffer_serializer bs(buf);
         uint8_t ver = bs.get_u8();
         (void)ver;
-        ulong term = bs.get_u64();
+        uint64_t term = bs.get_u64();
         int voted_for = bs.get_i32();
         bool et_allowed = (bs.get_u8() == 1);
         return std::make_shared< srv_state >(term, voted_for, et_allowed);
@@ -73,13 +73,13 @@ public:
 
     void set_inc_term_func(inc_term_func to) { inc_term_cb_ = to; }
 
-    ulong get_term() const { return term_; }
+    uint64_t get_term() const { return term_; }
 
-    void set_term(ulong term) { term_ = term; }
+    void set_term(uint64_t term) { term_ = term; }
 
     void inc_term() {
         if (inc_term_cb_) {
-            ulong new_term = inc_term_cb_(term_);
+            uint64_t new_term = inc_term_cb_(term_);
             assert(new_term > term_);
             term_ = new_term;
             return;
@@ -98,7 +98,7 @@ public:
     std::shared_ptr< buffer > serialize() const { return serialize_v1p(CURRENT_VERSION); }
 
     std::shared_ptr< buffer > serialize_v0() const {
-        std::shared_ptr< buffer > buf = buffer::alloc(sz_ulong + sz_int);
+        std::shared_ptr< buffer > buf = buffer::alloc(sz_uint64_t + sz_int);
         buf->put(term_);
         buf->put(voted_for_);
         buf->pos(0);
@@ -127,7 +127,7 @@ private:
     /**
      * Term.
      */
-    std::atomic< ulong > term_;
+    std::atomic< uint64_t > term_;
 
     /**
      * Server ID that this server voted for.
@@ -144,7 +144,7 @@ private:
      * Custom callback function for increasing term.
      * If not given, term will be increased by 1.
      */
-    std::function< ulong(ulong) > inc_term_cb_;
+    std::function< uint64_t(uint64_t) > inc_term_cb_;
 };
 
 } // namespace nuraft

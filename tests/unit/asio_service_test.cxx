@@ -672,7 +672,7 @@ int response_hint_test(bool with_meta) {
 static void async_handler(std::list< ulong >* idx_list, std::mutex* idx_list_lock, std::shared_ptr< buffer >& result,
                           std::shared_ptr< std::exception >& err) {
     result->pos(0);
-    ulong idx = result->get_ulong();
+    ulong idx = result->get_uint64();
     if (idx_list) {
         std::lock_guard< std::mutex > l(*idx_list_lock);
         idx_list->push_back(idx);

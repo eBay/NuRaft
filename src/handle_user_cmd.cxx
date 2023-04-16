@@ -57,7 +57,7 @@ std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > raft_server::add_srv(
     std::shared_ptr< buffer > buf(srv.serialize());
     std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
     std::shared_ptr< req_msg > req =
-        std::make_shared< req_msg >((ulong)0, msg_type::add_server_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+        std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
     req->log_entries().push_back(log);
     return send_msg_to_leader(req);
 }
@@ -68,7 +68,7 @@ std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > raft_server::remove_s
     buf->pos(0);
     std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
     std::shared_ptr< req_msg > req =
-        std::make_shared< req_msg >((ulong)0, msg_type::remove_server_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+        std::make_shared< req_msg >((uint64_t)0, msg_type::remove_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
     req->log_entries().push_back(log);
     return send_msg_to_leader(req);
 }
@@ -88,7 +88,7 @@ raft_server::append_entries_ext(const std::vector< std::shared_ptr< buffer > >& 
     }
 
     std::shared_ptr< req_msg > req =
-        std::make_shared< req_msg >((ulong)0, msg_type::client_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+        std::make_shared< req_msg >((uint64_t)0, msg_type::client_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
     for (auto it = logs.begin(); it != logs.end(); ++it) {
         std::shared_ptr< buffer > buf = *it;
         // Just in case when user forgot to reset the position.

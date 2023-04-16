@@ -370,7 +370,7 @@ public:
      *
      * @return Term.
      */
-    ulong get_term() const { return state_->get_term(); }
+    uint64_t get_term() const { return state_->get_term(); }
 
     /**
      * Get the term of given log index number.
@@ -378,42 +378,42 @@ public:
      * @param log_idx Log index number
      * @return Term of given log.
      */
-    ulong get_log_term(ulong log_idx) const { return log_store_->term_at(log_idx); }
+    uint64_t get_log_term(uint64_t log_idx) const { return log_store_->term_at(log_idx); }
 
     /**
      * Get the term of the last log.
      *
      * @return Term of the last log.
      */
-    ulong get_last_log_term() const { return log_store_->term_at(get_last_log_idx()); }
+    uint64_t get_last_log_term() const { return log_store_->term_at(get_last_log_idx()); }
 
     /**
      * Get the last log index number.
      *
      * @return Last log index number.
      */
-    ulong get_last_log_idx() const { return log_store_->next_slot() - 1; }
+    uint64_t get_last_log_idx() const { return log_store_->next_slot() - 1; }
 
     /**
      * Get the last committed log index number of state machine.
      *
      * @return Last committed log index number of state machine.
      */
-    ulong get_committed_log_idx() const { return sm_commit_index_.load(); }
+    uint64_t get_committed_log_idx() const { return sm_commit_index_.load(); }
 
     /**
      * Get the target log index number we are required to commit.
      *
      * @return Target committed log index number.
      */
-    ulong get_target_committed_log_idx() const { return quick_commit_index_.load(); }
+    uint64_t get_target_committed_log_idx() const { return quick_commit_index_.load(); }
 
     /**
      * Get the leader's last committed log index number.
      *
      * @return The leader's last committed log index number.
      */
-    ulong get_leader_committed_log_idx() const {
+    uint64_t get_leader_committed_log_idx() const {
         return is_leader() ? get_committed_log_idx() : leader_commit_index_.load();
     }
 
@@ -423,7 +423,7 @@ public:
      *
      * @return Expected committed log index.
      */
-    ulong get_expected_committed_log_idx();
+    uint64_t get_expected_committed_log_idx();
 
     /**
      * Get the current Raft cluster config.
@@ -518,13 +518,13 @@ public:
         /**
          * The last log index that the peer has, from this server's point of view.
          */
-        ulong last_log_idx_;
+        uint64_t last_log_idx_;
 
         /**
          * The elapsed time since the last successful response from this peer,
          * in microsecond.
          */
-        ulong last_succ_resp_us_;
+        uint64_t last_succ_resp_us_;
     };
 
     /**
@@ -705,7 +705,7 @@ public:
      *
      * @return Log index number of the created snapshot or`0` if failed.
      */
-    ulong create_snapshot();
+    uint64_t create_snapshot();
 
     /**
      * Get the log index number of the last snapshot.
@@ -713,7 +713,7 @@ public:
      * @return Log index number of the last snapshot.
      *         `0` if snapshot does not exist.
      */
-    ulong get_last_snapshot_idx() const;
+    uint64_t get_last_snapshot_idx() const;
 
 protected:
     typedef std::unordered_map< int32_t, std::shared_ptr< peer > >::const_iterator peer_itor;
@@ -722,12 +722,12 @@ protected:
 
     struct pre_vote_status_t {
         pre_vote_status_t() : quorum_reject_count_(0), failure_count_(0) { reset(0); }
-        void reset(ulong _term) {
+        void reset(uint64_t _term) {
             term_ = _term;
             done_ = false;
             live_ = dead_ = abandoned_ = 0;
         }
-        ulong term_;
+        uint64_t term_;
         std::atomic< bool > done_;
         std::atomic< int32_t > live_;
         std::atomic< int32_t > dead_;
@@ -819,7 +819,7 @@ protected:
     void handle_reconnect_resp(resp_msg& resp);
     void handle_custom_notification_resp(resp_msg& resp);
 
-    bool try_update_precommit_index(ulong desired, const size_t MAX_ATTEMPTS = 10);
+    bool try_update_precommit_index(uint64_t desired, const size_t MAX_ATTEMPTS = 10);
 
     void handle_ext_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err);
     void handle_ext_resp_err(rpc_exception& err);
@@ -827,14 +827,14 @@ protected:
     void reset_srv_to_join();
     void reset_srv_to_leave();
     std::shared_ptr< req_msg > create_append_entries_req(std::shared_ptr< peer >& pp);
-    std::shared_ptr< req_msg > create_sync_snapshot_req(std::shared_ptr< peer >& pp, ulong last_log_idx, ulong term,
-                                                        ulong commit_idx, bool& succeeded_out);
+    std::shared_ptr< req_msg > create_sync_snapshot_req(std::shared_ptr< peer >& pp, uint64_t last_log_idx, uint64_t term,
+                                                        uint64_t commit_idx, bool& succeeded_out);
     bool check_snapshot_timeout(std::shared_ptr< peer > pp);
     void destroy_user_snp_ctx(std::shared_ptr< snapshot_sync_ctx > sync_ctx);
     void clear_snapshot_sync_ctx(peer& pp);
-    void commit(ulong target_idx);
-    bool snapshot_and_compact(ulong committed_idx, bool forced_creation = false);
-    bool update_term(ulong term);
+    void commit(uint64_t target_idx);
+    bool snapshot_and_compact(uint64_t committed_idx, bool forced_creation = false);
+    bool update_term(uint64_t term);
     void reconfigure(const std::shared_ptr< cluster_config >& new_config);
     void update_target_priority();
     void decay_target_priority();
@@ -847,13 +847,13 @@ protected:
     void handle_hb_timeout(int32_t srv_id);
     void reset_peer_info();
     void handle_election_timeout();
-    void sync_log_to_new_srv(ulong start_idx);
+    void sync_log_to_new_srv(uint64_t start_idx);
     void invite_srv_to_join_cluster();
     void rm_srv_from_cluster(int32_t srv_id);
     int get_snapshot_sync_block_size() const;
     void on_snapshot_completed(std::shared_ptr< snapshot >& s, bool result, std::shared_ptr< std::exception >& err);
     void on_retryable_req_err(std::shared_ptr< peer >& p, std::shared_ptr< req_msg >& req);
-    ulong term_for_log(ulong log_idx);
+    uint64_t term_for_log(uint64_t log_idx);
 
     void commit_in_bg();
     bool commit_in_bg_exec(size_t timeout_ms = 0);
@@ -861,8 +861,8 @@ protected:
     void append_entries_in_bg();
     void append_entries_in_bg_exec();
 
-    void commit_app_log(ulong idx_to_commit, std::shared_ptr< log_entry >& le, bool need_to_handle_commit_elem);
-    void commit_conf(ulong idx_to_commit, std::shared_ptr< log_entry >& le);
+    void commit_app_log(uint64_t idx_to_commit, std::shared_ptr< log_entry >& le, bool need_to_handle_commit_elem);
+    void commit_conf(uint64_t idx_to_commit, std::shared_ptr< log_entry >& le);
 
     result_ptr< buffer_ptr > send_msg_to_leader(std::shared_ptr< req_msg >& req,
                                                 const req_ext_params& ext_params = req_ext_params());
@@ -878,7 +878,7 @@ protected:
     std::shared_ptr< snapshot > get_last_snapshot() const;
     void set_last_snapshot(const std::shared_ptr< snapshot >& new_snapshot);
 
-    ulong store_log_entry(std::shared_ptr< log_entry >& entry, ulong index = 0);
+    uint64_t store_log_entry(std::shared_ptr< log_entry >& entry, uint64_t index = 0);
 
     std::shared_ptr< resp_msg > handle_out_of_log_msg(req_msg& req, std::shared_ptr< custom_notification_msg > msg,
                                                       std::shared_ptr< resp_msg > resp);
@@ -967,13 +967,13 @@ protected:
     /**
      * Last pre-committed index.
      */
-    std::atomic< ulong > precommit_index_;
+    std::atomic< uint64_t > precommit_index_;
 
     /**
      * Leader commit index, seen by this node last time.
      * Only valid when the current role is `follower`.
      */
-    std::atomic< ulong > leader_commit_index_;
+    std::atomic< uint64_t > leader_commit_index_;
 
     /**
      * Target commit index.
@@ -983,25 +983,25 @@ protected:
      * value can be adjusted to the last log index number of the current
      * node, which might be smaller than `leader_commit_index_` value.
      */
-    std::atomic< ulong > quick_commit_index_;
+    std::atomic< uint64_t > quick_commit_index_;
 
     /**
      * Actual commit index of state machine.
      */
-    std::atomic< ulong > sm_commit_index_;
+    std::atomic< uint64_t > sm_commit_index_;
 
     /**
      * If `grace_period_of_lagging_state_machine_` option is enabled,
      * the server will not initiate vote if its state machine's commit
      * index is less than this number.
      */
-    std::atomic< ulong > lagging_sm_target_index_;
+    std::atomic< uint64_t > lagging_sm_target_index_;
 
     /**
      * (Read-only)
      * Initial commit index when this server started.
      */
-    ulong initial_commit_index_;
+    uint64_t initial_commit_index_;
 
     /**
      * `true` if this server is seeing alive leader.
@@ -1221,7 +1221,7 @@ protected:
      * This happens when the sender (i.e., leader) is too slow
      * so that cannot send message before election timeout.
      */
-    std::atomic< ulong > et_cnt_receiving_snapshot_;
+    std::atomic< uint64_t > et_cnt_receiving_snapshot_;
 
     /**
      * (Read-only)
@@ -1285,7 +1285,7 @@ protected:
      * this server is actually removed.
      * Connection to `srv_to_leave_` should be kept until this log.
      */
-    ulong srv_to_leave_target_idx_;
+    uint64_t srv_to_leave_target_idx_;
 
     /**
      * Config of the server preparing to join,
@@ -1327,7 +1327,7 @@ protected:
      * Client requests waiting for replication.
      * Only used in blocking mode.
      */
-    std::map< ulong, std::shared_ptr< commit_ret_elem > > commit_ret_elems_;
+    std::map< uint64_t, std::shared_ptr< commit_ret_elem > > commit_ret_elems_;
 
     /**
      * Lock for `commit_ret_elems_`.
@@ -1387,7 +1387,7 @@ protected:
     /**
      * The term when `vote_init_timer_` was reset.
      */
-    std::atomic< ulong > vote_init_timer_term_;
+    std::atomic< uint64_t > vote_init_timer_term_;
 
     /**
      * (Experimental)

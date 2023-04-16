@@ -43,18 +43,18 @@ class rpc_exception;
 class snapshot;
 class snapshot_sync_ctx {
 public:
-    snapshot_sync_ctx(const std::shared_ptr< snapshot >& s, int peer_id, ulong timeout_ms, ulong offset = 0L);
+    snapshot_sync_ctx(const std::shared_ptr< snapshot >& s, int peer_id, uint64_t timeout_ms, uint64_t offset = 0L);
 
     __nocopy__(snapshot_sync_ctx);
 
 public:
     const std::shared_ptr< snapshot >& get_snapshot() const { return snapshot_; }
-    ulong get_offset() const { return offset_; }
-    ulong get_obj_idx() const { return obj_idx_; }
+    uint64_t get_offset() const { return offset_; }
+    uint64_t get_obj_idx() const { return obj_idx_; }
     void*& get_user_snp_ctx() { return user_snp_ctx_; }
 
-    void set_offset(ulong offset);
-    void set_obj_idx(ulong obj_idx) { obj_idx_ = obj_idx; }
+    void set_offset(uint64_t offset);
+    void set_obj_idx(uint64_t obj_idx) { obj_idx_ = obj_idx; }
     void set_user_snp_ctx(void* _user_snp_ctx) { user_snp_ctx_ = _user_snp_ctx; }
 
     timer_helper& get_timer() { return timer_; }
@@ -78,8 +78,8 @@ private:
      * but the legacy raw snapshot (offset_) is deprecated.
      */
     union {
-        ulong offset_;
-        ulong obj_idx_;
+        uint64_t offset_;
+        uint64_t obj_idx_;
     };
 
     /**

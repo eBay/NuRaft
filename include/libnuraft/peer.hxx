@@ -113,9 +113,9 @@ public:
         if (!enable) { scheduler_->cancel(hb_task_); }
     }
 
-    ulong get_next_log_idx() const { return next_log_idx_; }
+    uint64_t get_next_log_idx() const { return next_log_idx_; }
 
-    void set_next_log_idx(ulong idx) { next_log_idx_ = idx; }
+    void set_next_log_idx(uint64_t idx) { next_log_idx_ = idx; }
 
     uint64_t get_last_accepted_log_idx() const { return last_accepted_log_idx_; }
 
@@ -125,9 +125,9 @@ public:
 
     void set_next_batch_size_hint_in_bytes(int64_t batch_size) { next_batch_size_hint_in_bytes_ = batch_size; }
 
-    ulong get_matched_idx() const { return matched_idx_; }
+    uint64_t get_matched_idx() const { return matched_idx_; }
 
-    void set_matched_idx(ulong idx) { matched_idx_ = idx; }
+    void set_matched_idx(uint64_t idx) { matched_idx_ = idx; }
 
     void set_pending_commit() { pending_commit_flag_.store(true); }
 
@@ -136,7 +136,7 @@ public:
         return pending_commit_flag_.compare_exchange_strong(t, false);
     }
 
-    void set_snapshot_in_sync(const std::shared_ptr< snapshot >& s, ulong timeout_ms = 10 * 1000) {
+    void set_snapshot_in_sync(const std::shared_ptr< snapshot >& s, uint64_t timeout_ms = 10 * 1000) {
         std::lock_guard< std::mutex > l(snp_sync_ctx_lock_);
         if (s == nilptr) {
             snp_sync_ctx_.reset();
@@ -190,8 +190,8 @@ public:
     void inc_rpc_errs() { rpc_errs_.fetch_add(1); }
     auto get_rpc_errs() { return rpc_errs_.load(); }
 
-    void set_last_sent_idx(ulong to) { last_sent_idx_ = to; }
-    ulong get_last_sent_idx() const { return last_sent_idx_.load(); }
+    void set_last_sent_idx(uint64_t to) { last_sent_idx_ = to; }
+    uint64_t get_last_sent_idx() const { return last_sent_idx_.load(); }
 
     void reset_cnt_not_applied() { cnt_not_applied_ = 0; }
     auto inc_cnt_not_applied() {
@@ -288,7 +288,7 @@ private:
     /**
      * Next log index of this server.
      */
-    std::atomic< ulong > next_log_idx_;
+    std::atomic< uint64_t > next_log_idx_;
 
     /**
      * The last log index accepted by this server.
@@ -303,7 +303,7 @@ private:
     /**
      * The last log index whose term matches up with the leader.
      */
-    ulong matched_idx_;
+    uint64_t matched_idx_;
 
     /**
      * `true` if we sent message to this server and waiting for
@@ -382,7 +382,7 @@ private:
     /**
      * Start log index of the last sent append entries request.
      */
-    std::atomic< ulong > last_sent_idx_;
+    std::atomic< uint64_t > last_sent_idx_;
 
     /**
      * Number of count where start log index is the same as previous.

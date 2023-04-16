@@ -50,7 +50,7 @@ public:
 
     std::shared_ptr< buffer > serialize() const;
 
-    ulong start_idx_of_leader_;
+    uint64_t start_idx_of_leader_;
 };
 
 class force_vote_msg {

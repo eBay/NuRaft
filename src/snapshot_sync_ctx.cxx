@@ -27,14 +27,14 @@ namespace nuraft {
 
 class raft_server;
 
-snapshot_sync_ctx::snapshot_sync_ctx(const std::shared_ptr< snapshot >& s, int peer_id, ulong timeout_ms,
-                                     ulong offset) :
+snapshot_sync_ctx::snapshot_sync_ctx(const std::shared_ptr< snapshot >& s, int peer_id, uint64_t timeout_ms,
+                                     uint64_t offset) :
         peer_id_(peer_id), snapshot_(s), offset_(offset), user_snp_ctx_(nullptr) {
     // 10 seconds by default.
     timer_.set_duration_ms(timeout_ms);
 }
 
-void snapshot_sync_ctx::set_offset(ulong offset) {
+void snapshot_sync_ctx::set_offset(uint64_t offset) {
     if (offset_ != offset) timer_.reset();
     offset_ = offset;
 }
@@ -141,12 +141,12 @@ void snapshot_io_mgr::async_io_loop() {
             std::unique_lock< std::mutex > lock(elem->dst_->get_lock());
             // ---- lock acquired
             logger* l_ = elem->raft_->l_.get();
-            ulong obj_idx = elem->sync_ctx_->get_offset();
+            uint64_t obj_idx = elem->sync_ctx_->get_offset();
             void*& user_snp_ctx = elem->sync_ctx_->get_user_snp_ctx();
             p_db("peer: %d, obj_idx: %" PRIu64 ", user_snp_ctx %p", dst_id, obj_idx, user_snp_ctx);
 
-            ulong snp_log_idx = elem->snapshot_->get_last_log_idx();
-            ulong snp_log_term = elem->snapshot_->get_last_log_term();
+            uint64_t snp_log_idx = elem->snapshot_->get_last_log_idx();
+            uint64_t snp_log_term = elem->snapshot_->get_last_log_term();
             // ---- lock released
             lock.unlock();
 
@@ -180,8 +180,8 @@ void snapshot_io_mgr::async_io_loop() {
 
             // Send snapshot message with the given response handler.
             recur_lock(elem->raft_->lock_);
-            ulong term = elem->raft_->state_->get_term();
-            ulong commit_idx = elem->raft_->quick_commit_index_;
+            uint64_t term = elem->raft_->state_->get_term();
+            uint64_t commit_idx = elem->raft_->quick_commit_index_;
 
             std::unique_ptr< snapshot_sync_req > sync_req(
                 new snapshot_sync_req(elem->snapshot_, obj_idx, data, is_last_request));

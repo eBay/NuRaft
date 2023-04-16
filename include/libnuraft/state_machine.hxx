@@ -36,8 +36,8 @@ class state_machine {
 
 public:
     struct ext_op_params {
-        ext_op_params(ulong _log_idx, std::shared_ptr< buffer >& _data) : log_idx(_log_idx), data(_data) {}
-        ulong log_idx;
+        ext_op_params(uint64_t _log_idx, std::shared_ptr< buffer >& _data) : log_idx(_log_idx), data(_data) {}
+        uint64_t log_idx;
         std::shared_ptr< buffer >& data;
         // May add more parameters in the future.
     };
@@ -57,7 +57,7 @@ public:
      * @param data Payload of the Raft log.
      * @return Result value of state machine.
      */
-    virtual std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) { return nullptr; }
+    virtual std::shared_ptr< buffer > commit(const uint64_t log_idx, buffer& data) { return nullptr; }
 
     /**
      * (Optional)
@@ -75,7 +75,7 @@ public:
      * @param log_idx Raft log number of the configuration change.
      * @param new_conf New cluster configuration.
      */
-    virtual void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) {}
+    virtual void commit_config(const uint64_t log_idx, std::shared_ptr< cluster_config >& new_conf) {}
 
     /**
      * Pre-commit the given Raft log.
@@ -90,7 +90,7 @@ public:
      * @param data Payload of the Raft log.
      * @return Result value of state machine.
      */
-    virtual std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) { return nullptr; }
+    virtual std::shared_ptr< buffer > pre_commit(const uint64_t log_idx, buffer& data) { return nullptr; }
 
     /**
      * (Optional)
@@ -113,7 +113,7 @@ public:
      * @param log_idx Raft log number to commit.
      * @param data Payload of the Raft log.
      */
-    virtual void rollback(const ulong log_idx, buffer& data) {}
+    virtual void rollback(const uint64_t log_idx, buffer& data) {}
 
     /**
      * (Optional)
@@ -155,7 +155,7 @@ public:
      * @param offset Byte offset of given chunk.
      * @param data Payload of given chunk.
      */
-    virtual void save_snapshot_data(snapshot& s, const ulong offset, buffer& data) {}
+    virtual void save_snapshot_data(snapshot& s, const uint64_t offset, buffer& data) {}
 
     /**
      * Save the given snapshot object to local snapshot.
@@ -180,7 +180,7 @@ public:
      * @param is_first_obj `true` if this is the first object.
      * @param is_last_obj `true` if this is the last object.
      */
-    virtual void save_logical_snp_obj(snapshot& s, ulong& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {}
+    virtual void save_logical_snp_obj(snapshot& s, uint64_t& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {}
 
     /**
      * Apply received snapshot to state machine.
@@ -201,7 +201,7 @@ public:
      * @return Amount of bytes read.
      *         0 if failed.
      */
-    virtual int read_snapshot_data(snapshot& s, const ulong offset, buffer& data) { return 0; }
+    virtual int read_snapshot_data(snapshot& s, const uint64_t offset, buffer& data) { return 0; }
 
     /**
      * Read the given snapshot object.
@@ -224,7 +224,7 @@ public:
      * @param[out] is_last_obj Set `true` if this is the last object.
      * @return Negative number if failed.
      */
-    virtual int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id,
+    virtual int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, uint64_t obj_id,
                                      std::shared_ptr< buffer >& data_out, bool& is_last_obj) {
         data_out = buffer::alloc(4); // A dummy buffer.
         is_last_obj = true;
@@ -261,7 +261,7 @@ public:
      *
      * @return Last committed Raft log number.
      */
-    virtual ulong last_commit_index() = 0;
+    virtual uint64_t last_commit_index() = 0;
 
     /**
      * Create a snapshot corresponding to the given info.

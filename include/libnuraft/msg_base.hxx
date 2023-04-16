@@ -29,11 +29,11 @@ namespace nuraft {
 
 class msg_base {
 public:
-    msg_base(ulong term, msg_type type, int src, int dst) : term_(term), type_(type), src_(src), dst_(dst) {}
+    msg_base(uint64_t term, msg_type type, int src, int dst) : term_(term), type_(type), src_(src), dst_(dst) {}
 
     virtual ~msg_base() {}
 
-    ulong get_term() const { return this->term_; }
+    uint64_t get_term() const { return this->term_; }
 
     msg_type get_type() const { return this->type_; }
 
@@ -44,7 +44,7 @@ public:
     __nocopy__(msg_base);
 
 private:
-    ulong term_;
+    uint64_t term_;
     msg_type type_;
     int32_t src_;
     int32_t dst_;

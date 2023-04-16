@@ -39,7 +39,7 @@ public:
         logical_object = 0x2,
     };
 
-    snapshot(ulong last_log_idx, ulong last_log_term, const std::shared_ptr< cluster_config >& last_config, ulong size = 0,
+    snapshot(uint64_t last_log_idx, uint64_t last_log_term, const std::shared_ptr< cluster_config >& last_config, uint64_t size = 0,
              type _type = logical_object) :
             last_log_idx_(last_log_idx),
             last_log_term_(last_log_term),
@@ -50,13 +50,13 @@ public:
     __nocopy__(snapshot);
 
 public:
-    ulong get_last_log_idx() const { return last_log_idx_; }
+    uint64_t get_last_log_idx() const { return last_log_idx_; }
 
-    ulong get_last_log_term() const { return last_log_term_; }
+    uint64_t get_last_log_term() const { return last_log_term_; }
 
-    ulong size() const { return size_; }
+    uint64_t size() const { return size_; }
 
-    void set_size(ulong size) { size_ = size; }
+    void set_size(uint64_t size) { size_ = size; }
 
     type get_type() const { return type_; }
 
@@ -71,9 +71,9 @@ public:
     std::shared_ptr< buffer > serialize();
 
 private:
-    ulong last_log_idx_;
-    ulong last_log_term_;
-    ulong size_;
+    uint64_t last_log_idx_;
+    uint64_t last_log_term_;
+    uint64_t size_;
     std::shared_ptr< cluster_config > last_config_;
     type type_;
 };

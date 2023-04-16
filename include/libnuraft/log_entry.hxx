@@ -34,16 +34,16 @@ namespace nuraft {
 
 class log_entry {
 public:
-    log_entry(ulong term, const std::shared_ptr< buffer >& buff, log_val_type value_type = log_val_type::app_log,
+    log_entry(uint64_t term, const std::shared_ptr< buffer >& buff, log_val_type value_type = log_val_type::app_log,
               uint64_t log_timestamp = 0) :
             term_(term), value_type_(value_type), buff_(buff), timestamp_us_(log_timestamp) {}
 
     __nocopy__(log_entry);
 
 public:
-    ulong get_term() const { return term_; }
+    uint64_t get_term() const { return term_; }
 
-    void set_term(ulong term) { term_ = term; }
+    void set_term(uint64_t term) { term_ = term; }
 
     log_val_type get_val_type() const { return value_type_; }
 
@@ -73,7 +73,7 @@ public:
 
     std::shared_ptr< buffer > serialize() {
         buff_->pos(0);
-        std::shared_ptr< buffer > buf = buffer::alloc(sizeof(ulong) + sizeof(char) + buff_->size());
+        std::shared_ptr< buffer > buf = buffer::alloc(sizeof(uint64_t) + sizeof(char) + buff_->size());
         buf->put(term_);
         buf->put((static_cast< byte >(value_type_)));
         buf->put(*buff_);
@@ -82,14 +82,14 @@ public:
     }
 
     static std::shared_ptr< log_entry > deserialize(buffer& buf) {
-        ulong term = buf.get_ulong();
+        uint64_t term = buf.get_uint64();
         log_val_type t = static_cast< log_val_type >(buf.get_byte());
         std::shared_ptr< buffer > data = buffer::copy(buf);
         return std::make_shared< log_entry >(term, data, t);
     }
 
-    static ulong term_in_buffer(buffer& buf) {
-        ulong term = buf.get_ulong();
+    static uint64_t term_in_buffer(buffer& buf) {
+        uint64_t term = buf.get_uint64();
         buf.pos(0); // reset the position
         return term;
     }
@@ -98,7 +98,7 @@ private:
     /**
      * The term number when this log entry was generated.
      */
-    ulong term_;
+    uint64_t term_;
 
     /**
      * Type of this log entry.

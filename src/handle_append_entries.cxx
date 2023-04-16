@@ -289,11 +289,11 @@ bool raft_server::request_append_entries(std::shared_ptr< peer > p) {
 
 std::shared_ptr< req_msg > raft_server::create_append_entries_req(std::shared_ptr< peer >& pp) {
     peer& p = *pp;
-    ulong cur_nxt_idx(0L);
-    ulong commit_idx(0L);
-    ulong last_log_idx(0L);
-    ulong term(0L);
-    ulong starting_idx(1L);
+    uint64_t cur_nxt_idx(0L);
+    uint64_t commit_idx(0L);
+    uint64_t last_log_idx(0L);
+    uint64_t term(0L);
+    uint64_t starting_idx(1L);
 
     {
         recur_lock(lock_);
@@ -333,18 +333,18 @@ std::shared_ptr< req_msg > raft_server::create_append_entries_req(std::shared_pt
     // Read log entries. The underlying log store may have removed some log entries
     // causing some of the requested entries to be unavailable. The log store should
     // return nullptr to indicate such errors.
-    ulong end_idx = std::min(cur_nxt_idx, last_log_idx + 1 + ctx_->get_params()->max_append_size_);
+    uint64_t end_idx = std::min(cur_nxt_idx, last_log_idx + 1 + ctx_->get_params()->max_append_size_);
 
     // NOTE: If this is a retry, probably the follower is down.
     //       Send just one log until it comes back
     //       (i.e., max_append_size_ = 1).
     //       Only when end_idx - start_idx > 1, and 5th try.
-    ulong peer_last_sent_idx = p.get_last_sent_idx();
+    uint64_t peer_last_sent_idx = p.get_last_sent_idx();
     if (last_log_idx + 1 == peer_last_sent_idx && last_log_idx + 2 < end_idx) {
         auto cur_cnt = p.inc_cnt_not_applied();
         p_db("last sent log (%" PRIu64 ") to peer %d is not applied, cnt %d", peer_last_sent_idx, p.get_id(), cur_cnt);
         if (cur_cnt >= 5) {
-            ulong prev_end_idx = end_idx;
+            uint64_t prev_end_idx = end_idx;
             end_idx = std::min(cur_nxt_idx, last_log_idx + 1 + 1);
             p_db("reduce end_idx %" PRIu64 " -> %" PRIu64, prev_end_idx, end_idx);
         }
@@ -410,8 +410,8 @@ std::shared_ptr< req_msg > raft_server::create_append_entries_req(std::shared_pt
         return req;
     }
 
-    ulong last_log_term = term_for_log(last_log_idx);
-    ulong adjusted_end_idx = end_idx;
+    uint64_t last_log_term = term_for_log(last_log_idx);
+    uint64_t adjusted_end_idx = end_idx;
     if (log_entries) adjusted_end_idx = last_log_idx + 1 + log_entries->size();
     if (adjusted_end_idx != end_idx) {
         p_tr("adjusted end_idx due to batch size hint: %" PRIu64 " -> %" PRIu64, end_idx, adjusted_end_idx);
@@ -503,7 +503,7 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
         state_->get_term(), msg_type::append_entries_response, id_, req.get_src(), log_store_->next_slot());
 
     std::shared_ptr< snapshot > local_snp = get_last_snapshot();
-    ulong log_term = 0;
+    uint64_t log_term = 0;
     if (req.get_last_log_idx() < log_store_->next_slot()) { log_term = term_for_log(req.get_last_log_idx()); }
     bool log_okay = req.get_last_log_idx() == 0 || (log_term && req.get_last_log_term() == log_term) ||
         (local_snp && local_snp->get_last_log_idx() == req.get_last_log_idx() &&
@@ -547,7 +547,7 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
         // Write logs to store, start from overlapped logs
 
         // Actual log number.
-        ulong log_idx = req.get_last_log_idx() + 1;
+        uint64_t log_idx = req.get_last_log_idx() + 1;
         // Local counter for iterating req.log_entries().
         size_t cnt = 0;
 
@@ -573,7 +573,7 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
         //      and MUST BE in backward direction.
         //   2) Should do rollback ONLY WHEN we have at least one log
         //      to overwrite.
-        ulong my_last_log_idx = log_store_->next_slot() - 1;
+        uint64_t my_last_log_idx = log_store_->next_slot() - 1;
         bool rollback_in_progress = false;
         if (my_last_log_idx >= log_idx && cnt < req.log_entries().size()) {
             p_in("rollback logs: %" PRIu64 " - %" PRIu64 ", commit idx req %" PRIu64 ", quick %" PRIu64 ", sm %" PRIu64
@@ -646,7 +646,7 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
             std::shared_ptr< log_entry > entry = req.log_entries().at(cnt++);
             p_tr("append at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n", log_store_->next_slot(),
                  entry->get_term(), entry->get_timestamp());
-            ulong idx_for_entry = store_log_entry(entry);
+            uint64_t idx_for_entry = store_log_entry(entry);
             if (entry->get_val_type() == log_val_type::conf) {
                 p_in("receive a config change from leader at %" PRIu64, idx_for_entry);
                 config_changing_ = true;
@@ -711,7 +711,7 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
     //   on next `append_entries()` call, due to racing
     //   between BG commit thread and appending logs.
     //   Hence, we always should take smaller one.
-    ulong target_precommit_index = req.get_last_log_idx() + req.log_entries().size();
+    uint64_t target_precommit_index = req.get_last_log_idx() + req.log_entries().size();
 
     // WARNING:
     //   Since `peer::set_free()` is called prior than response handler
@@ -754,10 +754,10 @@ std::shared_ptr< resp_msg > raft_server::handle_append_entries(req_msg& req) {
     return resp;
 }
 
-bool raft_server::try_update_precommit_index(ulong desired, const size_t MAX_ATTEMPTS) {
+bool raft_server::try_update_precommit_index(uint64_t desired, const size_t MAX_ATTEMPTS) {
     // If `MAX_ATTEMPTS == 0`, try forever.
     size_t num_attempts = 0;
-    ulong prev_precommit_index = precommit_index_;
+    uint64_t prev_precommit_index = precommit_index_;
     while (prev_precommit_index < desired && (num_attempts < MAX_ATTEMPTS || MAX_ATTEMPTS == 0)) {
         if (precommit_index_.compare_exchange_strong(prev_precommit_index, desired)) { return true; }
         // Otherwise: retry until `precommit_index_` is equal to or greater than
@@ -820,13 +820,13 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         (void)rc;
 
         // Try to commit with this response.
-        ulong committed_index = get_expected_committed_log_idx();
+        uint64_t committed_index = get_expected_committed_log_idx();
         commit(committed_index);
         need_to_catchup = p->clear_pending_commit() || resp.get_next_idx() < log_store_->next_slot();
 
     } else {
         std::lock_guard< std::mutex > guard(p->get_lock());
-        ulong prev_next_log = p->get_next_log_idx();
+        uint64_t prev_next_log = p->get_next_log_idx();
         if (resp.get_next_idx() > 0 && prev_next_log > resp.get_next_idx()) {
             // fast move for the peer to catch up
             p->set_next_log_idx(resp.get_next_idx());
@@ -853,7 +853,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     //   If all other followers are not responding, we may not make
     //   below condition true. In that case, we check the timeout of
     //   re-election timer in heartbeat handler, and do force resign.
-    ulong p_matched_idx = p->get_matched_idx();
+    uint64_t p_matched_idx = p->get_matched_idx();
     if (write_paused_ && p->get_id() == next_leader_candidate_ && p_matched_idx &&
         p_matched_idx == log_store_->next_slot() - 1 && p->make_busy()) {
         // NOTE:
@@ -928,8 +928,8 @@ uint64_t raft_server::get_current_leader_index() {
     return leader_index;
 }
 
-ulong raft_server::get_expected_committed_log_idx() {
-    std::vector< ulong > matched_indexes;
+uint64_t raft_server::get_expected_committed_log_idx() {
+    std::vector< uint64_t > matched_indexes;
     state_machine::adjust_commit_index_params aci_params;
     matched_indexes.reserve(16);
     aci_params.peer_index_map_.reserve(16);
@@ -952,7 +952,7 @@ ulong raft_server::get_expected_committed_log_idx() {
     // NOTE: Descending order.
     //       e.g.) 100 100 99 95 92
     //             => commit on 99 if `quorum_idx == 2`.
-    std::sort(matched_indexes.begin(), matched_indexes.end(), std::greater< ulong >());
+    std::sort(matched_indexes.begin(), matched_indexes.end(), std::greater< uint64_t >());
 
     size_t quorum_idx = get_quorum_for_commit();
     if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
@@ -975,7 +975,7 @@ ulong raft_server::get_expected_committed_log_idx() {
 
     if (l_ && l_->get_level() >= 6) {
         std::string tmp_str;
-        for (ulong m_idx : matched_indexes) {
+        for (uint64_t m_idx : matched_indexes) {
             tmp_str += std::to_string(m_idx) + " ";
         }
         p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());

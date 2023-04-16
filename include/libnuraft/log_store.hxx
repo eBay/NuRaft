@@ -39,14 +39,14 @@ public:
      *
      * @return Last log index number + 1
      */
-    virtual ulong next_slot() const = 0;
+    virtual uint64_t next_slot() const = 0;
 
     /**
      * The start index of the log store, at the very beginning, it must be 1.
      * However, after some compact actions, this could be anything equal to or
      * greater than or equal to one
      */
-    virtual ulong start_index() const = 0;
+    virtual uint64_t start_index() const = 0;
 
     /**
      * The last log entry in store.
@@ -62,7 +62,7 @@ public:
      * @param entry Log entry
      * @return Log index number.
      */
-    virtual ulong append(std::shared_ptr< log_entry >& entry) = 0;
+    virtual uint64_t append(std::shared_ptr< log_entry >& entry) = 0;
 
     /**
      * Overwrite a log entry at the given `index`.
@@ -73,7 +73,7 @@ public:
      * @param index Log index number to overwrite.
      * @param entry New log entry to overwrite.
      */
-    virtual void write_at(ulong index, std::shared_ptr< log_entry >& entry) = 0;
+    virtual void write_at(uint64_t index, std::shared_ptr< log_entry >& entry) = 0;
 
     /**
      * Invoked after a batch of logs is written as a part of
@@ -82,7 +82,7 @@ public:
      * @param start The start log index number (inclusive)
      * @param cnt The number of log entries written.
      */
-    virtual void end_of_append_batch(ulong start, ulong cnt) {}
+    virtual void end_of_append_batch(uint64_t start, uint64_t cnt) {}
 
     /**
      * Get log entries with index [start, end).
@@ -94,7 +94,7 @@ public:
      * @param end The end log index number (exclusive).
      * @return The log entries between [start, end).
      */
-    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(ulong start, ulong end) = 0;
+    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(uint64_t start, uint64_t end) = 0;
 
     /**
      * (Optional)
@@ -114,7 +114,7 @@ public:
      *         given by the batch_size_hint_in_bytes.
      */
     virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >
-    log_entries_ext(ulong start, ulong end, int64_t batch_size_hint_in_bytes = 0) {
+    log_entries_ext(uint64_t start, uint64_t end, int64_t batch_size_hint_in_bytes = 0) {
         return log_entries(start, end);
     }
 
@@ -124,7 +124,7 @@ public:
      * @param index Should be equal to or greater than 1.
      * @return The log entry or null if index >= this->next_slot().
      */
-    virtual std::shared_ptr< log_entry > entry_at(ulong index) = 0;
+    virtual std::shared_ptr< log_entry > entry_at(uint64_t index) = 0;
 
     /**
      * Get the term for the log entry at the specified index.
@@ -134,7 +134,7 @@ public:
      * @return The term for the specified log entry, or
      *         0 if index < this->start_index().
      */
-    virtual ulong term_at(ulong index) = 0;
+    virtual uint64_t term_at(uint64_t index) = 0;
 
     /**
      * Pack the given number of log items starting from the given index.
@@ -143,7 +143,7 @@ public:
      * @param cnt The number of logs to pack.
      * @return Packed (encoded) logs.
      */
-    virtual std::shared_ptr< buffer > pack(ulong index, int32_t cnt) = 0;
+    virtual std::shared_ptr< buffer > pack(uint64_t index, int32_t cnt) = 0;
 
     /**
      * Apply the log pack to current log store, starting from index.
@@ -151,7 +151,7 @@ public:
      * @param index The start log index number (inclusive).
      * @param Packed logs.
      */
-    virtual void apply_pack(ulong index, buffer& pack) = 0;
+    virtual void apply_pack(uint64_t index, buffer& pack) = 0;
 
     /**
      * Compact the log store by purging all log entries,
@@ -163,7 +163,7 @@ public:
      * @param last_log_index Log index number that will be purged up to (inclusive).
      * @return `true` on success.
      */
-    virtual bool compact(ulong last_log_index) = 0;
+    virtual bool compact(uint64_t last_log_index) = 0;
 
     /**
      * Synchronously flush all log entries in this log store to the backing storage
@@ -180,7 +180,7 @@ public:
      *
      * @return The last durable log index.
      */
-    virtual ulong last_durable_index() { return next_slot() - 1; }
+    virtual uint64_t last_durable_index() { return next_slot() - 1; }
 };
 
 } // namespace nuraft

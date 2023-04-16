@@ -38,7 +38,7 @@ limitations under the License.
 
 namespace nuraft {
 
-void raft_server::commit(ulong target_idx) {
+void raft_server::commit(uint64_t target_idx) {
     if (target_idx > quick_commit_index_) {
         quick_commit_index_ = target_idx;
         lagging_sm_target_index_ = target_idx;
@@ -79,8 +79,8 @@ void raft_server::commit(ulong target_idx) {
          * whose status rely on raft server, that now raft server is fresh.
          */
         if (role_ == srv_role::follower) {
-            ulong leader_idx = leader_commit_index_.load();
-            ulong local_idx = sm_commit_index_.load();
+            uint64_t leader_idx = leader_commit_index_.load();
+            uint64_t local_idx = sm_commit_index_.load();
             if (!data_fresh_.load() && leader_idx < local_idx + ctx_->get_params()->fresh_log_gap_) {
                 data_fresh_.store(true);
                 cb_func::Param param(id_, leader_);
@@ -176,7 +176,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
 
     p_db("commit upto %" PRIu64 ", curruent idx %" PRIu64, quick_commit_index_.load(), sm_commit_index_.load());
 
-    ulong log_start_idx = log_store_->start_index();
+    uint64_t log_start_idx = log_store_->start_index();
     if (log_start_idx && sm_commit_index_ < log_start_idx - 1) {
         p_wn("current commit idx %" PRIu64 " is smaller than log start idx %" PRIu64 " - 1, "
              "adjust it to %" PRIu64 "",
@@ -202,7 +202,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         // Break the loop if state machine commit is paused.
         if (sm_commit_paused_) { break; }
 
-        ulong index_to_commit = sm_commit_index_ + 1;
+        uint64_t index_to_commit = sm_commit_index_ + 1;
         p_tr("commit upto %" PRIu64 ", current idx %" PRIu64 "\n", quick_commit_index_.load(), index_to_commit);
 
         std::shared_ptr< log_entry > le = log_store_->entry_at(index_to_commit);
@@ -231,7 +231,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             commit_conf(index_to_commit, le);
         }
 
-        ulong exp_idx = index_to_commit - 1;
+        uint64_t exp_idx = index_to_commit - 1;
         if (sm_commit_index_.compare_exchange_strong(exp_idx, index_to_commit)) {
             snapshot_and_compact(sm_commit_index_);
 
@@ -248,8 +248,8 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     }
     p_db("DONE: commit upto %" PRIu64 ", curruent idx %" PRIu64, quick_commit_index_.load(), sm_commit_index_.load());
     if (role_ == srv_role::follower) {
-        ulong leader_idx = leader_commit_index_.load();
-        ulong local_idx = sm_commit_index_.load();
+        uint64_t leader_idx = leader_commit_index_.load();
+        uint64_t local_idx = sm_commit_index_.load();
         std::shared_ptr< raft_params > params = ctx_->get_params();
 
         if (data_fresh_.load() && leader_idx > local_idx + params->stale_log_gap_) {
@@ -266,13 +266,13 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
     return finished_in_time;
 }
 
-void raft_server::commit_app_log(ulong idx_to_commit, std::shared_ptr< log_entry >& le,
+void raft_server::commit_app_log(uint64_t idx_to_commit, std::shared_ptr< log_entry >& le,
                                  bool need_to_handle_commit_elem) {
     std::shared_ptr< buffer > ret_value = nullptr;
     std::shared_ptr< buffer > buf = le->get_buf_ptr();
     buf->pos(0);
-    ulong sm_idx = idx_to_commit;
-    ulong pc_idx = precommit_index_.load();
+    uint64_t sm_idx = idx_to_commit;
+    uint64_t pc_idx = precommit_index_.load();
     if (pc_idx < sm_idx) {
         // Pre-commit should have been invoked, must be a bug.
         p_ft("pre-commit index %" PRIu64 " is smaller than commit index %" PRIu64, pc_idx, sm_idx);
@@ -370,7 +370,7 @@ void raft_server::commit_app_log(ulong idx_to_commit, std::shared_ptr< log_entry
     }
 }
 
-void raft_server::commit_conf(ulong idx_to_commit, std::shared_ptr< log_entry >& le) {
+void raft_server::commit_conf(uint64_t idx_to_commit, std::shared_ptr< log_entry >& le) {
     recur_lock(lock_);
     le->get_buf().pos(0);
     std::shared_ptr< cluster_config > new_conf = cluster_config::deserialize(le->get_buf());
@@ -430,18 +430,18 @@ bool raft_server::apply_config_log_entry(std::shared_ptr< log_entry >& le, std::
     return true;
 }
 
-ulong raft_server::create_snapshot() {
+uint64_t raft_server::create_snapshot() {
     uint64_t committed_idx = sm_commit_index_;
     p_in("manually create a snapshot on %" PRIu64 "", committed_idx);
     return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
 }
 
-ulong raft_server::get_last_snapshot_idx() const {
+uint64_t raft_server::get_last_snapshot_idx() const {
     std::lock_guard< std::mutex > l(last_snapshot_lock_);
     return last_snapshot_ ? last_snapshot_->get_last_log_idx() : 0;
 }
 
-bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation) {
+bool raft_server::snapshot_and_compact(uint64_t committed_idx, bool forced_creation) {
     std::shared_ptr< raft_params > params = ctx_->get_params();
 
     // get the latest configuration info
@@ -452,7 +452,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         return false;
     }
 
-    auto snapshot_distance = (ulong)params->snapshot_distance_;
+    auto snapshot_distance = (uint64_t)params->snapshot_distance_;
     // Randomized snapshot distance for the first creation.
     if (params->enable_randomized_snapshot_creation_ && !snp_in_progress_.load(std::memory_order_relaxed) &&
         !get_last_snapshot() && params->snapshot_distance_ != 0) {
@@ -513,7 +513,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
                 // return;
             }
 
-            ulong log_term_to_compact = log_store_->term_at(committed_idx);
+            uint64_t log_term_to_compact = log_store_->term_at(committed_idx);
             std::shared_ptr< snapshot > new_snapshot(
                 std::make_shared< snapshot >(committed_idx, log_term_to_compact, conf));
             p_in("create snapshot idx %" PRIu64 " log_term %" PRIu64, committed_idx, log_term_to_compact);
@@ -561,8 +561,8 @@ void raft_server::on_snapshot_completed(std::shared_ptr< snapshot >& s, bool res
             std::shared_ptr< snapshot > new_snp = state_machine_->last_snapshot();
             set_last_snapshot(new_snp);
             std::shared_ptr< raft_params > params = ctx_->get_params();
-            if (new_snp->get_last_log_idx() > (ulong)params->reserved_log_items_) {
-                ulong compact_upto = new_snp->get_last_log_idx() - (ulong)params->reserved_log_items_;
+            if (new_snp->get_last_log_idx() > (uint64_t)params->reserved_log_items_) {
+                uint64_t compact_upto = new_snp->get_last_log_idx() - (uint64_t)params->reserved_log_items_;
                 p_in("log_store_ compact upto %" PRIu64 "", compact_upto);
                 log_store_->compact(compact_upto);
             }

@@ -31,7 +31,7 @@ std::shared_ptr< snapshot_sync_req > snapshot_sync_req::deserialize(buffer& buf)
 
 std::shared_ptr< snapshot_sync_req > snapshot_sync_req::deserialize(buffer_serializer& bs) {
     std::shared_ptr< snapshot > snp(snapshot::deserialize(bs));
-    ulong offset = bs.get_u64();
+    uint64_t offset = bs.get_u64();
     bool done = bs.get_u8() == 1;
     byte* src = (byte*)bs.data();
     std::shared_ptr< buffer > b;
@@ -49,7 +49,7 @@ std::shared_ptr< snapshot_sync_req > snapshot_sync_req::deserialize(buffer_seria
 std::shared_ptr< buffer > snapshot_sync_req::serialize() {
     std::shared_ptr< buffer > snp_buf = snapshot_->serialize();
     std::shared_ptr< buffer > buf =
-        buffer::alloc(snp_buf->size() + sz_ulong + sz_byte + (data_->size() - data_->pos()));
+        buffer::alloc(snp_buf->size() + sz_uint64_t + sz_byte + (data_->size() - data_->pos()));
     buf->put(*snp_buf);
     buf->put(offset_);
     buf->put(done_ ? (byte)1 : (byte)0);

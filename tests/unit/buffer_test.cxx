@@ -85,14 +85,14 @@ int buffer_basic_test(size_t buf_size) {
         CHK_EQ(vals[i], val);
     }
 
-    CHK_EQ(long_val, buf->get_ulong());
+    CHK_EQ(long_val, buf->get_uint64());
     CHK_EQ(b, buf->get_byte());
     CHK_EQ(std::string("a string"), std::string(buf->get_str()));
     CHK_EQ(b1, buf->get_byte());
     CHK_EQ(0, std::memcmp(raw_str, buf->get_raw(sizeof(raw_str)), sizeof(raw_str)));
     CHK_EQ(std::string("another string"), std::string(buf->get_str()));
     CHK_EQ(std::string("another string"), std::string(buf2->get_str()));
-    CHK_EQ((100 * sz_int + 2 * sz_byte + sizeof(raw_str) + sz_ulong + strlen("a string") + 1 +
+    CHK_EQ((100 * sz_int + 2 * sz_byte + sizeof(raw_str) + sz_uint64_t + strlen("a string") + 1 +
             strlen("another string") + 1),
            buf->pos());
 
@@ -109,7 +109,7 @@ int buffer_basic_test(size_t buf_size) {
     std::shared_ptr< buffer > lbuf1(buffer::alloc(sizeof(ulong)));
     stream >> *lbuf1;
 
-    ulong long_val_copy = lbuf1->get_ulong();
+    ulong long_val_copy = lbuf1->get_uint64();
     CHK_EQ(long_val, long_val_copy);
 
     std::shared_ptr< buffer > buf4(buffer::alloc(sz_int * 100));

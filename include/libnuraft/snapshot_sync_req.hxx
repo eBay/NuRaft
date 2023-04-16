@@ -31,7 +31,7 @@ namespace nuraft {
 class snapshot;
 class snapshot_sync_req {
 public:
-    snapshot_sync_req(const std::shared_ptr< snapshot >& s, ulong offset, const std::shared_ptr< buffer >& buf,
+    snapshot_sync_req(const std::shared_ptr< snapshot >& s, uint64_t offset, const std::shared_ptr< buffer >& buf,
                       bool done) :
             snapshot_(s), offset_(offset), data_(buf), done_(done) {}
 
@@ -44,8 +44,8 @@ public:
 
     snapshot& get_snapshot() const { return *snapshot_; }
 
-    ulong get_offset() const { return offset_; }
-    void set_offset(const ulong src) { offset_ = src; }
+    uint64_t get_offset() const { return offset_; }
+    void set_offset(const uint64_t src) { offset_ = src; }
 
     buffer& get_data() const { return *data_; }
 
@@ -55,7 +55,7 @@ public:
 
 private:
     std::shared_ptr< snapshot > snapshot_;
-    ulong offset_;
+    uint64_t offset_;
     std::shared_ptr< buffer > data_;
     bool done_;
 };

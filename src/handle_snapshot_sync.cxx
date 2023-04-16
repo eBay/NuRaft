@@ -70,15 +70,15 @@ void raft_server::clear_snapshot_sync_ctx(peer& pp) {
     pp.set_snapshot_in_sync(nullptr);
 }
 
-std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr< peer >& pp, ulong last_log_idx,
-                                                                 ulong term, ulong commit_idx, bool& succeeded_out) {
+std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr< peer >& pp, uint64_t last_log_idx,
+                                                                 uint64_t term, uint64_t commit_idx, bool& succeeded_out) {
     succeeded_out = false;
     peer& p = *pp;
     std::shared_ptr< raft_params > params = ctx_->get_params();
     std::unique_lock< std::mutex > guard(p.get_lock());
     std::shared_ptr< snapshot_sync_ctx > sync_ctx = p.get_snapshot_sync_ctx();
     std::shared_ptr< snapshot > snp = nullptr;
-    ulong prev_sync_snp_log_idx = 0;
+    uint64_t prev_sync_snp_log_idx = 0;
     if (sync_ctx) {
         snp = sync_ctx->get_snapshot();
         p_db("previous sync_ctx exists %p, offset %" PRIu64 ", snp idx %" PRIu64 ", user_ctx %p", sync_ctx.get(),
@@ -141,7 +141,7 @@ std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr
         }
 
         // Timeout: heartbeat * response limit.
-        ulong snp_timeout_ms = ctx_->get_params()->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
+        uint64_t snp_timeout_ms = ctx_->get_params()->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
         p.set_snapshot_in_sync(snp, snp_timeout_ms);
     }
 
@@ -157,14 +157,14 @@ std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr
 
     bool last_request = false;
     std::shared_ptr< buffer > data = nullptr;
-    ulong data_idx = 0;
+    uint64_t data_idx = 0;
     if (snp->get_type() == snapshot::raw_binary) {
         // LCOV_EXCL_START
         // Raw binary snapshot (original)
-        ulong offset = p.get_snapshot_sync_ctx()->get_offset();
-        ulong sz_left = (snp->size() > offset) ? (snp->size() - offset) : 0;
+        uint64_t offset = p.get_snapshot_sync_ctx()->get_offset();
+        uint64_t sz_left = (snp->size() > offset) ? (snp->size() - offset) : 0;
         auto blk_sz = get_snapshot_sync_block_size();
-        data = buffer::alloc((size_t)(std::min((ulong)blk_sz, sz_left)));
+        data = buffer::alloc((size_t)(std::min((uint64_t)blk_sz, sz_left)));
         auto sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
         if ((size_t)sz_rd < data->size()) {
             // LCOV_EXCL_START
@@ -176,14 +176,14 @@ std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr
             return std::shared_ptr< req_msg >();
             // LCOV_EXCL_STOP
         }
-        last_request = (offset + (ulong)data->size()) >= snp->size();
+        last_request = (offset + (uint64_t)data->size()) >= snp->size();
         data_idx = offset;
         // LCOV_EXCL_STOP
 
     } else {
         // Logical object type snapshot
         sync_ctx = p.get_snapshot_sync_ctx();
-        ulong obj_idx = sync_ctx->get_offset();
+        uint64_t obj_idx = sync_ctx->get_offset();
         void*& user_snp_ctx = sync_ctx->get_user_snp_ctx();
         p_dv("peer: %d, obj_idx: %" PRIu64 ", user_snp_ctx %p", (int)p.get_id(), obj_idx, user_snp_ctx);
 
@@ -443,7 +443,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req) {
 
         } else {
             // Logical object type.
-            ulong obj_id = req.get_offset();
+            uint64_t obj_id = req.get_offset();
             buffer& buf = req.get_data();
             buf.pos(0);
             state_machine_->save_logical_snp_obj(req.get_snapshot(), obj_id, buf, is_first_obj, is_last_obj);

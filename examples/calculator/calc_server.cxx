@@ -51,7 +51,7 @@ void handle_result(std::shared_ptr< TestSuite::Timer > timer, raft_result& resul
         return;
     }
     std::shared_ptr< buffer > buf = result.get();
-    uint64_t ret_value = buf->get_ulong();
+    uint64_t ret_value = buf->get_uint64();
     std::cout << "succeeded, " << TestSuite::usToString(timer->getTimeUs()) << ", return value: " << ret_value
               << ", state machine value: " << get_sm()->get_current_value() << std::endl;
 }

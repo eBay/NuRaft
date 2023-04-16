@@ -31,16 +31,16 @@ std::shared_ptr< snapshot > snapshot::deserialize(buffer& buf) {
 
 std::shared_ptr< snapshot > snapshot::deserialize(buffer_serializer& bs) {
     type snp_type = static_cast< type >(bs.get_u8());
-    ulong last_log_idx = bs.get_u64();
-    ulong last_log_term = bs.get_u64();
-    ulong size = bs.get_u64();
+    uint64_t last_log_idx = bs.get_u64();
+    uint64_t last_log_term = bs.get_u64();
+    uint64_t size = bs.get_u64();
     std::shared_ptr< cluster_config > conf(cluster_config::deserialize(bs));
     return std::make_shared< snapshot >(last_log_idx, last_log_term, conf, size, snp_type);
 }
 
 std::shared_ptr< buffer > snapshot::serialize() {
     std::shared_ptr< buffer > conf_buf = last_config_->serialize();
-    std::shared_ptr< buffer > buf = buffer::alloc(conf_buf->size() + sz_ulong * 3 + sz_byte);
+    std::shared_ptr< buffer > buf = buffer::alloc(conf_buf->size() + sz_uint64_t * 3 + sz_byte);
     buf->put((byte)type_);
     buf->put(last_log_idx_);
     buf->put(last_log_term_);

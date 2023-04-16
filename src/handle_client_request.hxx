@@ -34,7 +34,7 @@ struct raft_server::commit_ret_elem {
 
     ~commit_ret_elem() {}
 
-    ulong idx_;
+    uint64_t idx_;
     EventAwaiter awaiter_;
     timer_helper timer_;
     std::shared_ptr< buffer > ret_value_;

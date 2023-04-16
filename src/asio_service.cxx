@@ -83,12 +83,12 @@ using ssl_context = asio::ssl::context;
 //     msg_type     type                (1),
 //     int32_t        src                 (4),
 //     int32_t        dst                 (4),
-//     ulong        term                (8),
-//     ulong        last_log_term       (8),
-//     ulong        last_log_idx        (8),
-//     ulong        commit_idx          (8),
+//     uint64_t        term                (8),
+//     uint64_t        last_log_term       (8),
+//     uint64_t        last_log_idx        (8),
+//     uint64_t        commit_idx          (8),
 //     int32_t        log data size       (4),
-//     ulong        flags + CRC32       (8),
+//     uint64_t        flags + CRC32       (8),
 //     -------------------------------------
 //                  total               (54)
 #define RPC_REQ_HEADER_SIZE (4 * 3 + 8 * 5 + 1 * 2)
@@ -98,11 +98,11 @@ using ssl_context = asio::ssl::context;
 //     msg_type     type                (1),
 //     int32_t        src                 (4),
 //     int32_t        dst                 (4),
-//     ulong        term                (8),
-//     ulong        next_idx            (8),
+//     uint64_t        term                (8),
+//     uint64_t        next_idx            (8),
 //     bool         accepted            (1),
 //     int32_t        ctx data dize       (4),
-//     ulong        flags + CRC32       (8),
+//     uint64_t        flags + CRC32       (8),
 //     -------------------------------------
 //                  total               (39)
 #define RPC_RESP_HEADER_SIZE (4 * 3 + 8 * 3 + 1 * 3)
@@ -297,7 +297,7 @@ public:
                      uint32_t crc_local = crc32_8(header_data, RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN, 0);
 
                      header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
-                     uint64_t flags_and_crc = header_->get_ulong();
+                     uint64_t flags_and_crc = header_->get_uint64();
                      uint32_t crc_hdr = flags_and_crc & (uint32_t)0xffffffff;
                      flags_ = (flags_and_crc >> 32);
 
@@ -396,10 +396,10 @@ private:
             msg_type t = (msg_type)hdr->get_byte();
             int32_t src = hdr->get_int();
             int32_t dst = hdr->get_int();
-            ulong term = hdr->get_ulong();
-            ulong last_term = hdr->get_ulong();
-            ulong last_idx = hdr->get_ulong();
-            ulong commit_idx = hdr->get_ulong();
+            uint64_t term = hdr->get_uint64();
+            uint64_t last_term = hdr->get_uint64();
+            uint64_t last_idx = hdr->get_uint64();
+            uint64_t commit_idx = hdr->get_uint64();
 
             if (src_id_ == -1) {
                 // It means this is the first message on this session.
@@ -451,7 +451,7 @@ private:
                         this->stop();
                         return;
                     }
-                    ulong term = ss.get_u64();
+                    uint64_t term = ss.get_u64();
                     log_val_type val_type = (log_val_type)ss.get_u8();
                     uint64_t timestamp = (flags_ & INCLUDE_LOG_TIMESTAMP) ? ss.get_u64() : 0;
 
@@ -578,7 +578,7 @@ private:
             if (flags & INCLUDE_HINT) {
                 const uint16_t CUR_HINT_VERSION = 0;
                 bs.put_u16(CUR_HINT_VERSION);
-                bs.put_u16(sizeof(ulong));
+                bs.put_u16(sizeof(uint64_t));
                 bs.put_i64(resp->get_next_batch_size_hint_in_bytes());
             }
 
@@ -987,7 +987,7 @@ public:
         uint32_t crc_val = crc32_8(req_buf_data, RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN, 0);
 
         uint64_t flags_and_crc = ((uint64_t)flags << 32) | crc_val;
-        req_buf->put((ulong)flags_and_crc);
+        req_buf->put((uint64_t)flags_and_crc);
 
         // Handling meta if the flag is set.
         if (flags & INCLUDE_META) { req_buf->put((byte*)meta_str.data(), meta_str.size()); }
@@ -1202,8 +1202,8 @@ private:
         byte msg_type_val = bs.get_u8();
         int32_t src = bs.get_i32();
         int32_t dst = bs.get_i32();
-        ulong term = bs.get_u64();
-        ulong nxt_idx = bs.get_u64();
+        uint64_t term = bs.get_u64();
+        uint64_t nxt_idx = bs.get_u64();
         byte accepted_val = bs.get_u8();
         int32_t carried_data_size = bs.get_i32();
         std::shared_ptr< resp_msg > rsp(

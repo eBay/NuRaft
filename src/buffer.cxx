@@ -178,18 +178,18 @@ int32_t buffer::get_int() {
     return val;
 }
 
-ulong buffer::get_ulong() {
+uint64_t buffer::get_uint64() {
     size_t avail = size() - pos();
-    if (avail < sz_ulong) { throw std::overflow_error("insufficient buffer available for an ulong value"); }
+    if (avail < sz_uint64_t) { throw std::overflow_error("insufficient buffer available for an uint64_t value"); }
 
     byte* d = data();
-    ulong val = 0L;
-    for (size_t i = 0; i < sz_ulong; ++i) {
-        ulong byte_val = (ulong) * (d + i);
+    uint64_t val = 0L;
+    for (size_t i = 0; i < sz_uint64_t; ++i) {
+        uint64_t byte_val = (uint64_t) * (d + i);
         val += (byte_val << (i * 8));
     }
 
-    __mv_fw_block(this, sz_ulong);
+    __mv_fw_block(this, sz_uint64_t);
     return val;
 }
 
@@ -281,15 +281,15 @@ void buffer::put(int32_t val) {
     __mv_fw_block(this, sz_int);
 }
 
-void buffer::put(ulong val) {
-    if (size() - pos() < sz_ulong) { throw std::overflow_error("insufficient buffer to store unsigned long"); }
+void buffer::put(uint64_t val) {
+    if (size() - pos() < sz_uint64_t) { throw std::overflow_error("insufficient buffer to store unsigned long"); }
 
     byte* d = data();
-    for (size_t i = 0; i < sz_ulong; ++i) {
+    for (size_t i = 0; i < sz_uint64_t; ++i) {
         *(d + i) = (byte)(val >> (i * 8));
     }
 
-    __mv_fw_block(this, sz_ulong);
+    __mv_fw_block(this, sz_uint64_t);
 }
 
 void buffer::put(const std::string& str) {

@@ -25,7 +25,6 @@ limitations under the License.
 
 namespace nuraft {
 
-typedef uint64_t ulong;
 typedef void* any_ptr;
 typedef unsigned char byte;
 

@@ -31,7 +31,7 @@ inmem_log_store::inmem_log_store() :
         disk_emul_thread_stop_signal_(false),
         disk_emul_last_durable_index_(0) {
     // Dummy entry for index 0.
-    std::shared_ptr< buffer > buf = buffer::alloc(sz_ulong);
+    std::shared_ptr< buffer > buf = buffer::alloc(sz_uint64_t);
     logs_[0] = std::make_shared< log_entry >(0, buf);
 }
 

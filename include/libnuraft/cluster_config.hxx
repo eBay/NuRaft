@@ -38,7 +38,7 @@ namespace nuraft {
 //    - remove server
 class cluster_config {
 public:
-    cluster_config(ulong log_idx = 0L, ulong prev_log_idx = 0L, bool _ec = false) :
+    cluster_config(uint64_t log_idx = 0L, uint64_t prev_log_idx = 0L, bool _ec = false) :
             log_idx_(log_idx), prev_log_idx_(prev_log_idx), async_replication_(_ec), servers_() {}
 
     ~cluster_config() {}
@@ -50,14 +50,14 @@ public:
 
     static std::shared_ptr< cluster_config > deserialize(buffer_serializer& buf);
 
-    ulong get_log_idx() const { return log_idx_; }
+    uint64_t get_log_idx() const { return log_idx_; }
 
-    void set_log_idx(ulong log_idx) {
+    void set_log_idx(uint64_t log_idx) {
         prev_log_idx_ = log_idx_;
         log_idx_ = log_idx;
     }
 
-    ulong get_prev_log_idx() const { return prev_log_idx_; }
+    uint64_t get_prev_log_idx() const { return prev_log_idx_; }
 
     std::list< std::shared_ptr< srv_config > > const& get_servers() const { return servers_; }
 
@@ -84,10 +84,10 @@ public:
 
 private:
     // Log index number of current config.
-    ulong log_idx_;
+    uint64_t log_idx_;
 
     // Log index number of previous config.
-    ulong prev_log_idx_;
+    uint64_t prev_log_idx_;
 
     // `true` if asynchronous replication mode is on.
     bool async_replication_;

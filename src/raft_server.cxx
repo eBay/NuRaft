@@ -180,7 +180,7 @@ raft_server::raft_server(context* ctx, raft_server::init_options const& opt) :
      *          Majority(S0 - 1) + Majority(S0) > S0 => Vote(A) < Majority(S0)
      * -|
      */
-    for (ulong i = std::max(sm_commit_index_ + 1, log_store_->start_index()); i < log_store_->next_slot(); ++i) {
+    for (uint64_t i = std::max(sm_commit_index_ + 1, log_store_->start_index()); i < log_store_->next_slot(); ++i) {
         if (auto entry = log_store_->entry_at(i); entry->get_val_type() == log_val_type::conf) {
             p_in("detect a configuration change "
                  "that is not committed yet at index %" PRIu64 "",
@@ -887,9 +887,9 @@ void raft_server::become_leader() {
         // If there are uncommitted logs, search if conf log exists.
         std::shared_ptr< cluster_config > last_config = get_config();
 
-        ulong s_idx = sm_commit_index_ + 1;
-        ulong e_idx = log_store_->next_slot();
-        for (ulong ii = s_idx; ii < e_idx; ++ii) {
+        uint64_t s_idx = sm_commit_index_ + 1;
+        uint64_t e_idx = log_store_->next_slot();
+        for (uint64_t ii = s_idx; ii < e_idx; ++ii) {
             std::shared_ptr< log_entry > le = log_store_->entry_at(ii);
             if (le->get_val_type() != log_val_type::conf) continue;
 
@@ -909,7 +909,7 @@ void raft_server::become_leader() {
     }
 
     cb_func::Param param(id_, leader_);
-    ulong my_term = state_->get_term();
+    uint64_t my_term = state_->get_term();
     param.ctx = &my_term;
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
     (void)rc; // nothing to do in this callback.
@@ -986,7 +986,7 @@ void raft_server::check_leadership_transfer() {
 
     auto successor_id = -1;
     auto max_priority = my_priority_;
-    ulong cur_commit_idx = quick_commit_index_;
+    uint64_t cur_commit_idx = quick_commit_index_;
     for (auto& entry : peers_) {
         std::shared_ptr< peer > peer_elem = entry.second;
         const srv_config& s_conf = peer_elem->get_config();
@@ -1188,7 +1188,7 @@ void raft_server::become_follower() {
     restart_election_timer();
 }
 
-bool raft_server::update_term(ulong term) {
+bool raft_server::update_term(uint64_t term) {
     if (term > state_->get_term()) {
         {
             // NOTE:
@@ -1353,7 +1353,7 @@ void raft_server::on_retryable_req_err(std::shared_ptr< peer >& p, std::shared_p
     }
 }
 
-ulong raft_server::term_for_log(ulong log_idx) {
+uint64_t raft_server::term_for_log(uint64_t log_idx) {
     if (log_idx == 0) { return 0L; }
 
     if (log_idx >= log_store_->start_index()) { return log_store_->term_at(log_idx); }
@@ -1480,8 +1480,8 @@ void raft_server::set_last_snapshot(const std::shared_ptr< snapshot >& new_snaps
     last_snapshot_ = new_snapshot;
 }
 
-ulong raft_server::store_log_entry(std::shared_ptr< log_entry >& entry, ulong index) {
-    ulong log_index = index;
+uint64_t raft_server::store_log_entry(std::shared_ptr< log_entry >& entry, uint64_t index) {
+    uint64_t log_index = index;
     if (index == 0) {
         log_index = log_store_->append(entry);
     } else {

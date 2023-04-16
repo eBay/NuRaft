@@ -39,5 +39,5 @@ public:                                                                         
 #define recur_lock(lock) std::unique_lock< std::recursive_mutex > guard(lock)
 
 #define sz_int sizeof(int32_t)
-#define sz_ulong sizeof(uint64_t)
+#define sz_uint64_t sizeof(uint64_t)
 #define sz_byte sizeof(unsigned char)

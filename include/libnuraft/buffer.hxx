@@ -146,7 +146,7 @@ public:
      *
      * @return 8-byte unsigned integer.
      */
-    ulong get_ulong();
+    uint64_t get_uint64();
 
     /**
      * Get 1-byte unsigned integer.
@@ -222,7 +222,7 @@ public:
      *
      * @param val 8-byte unsigned integer.
      */
-    void put(ulong val);
+    void put(uint64_t val);
 
     /**
      * Put a C-style string.

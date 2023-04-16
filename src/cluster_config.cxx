@@ -23,7 +23,7 @@ limitations under the License.
 namespace nuraft {
 
 std::shared_ptr< buffer > cluster_config::serialize() const {
-    size_t sz = 2 * sz_ulong + sz_int + sz_byte;
+    size_t sz = 2 * sz_uint64_t + sz_int + sz_byte;
     std::vector< std::shared_ptr< buffer > > srv_buffs;
     for (auto it = servers_.cbegin(); it != servers_.cend(); ++it) {
         std::shared_ptr< buffer > buf = (*it)->serialize();
@@ -54,8 +54,8 @@ std::shared_ptr< cluster_config > cluster_config::deserialize(buffer& buf) {
 }
 
 std::shared_ptr< cluster_config > cluster_config::deserialize(buffer_serializer& bs) {
-    ulong log_idx = bs.get_u64();
-    ulong prev_log_idx = bs.get_u64();
+    uint64_t log_idx = bs.get_u64();
+    uint64_t prev_log_idx = bs.get_u64();
 
     byte ec_byte = bs.get_u8();
     bool ec = ec_byte ? true : false;

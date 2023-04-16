@@ -146,7 +146,7 @@ void raft_server::request_prevote() {
 
 void raft_server::initiate_vote(bool force_vote) {
     int grace_period = ctx_->get_params()->grace_period_of_lagging_state_machine_;
-    ulong cur_term = state_->get_term();
+    uint64_t cur_term = state_->get_term();
     if (!force_vote && grace_period && sm_commit_index_ < lagging_sm_target_index_) {
         p_in("grace period option is enabled, and state machine needs catch-up: "
              "%" PRIu64 " vs. %" PRIu64 "",
@@ -336,11 +336,11 @@ void raft_server::handle_vote_resp(resp_msg& resp) {
 }
 
 std::shared_ptr< resp_msg > raft_server::handle_prevote_req(req_msg& req) {
-    ulong next_idx_for_resp = 0;
+    uint64_t next_idx_for_resp = 0;
     auto entry = peers_.find(req.get_src());
     if (entry == peers_.end()) {
         // This node already has been removed, set a special value.
-        next_idx_for_resp = std::numeric_limits< ulong >::max();
+        next_idx_for_resp = std::numeric_limits< uint64_t >::max();
     }
 
     p_in("[PRE-VOTE REQ] my role %s, from peer %d, "
@@ -364,7 +364,7 @@ std::shared_ptr< resp_msg > raft_server::handle_prevote_req(req_msg& req) {
         p_in("pre-vote decision: O (grant)");
         resp->accept(log_store_->next_slot());
     } else {
-        if (next_idx_for_resp != std::numeric_limits< ulong >::max()) {
+        if (next_idx_for_resp != std::numeric_limits< uint64_t >::max()) {
             p_in("pre-vote decision: X (deny)");
         } else {
             p_in("pre-vote decision: XX (strong deny, non-existing node)");
@@ -388,7 +388,7 @@ void raft_server::handle_prevote_resp(resp_msg& resp) {
         // Accept: means that this peer is not receiving HB.
         pre_vote_.dead_++;
     } else {
-        if (resp.get_next_idx() != std::numeric_limits< ulong >::max()) {
+        if (resp.get_next_idx() != std::numeric_limits< uint64_t >::max()) {
             // Deny: means that this peer still sees leader.
             pre_vote_.live_++;
         } else {

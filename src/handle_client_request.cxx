@@ -83,10 +83,10 @@ void raft_server::request_append_entries_for_all() {
 std::shared_ptr< resp_msg > raft_server::handle_cli_req(req_msg& req, const req_ext_params& ext_params,
                                                         uint64_t timestamp_us) {
     std::shared_ptr< resp_msg > resp = nullptr;
-    ulong last_idx = 0;
+    uint64_t last_idx = 0;
     std::shared_ptr< buffer > ret_value = nullptr;
-    ulong resp_idx = 1;
-    ulong cur_term = state_->get_term();
+    uint64_t resp_idx = 1;
+    uint64_t cur_term = state_->get_term();
     std::shared_ptr< raft_params > params = ctx_->get_params();
 
     resp = std::make_shared< resp_msg >(cur_term, msg_type::append_entries_response, id_, leader_);
@@ -111,7 +111,7 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req(req_msg& req, const req_
         entries.at(i)->set_term(cur_term);
         entries.at(i)->set_timestamp(timestamp_us);
 
-        ulong next_slot = store_log_entry(entries.at(i));
+        uint64_t next_slot = store_log_entry(entries.at(i));
         p_db("append at log_idx %" PRIu64 ", timestamp %" PRIu64, next_slot, timestamp_us);
         last_idx = next_slot;
 
@@ -245,8 +245,8 @@ void raft_server::drop_all_pending_commit_elems() {
     //   Invoke all awaiting requests to return `CANCELLED`.
     if (ctx_->get_params()->return_method_ == raft_params::blocking) {
         auto_lock(commit_ret_elems_lock_);
-        ulong min_idx = std::numeric_limits< ulong >::max();
-        ulong max_idx = 0;
+        uint64_t min_idx = std::numeric_limits< uint64_t >::max();
+        uint64_t max_idx = 0;
         for (auto& entry : commit_ret_elems_) {
             std::shared_ptr< commit_ret_elem >& elem = entry.second;
             elem->ret_value_ = nullptr;

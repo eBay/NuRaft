@@ -96,7 +96,7 @@ std::shared_ptr< buffer > out_of_log_msg::serialize() const {
     //   << Format >>
     // version                      1 byte
     // start log index of leader    8 bytes
-    size_t len = sizeof(uint8_t) + sizeof(ulong);
+    size_t len = sizeof(uint8_t) + sizeof(uint64_t);
     std::shared_ptr< buffer > ret = buffer::alloc(len);
 
     const uint8_t CURRENT_VERSION = 0x0;

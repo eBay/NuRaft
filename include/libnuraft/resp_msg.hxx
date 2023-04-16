@@ -35,7 +35,7 @@ using resp_async_cb = std::function< std::shared_ptr< cmd_result< std::shared_pt
 
 class resp_msg : public msg_base {
 public:
-    resp_msg(ulong term, msg_type type, int32_t src, int32_t dst, ulong next_idx = 0L, bool accepted = false) :
+    resp_msg(uint64_t term, msg_type type, int32_t src, int32_t dst, uint64_t next_idx = 0L, bool accepted = false) :
             msg_base(term, type, src, dst),
             next_idx_(next_idx),
             next_batch_size_hint_in_bytes_(0),
@@ -48,7 +48,7 @@ public:
     __nocopy__(resp_msg);
 
 public:
-    ulong get_next_idx() const { return next_idx_; }
+    uint64_t get_next_idx() const { return next_idx_; }
 
     int64_t get_next_batch_size_hint_in_bytes() const { return next_batch_size_hint_in_bytes_; }
 
@@ -56,7 +56,7 @@ public:
 
     bool get_accepted() const { return accepted_; }
 
-    void accept(ulong next_idx) {
+    void accept(uint64_t next_idx) {
         next_idx_ = next_idx;
         accepted_ = true;
     }
@@ -92,7 +92,7 @@ public:
     cmd_result_code get_result_code() const { return result_code_; }
 
 private:
-    ulong next_idx_;
+    uint64_t next_idx_;
     int64_t next_batch_size_hint_in_bytes_;
     bool accepted_;
     std::shared_ptr< buffer > ctx_;
