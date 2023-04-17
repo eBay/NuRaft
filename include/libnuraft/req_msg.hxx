@@ -38,7 +38,7 @@ public:
             commit_idx_(commit_idx),
             log_entries_() {}
 
-    virtual ~req_msg() __override__ {}
+    ~req_msg() override {}
 
     __nocopy__(req_msg);
 

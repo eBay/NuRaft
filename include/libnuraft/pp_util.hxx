@@ -20,24 +20,23 @@ limitations under the License.
 
 #pragma once
 
-#define __override__ override
+#include <cstdint>
+#include <mutex>
 
 #define __nocopy__(clazz)                                                                                              \
 private:                                                                                                               \
     clazz(const clazz&) = delete;                                                                                      \
     clazz& operator=(const clazz&) = delete;
 
-#define nilptr nullptr
-
 #define __interface_body__(clazz)                                                                                      \
 public:                                                                                                                \
-    clazz() {}                                                                                                         \
-    virtual ~clazz() {}                                                                                                \
+    clazz() = default;                                                                                                 \
+    virtual ~clazz() = default;                                                                                        \
     __nocopy__(clazz)
 
-#define auto_lock(lock) std::lock_guard< std::mutex > guard(lock)
-#define recur_lock(lock) std::unique_lock< std::recursive_mutex > guard(lock)
+using auto_lock = std::lock_guard<std::mutex>;
+using recur_lock = std::unique_lock< std::recursive_mutex >;
 
-#define sz_int sizeof(int32_t)
-#define sz_uint64_t sizeof(uint64_t)
-#define sz_byte sizeof(unsigned char)
+auto constexpr sz_int = sizeof(int32_t);
+auto constexpr sz_uint64_t = sizeof(uint64_t);
+auto constexpr sz_byte = sizeof(std::byte);

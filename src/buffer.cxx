@@ -242,7 +242,7 @@ const char* buffer::get_str() {
         // Empty string, move forward 1 byte for NULL character.
         __mv_fw_block(this, i + 1);
     }
-    if (p + i >= s || i == 0) { return nilptr; }
+    if (p + i >= s || i == 0) { return nullptr; }
 
     __mv_fw_block(this, i + 1);
     return reinterpret_cast< const char* >(d);

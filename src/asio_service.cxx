@@ -659,22 +659,22 @@ public:
     __nocopy__(asio_rpc_listener);
 
 public:
-    virtual void stop() override {
-        auto_lock(listener_lock_);
+    void stop() override {
+        auto guard = auto_lock(listener_lock_);
         stopped_ = true;
         acceptor_.close();
     }
 
-    virtual void listen(std::shared_ptr< msg_handler >& handler) override {
+    void listen(std::shared_ptr< msg_handler >& handler) override {
         std::lock_guard< std::mutex > guard(listener_lock_);
         handler_ = handler;
         stopped_ = false;
         start(guard);
     }
 
-    virtual void shutdown() override {
+    void shutdown() override {
         {
-            auto_lock(session_lock_);
+            auto guard = auto_lock(session_lock_);
             for (auto& entry : active_sessions_) {
                 std::shared_ptr< rpc_session > s = entry;
                 s->stop();
@@ -683,7 +683,7 @@ public:
             active_sessions_.clear();
         }
 
-        auto_lock(listener_lock_);
+        auto guard = auto_lock(listener_lock_);
         handler_.reset();
     }
 
@@ -722,7 +722,7 @@ private:
     }
 
     void remove_session(const std::shared_ptr< rpc_session >& session) {
-        auto_lock(session_lock_);
+        auto guard = auto_lock(session_lock_);
 
         for (auto it = active_sessions_.begin(); it != active_sessions_.end(); ++it) {
             if (*it == session) {
@@ -830,8 +830,8 @@ public:
         send(req, when_done, send_timeout_ms);
     }
 
-    virtual void send(std::shared_ptr< req_msg >& req, rpc_handler& when_done,
-                      uint64_t send_timeout_ms = 0) __override__ {
+    void send(std::shared_ptr< req_msg >& req, rpc_handler& when_done,
+                      uint64_t send_timeout_ms = 0) override {
         if (abandoned_) {
             p_er("client %p to %s:%s is already stale (SSL %s)", this, host_.c_str(), port_.c_str(),
                  (ssl_enabled_ ? "enabled" : "disabled"));
@@ -1507,7 +1507,7 @@ asio_service::asio_service(const options& _opt, std::shared_ptr< logger > _l) :
 asio_service::~asio_service() { delete impl_; }
 
 void asio_service::schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) {
-    if (task->get_impl_context() == nilptr) {
+    if (task->get_impl_context() == nullptr) {
         task->set_impl_context(new asio::steady_timer(impl_->io_svc_), &_free_timer_);
     }
     // ensure it's not in cancelled state
@@ -1520,7 +1520,7 @@ void asio_service::schedule(std::shared_ptr< delayed_task >& task, int32_t milli
 }
 
 void asio_service::cancel_impl(std::shared_ptr< delayed_task >& task) {
-    if (task->get_impl_context() != nilptr) { static_cast< asio::steady_timer* >(task->get_impl_context())->cancel(); }
+    if (task->get_impl_context() != nullptr) { static_cast< asio::steady_timer* >(task->get_impl_context())->cancel(); }
 }
 
 void asio_service::stop() { impl_->stop(); }

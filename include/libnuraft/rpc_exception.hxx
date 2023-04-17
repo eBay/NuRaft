@@ -38,7 +38,7 @@ public:
 public:
     std::shared_ptr< req_msg > req() const { return req_; }
 
-    virtual const char* what() const throw() __override__ { return err_.c_str(); }
+    const char* what() const throw() override { return err_.c_str(); }
 
 private:
     std::shared_ptr< req_msg > req_;

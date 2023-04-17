@@ -42,14 +42,14 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req_prelock(req_msg& req, co
 
     switch (params->locking_method_type_) {
     case raft_params::single_mutex: {
-        recur_lock(lock_);
+        auto guard = recur_lock(lock_);
         resp = handle_cli_req(req, ext_params, timestamp_us);
         break;
     }
     case raft_params::dual_mutex:
     default: {
         // TODO: Use RW lock here.
-        auto_lock(cli_lock_);
+        auto guard = auto_lock(cli_lock_);
         resp = handle_cli_req(req, ext_params, timestamp_us);
         break;
     }
@@ -75,7 +75,7 @@ void raft_server::request_append_entries_for_all() {
         }
     } else {
         // Directly generate request in user thread.
-        recur_lock(lock_);
+        auto guard = recur_lock(lock_);
         request_append_entries();
     }
 }
@@ -151,7 +151,7 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req(req_msg& req, const req_
         elem->result_code_ = cmd_result_code::TIMEOUT;
 
         {
-            auto_lock(commit_ret_elems_lock_);
+            auto guard = auto_lock(commit_ret_elems_lock_);
             auto entry = commit_ret_elems_.find(last_idx);
             if (entry != commit_ret_elems_.end()) {
                 // Commit thread was faster than this.
@@ -200,7 +200,7 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req_callback(std::shared_ptr
     uint64_t elapsed_us = 0;
     std::shared_ptr< buffer > ret_value = nullptr;
     {
-        auto_lock(commit_ret_elems_lock_);
+        auto guard = auto_lock(commit_ret_elems_lock_);
         idx = elem->idx_;
         elapsed_us = elem->timer_.get_us();
         ret_value = elem->ret_value_;
@@ -244,7 +244,7 @@ void raft_server::drop_all_pending_commit_elems() {
     // Blocking mode:
     //   Invoke all awaiting requests to return `CANCELLED`.
     if (ctx_->get_params()->return_method_ == raft_params::blocking) {
-        auto_lock(commit_ret_elems_lock_);
+        auto guard = auto_lock(commit_ret_elems_lock_);
         uint64_t min_idx = std::numeric_limits< uint64_t >::max();
         uint64_t max_idx = 0;
         for (auto& entry : commit_ret_elems_) {
@@ -270,7 +270,7 @@ void raft_server::drop_all_pending_commit_elems() {
     std::list< std::shared_ptr< commit_ret_elem > > elems;
 
     {
-        auto_lock(commit_ret_elems_lock_);
+        auto guard = auto_lock(commit_ret_elems_lock_);
         for (auto& entry : commit_ret_elems_) {
             std::shared_ptr< commit_ret_elem >& ee = entry.second;
             elems.push_back(ee);

@@ -164,7 +164,7 @@ raft_server::send_msg_to_leader(std::shared_ptr< req_msg >& req, const req_ext_p
     std::shared_ptr< rpc_client > rpc_cli;
     std::shared_ptr< auto_fwd_pkg > cur_pkg = nullptr;
     {
-        auto_lock(rpc_clients_lock_);
+        auto guard = auto_lock(rpc_clients_lock_);
         auto entry = auto_fwd_pkgs_.find(leader_id);
         if (entry == auto_fwd_pkgs_.end()) {
             cur_pkg = std::make_shared< auto_fwd_pkg >();
@@ -210,7 +210,7 @@ raft_server::send_msg_to_leader(std::shared_ptr< req_msg >& req, const req_ext_p
                     req_resp_pair.req = req;
                     req_resp_pair.resp = std::make_shared< cmd_result< std::shared_ptr< buffer > > >();
 
-                    auto_lock(auto_fwd_reqs_lock_);
+                    auto guard = auto_lock(auto_fwd_reqs_lock_);
                     auto_fwd_reqs_.push_back(req_resp_pair);
                     p_tr("reached max connection, put into the queue, %zu elems", auto_fwd_reqs_.size());
                     return req_resp_pair.resp;
@@ -309,11 +309,11 @@ void raft_server::auto_fwd_resp_handler(std::shared_ptr< cmd_result< std::shared
 }
 
 void raft_server::cleanup_auto_fwd_pkgs() {
-    auto_lock(rpc_clients_lock_);
+    auto guard = auto_lock(rpc_clients_lock_);
     for (auto& entry : auto_fwd_pkgs_) {
         std::shared_ptr< auto_fwd_pkg > pkg = entry.second;
         pkg->ea_.invoke();
-        auto_lock(pkg->lock_);
+        auto pguard = auto_lock(pkg->lock_);
         p_in("srv %d, in-use %zu, idle %zu", entry.first, pkg->rpc_client_in_use_.size(), pkg->rpc_client_idle_.size());
         for (auto& ee : pkg->rpc_client_in_use_) {
             p_tr("use count %zu", ee.use_count());

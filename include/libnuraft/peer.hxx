@@ -138,7 +138,7 @@ public:
 
     void set_snapshot_in_sync(const std::shared_ptr< snapshot >& s, uint64_t timeout_ms = 10 * 1000) {
         std::lock_guard< std::mutex > l(snp_sync_ctx_lock_);
-        if (s == nilptr) {
+        if (s == nullptr) {
             snp_sync_ctx_.reset();
         } else {
             snp_sync_ctx_ = std::make_shared< snapshot_sync_ctx >(s, get_id(), timeout_ms);

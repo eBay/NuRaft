@@ -103,12 +103,12 @@ std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr
     //        last_snapshot_->get_last_log_idx() > snp->get_last_log_idx() )*/ ) {
     if (!snp || sync_ctx->get_offset() == 0) {
         snp = get_last_snapshot();
-        if (snp == nilptr || last_log_idx > snp->get_last_log_idx()) {
+        if (snp == nullptr || last_log_idx > snp->get_last_log_idx()) {
             // LCOV_EXCL_START
             p_er("system is running into fatal errors, failed to find a "
                  "snapshot for peer %d (snapshot null: %d, snapshot "
                  "doesn't contais lastLogIndex: %d)",
-                 p.get_id(), snp == nilptr ? 1 : 0, last_log_idx > snp->get_last_log_idx() ? 1 : 0);
+                 p.get_id(), snp == nullptr ? 1 : 0, last_log_idx > snp->get_last_log_idx() ? 1 : 0);
             if (snp) {
                 p_er("last log idx %" PRIu64 ", snp last log idx %" PRIu64, last_log_idx, snp->get_last_log_idx());
             }

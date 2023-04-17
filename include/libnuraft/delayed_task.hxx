@@ -29,10 +29,10 @@ namespace nuraft {
 
 class delayed_task {
 public:
-    delayed_task(int32_t type = 0) : cancelled_(false), impl_ctx_(nilptr), impl_ctx_del_(), type_(type) {}
+    delayed_task(int32_t type = 0) : cancelled_(false), impl_ctx_(nullptr), impl_ctx_del_(), type_(type) {}
 
     virtual ~delayed_task() {
-        if (impl_ctx_ != nilptr) {
+        if (impl_ctx_ != nullptr) {
             if (impl_ctx_del_) { impl_ctx_del_(impl_ctx_); }
         }
     }

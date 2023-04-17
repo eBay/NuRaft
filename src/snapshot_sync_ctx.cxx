@@ -58,7 +58,7 @@ snapshot_io_mgr::snapshot_io_mgr() : io_thread_ea_(new EventAwaiter()), terminat
 snapshot_io_mgr::~snapshot_io_mgr() { shutdown(); }
 
 bool snapshot_io_mgr::push(std::shared_ptr< snapshot_io_mgr::io_queue_elem >& elem) {
-    auto_lock(queue_lock_);
+    auto guard = auto_lock(queue_lock_);
     logger* l_ = elem->raft_->l_.get();
 
     // If there is existing one for the same peer, ignore it.
@@ -84,7 +84,7 @@ bool snapshot_io_mgr::push(std::shared_ptr< raft_server > r, std::shared_ptr< pe
 void snapshot_io_mgr::invoke() { io_thread_ea_->invoke(); }
 
 void snapshot_io_mgr::drop_reqs(raft_server* r) {
-    auto_lock(queue_lock_);
+    auto guard = auto_lock(queue_lock_);
     logger* l_ = r->l_.get();
     auto entry = queue_.begin();
     while (entry != queue_.end()) {
@@ -98,7 +98,7 @@ void snapshot_io_mgr::drop_reqs(raft_server* r) {
 }
 
 bool snapshot_io_mgr::has_pending_request(raft_server* r, int srv_id) {
-    auto_lock(queue_lock_);
+    auto guard = auto_lock(queue_lock_);
     for (auto& entry : queue_) {
         if (entry->raft_.get() == r && entry->dst_->get_id() == srv_id) { return true; }
     }
@@ -128,7 +128,7 @@ void snapshot_io_mgr::async_io_loop() {
         std::list< std::shared_ptr< io_queue_elem > > reqs;
         std::list< std::shared_ptr< io_queue_elem > > reqs_to_return;
         if (!terminating_) {
-            auto_lock(queue_lock_);
+            auto guard = auto_lock(queue_lock_);
             reqs = queue_;
         }
 
@@ -161,7 +161,7 @@ void snapshot_io_mgr::async_io_loop() {
                      "for peer %d failed: %d",
                      snp_log_idx, snp_log_term, obj_idx, dst_id, rc);
 
-                recur_lock(elem->raft_->lock_);
+                auto guard = recur_lock(elem->raft_->lock_);
                 auto entry = elem->raft_->peers_.find(dst_id);
                 if (entry != elem->raft_->peers_.end()) {
                     // If normal member (already in the peer list):
@@ -179,7 +179,7 @@ void snapshot_io_mgr::async_io_loop() {
             if (data) data->pos(0);
 
             // Send snapshot message with the given response handler.
-            recur_lock(elem->raft_->lock_);
+            auto guard = recur_lock(elem->raft_->lock_);
             uint64_t term = elem->raft_->state_->get_term();
             uint64_t commit_idx = elem->raft_->quick_commit_index_;
 
@@ -203,7 +203,7 @@ void snapshot_io_mgr::async_io_loop() {
         }
 
         {
-            auto_lock(queue_lock_);
+            auto guard = auto_lock(queue_lock_);
             // Remove elements in `reqs` from `queue_`.
             for (auto& entry : reqs) {
                 auto e2 = queue_.begin();

@@ -282,7 +282,7 @@ raft_server::~raft_server() {
     // destroy the current `raft_server` instance.
     cancel_global_requests();
 
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     stopping_ = true;
     std::unique_lock< std::mutex > commit_lock(commit_cv_lock_);
     commit_cv_.notify_all();
@@ -304,7 +304,7 @@ void raft_server::update_rand_timeout() {
 }
 
 void raft_server::update_params(const raft_params& new_params) {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
 
     std::shared_ptr< raft_params > clone = std::make_shared< raft_params >(new_params);
     ctx_->set_params(clone);
@@ -314,7 +314,7 @@ void raft_server::update_params(const raft_params& new_params) {
     if (role_ != srv_role::leader) { restart_election_timer(); }
     for (auto& entry : peers_) {
         peer* p = entry.second.get();
-        auto_lock(p->get_lock());
+        auto guard = auto_lock(p->get_lock());
         p->set_hb_interval(clone->heart_beat_interval_);
         p->resume_hb_speed();
     }
@@ -392,7 +392,7 @@ void raft_server::shutdown() {
 
     // Terminate background commit thread.
     {
-        recur_lock(lock_);
+        auto guard = recur_lock(lock_);
         stopping_ = true;
         {
             std::unique_lock< std::mutex > commit_lock(commit_cv_lock_);
@@ -453,7 +453,7 @@ void raft_server::shutdown() {
     if (bg_append_thread_.joinable()) { bg_append_thread_.join(); }
 
     {
-        auto_lock(auto_fwd_reqs_lock_);
+        auto guard = auto_lock(auto_fwd_reqs_lock_);
         p_in("clean up auto-forwarding queue: %zu elems", auto_fwd_reqs_.size());
         auto_fwd_reqs_.clear();
     }
@@ -479,7 +479,7 @@ uint32_t raft_server::get_num_voting_members() {
     auto count = 0u;
     for (auto& entry : peers_) {
         std::shared_ptr< peer >& p = entry.second;
-        auto_lock(p->get_lock());
+        auto guard = auto_lock(p->get_lock());
         if (!is_regular_member(p)) continue;
         count++;
     }
@@ -585,7 +585,7 @@ std::shared_ptr< resp_msg > raft_server::process_req(req_msg& req, const req_ext
         return handle_cli_req_prelock(req, ext_params);
     }
 
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     if (req.get_type() == msg_type::append_entries_request || req.get_type() == msg_type::request_vote_request ||
         req.get_type() == msg_type::install_snapshot_request) {
         // we allow the server to be continue after term updated to save a round message
@@ -670,7 +670,7 @@ void raft_server::reset_peer_info() {
 }
 
 void raft_server::handle_peer_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err) {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     if (err) {
         auto peer_id = err->req()->get_dst();
         std::shared_ptr< peer > pp = nullptr;
@@ -771,7 +771,7 @@ void raft_server::handle_peer_resp(std::shared_ptr< resp_msg >& resp, std::share
 }
 
 void raft_server::send_reconnect_request() {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
 
     if (leader_ == id_) {
         p_er("this node %d is leader, "
@@ -855,13 +855,13 @@ void raft_server::become_leader() {
     stop_election_timer();
 
     {
-        auto_lock(commit_ret_elems_lock_);
+        auto guard = auto_lock(commit_ret_elems_lock_);
         p_in("number of pending commit elements: %zu", commit_ret_elems_.size());
     }
 
     std::shared_ptr< raft_params > params = ctx_->get_params();
     {
-        auto_lock(cli_lock_);
+        auto guard = auto_lock(cli_lock_);
         role_ = srv_role::leader;
         leader_ = id_;
         srv_to_join_.reset();
@@ -932,7 +932,7 @@ void raft_server::become_leader() {
 }
 
 bool raft_server::check_leadership_validity() {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
 
     if (role_ != leader) return false;
 
@@ -982,7 +982,7 @@ void raft_server::check_leadership_transfer() {
 
     size_t hb_interval_ms = ctx_->get_params()->heart_beat_interval_;
 
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
 
     auto successor_id = -1;
     auto max_priority = my_priority_;
@@ -1039,7 +1039,7 @@ void raft_server::yield_leadership(bool immediate_yield, int successor_id) {
         return;
     }
 
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
 
     if (immediate_yield) {
         p_in("got immediate re-elect request, resign now");
@@ -1128,7 +1128,7 @@ bool raft_server::request_leadership() {
         return false;
     }
 
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     auto entry = peers_.find(leader_);
     if (entry == peers_.end()) {
         p_er("cannot request leadership: cannot find peer for "
@@ -1256,7 +1256,7 @@ std::shared_ptr< resp_msg > raft_server::handle_ext_msg(req_msg& req) {
 }
 
 void raft_server::handle_ext_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err) {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     if (err) {
         handle_ext_resp_err(*err);
         return;
@@ -1429,7 +1429,7 @@ void raft_server::get_srv_config_all(std::vector< std::shared_ptr< srv_config > 
 raft_server::peer_info raft_server::get_peer_info(int32_t srv_id) const {
     if (!is_leader()) return peer_info();
 
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     auto entry = peers_.find(srv_id);
     if (entry == peers_.end()) return peer_info();
 
@@ -1445,7 +1445,7 @@ std::vector< raft_server::peer_info > raft_server::get_peer_info_all() const {
     std::vector< raft_server::peer_info > ret;
     if (!is_leader()) return ret;
 
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     for (auto entry : peers_) {
         peer_info pi;
         std::shared_ptr< peer > pp = entry.second;
@@ -1514,7 +1514,7 @@ CbReturnCode raft_server::invoke_callback(cb_func::Type type, cb_func::Param* pa
 }
 
 void raft_server::set_inc_term_func(srv_state::inc_term_func func) {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     if (!state_) return;
     state_->set_inc_term_func(func);
 }

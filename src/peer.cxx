@@ -79,7 +79,7 @@ void peer::handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rp
              msg_type_to_string(req->get_type()).c_str(), (err) ? err->what() : "OK");
     }
 
-    if (err == nilptr) {
+    if (err == nullptr) {
         // Succeeded.
         {
             std::lock_guard< std::mutex > l(rpc_protector_);
@@ -102,7 +102,7 @@ void peer::handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rp
 
         reset_active_timer();
         {
-            auto_lock(lock_);
+            auto guard = auto_lock(lock_);
             resume_hb_speed();
         }
         std::shared_ptr< rpc_exception > no_except;
@@ -119,7 +119,7 @@ void peer::handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rp
         //       of that connection.
         reset_active_timer();
         {
-            auto_lock(lock_);
+            auto guard = auto_lock(lock_);
             slow_down_hb();
         }
         std::shared_ptr< resp_msg > no_resp;

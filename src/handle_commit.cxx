@@ -371,7 +371,7 @@ void raft_server::commit_app_log(uint64_t idx_to_commit, std::shared_ptr< log_en
 }
 
 void raft_server::commit_conf(uint64_t idx_to_commit, std::shared_ptr< log_entry >& le) {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     le->get_buf().pos(0);
     std::shared_ptr< cluster_config > new_conf = cluster_config::deserialize(le->get_buf());
 
@@ -402,7 +402,7 @@ void raft_server::commit_conf(uint64_t idx_to_commit, std::shared_ptr< log_entry
     //   normal append_entries() request, as receiving log entry
     //   means that catch-up process is already done.
     //
-    // if (catching_up_ && new_conf->get_server(id_) != nilptr) {
+    // if (catching_up_ && new_conf->get_server(id_) != nullptr) {
     //     p_in("this server is committed as one of cluster members");
     //     catching_up_ = false;
     // }
@@ -542,7 +542,7 @@ bool raft_server::snapshot_and_compact(uint64_t committed_idx, bool forced_creat
 void raft_server::on_snapshot_completed(std::shared_ptr< snapshot >& s, bool result,
                                         std::shared_ptr< std::exception >& err) {
     do { // Dummy loop
-        if (err != nilptr) {
+        if (err != nullptr) {
             p_er("failed to create a snapshot due to %s", err->what());
             break;
         }
@@ -553,7 +553,7 @@ void raft_server::on_snapshot_completed(std::shared_ptr< snapshot >& s, bool res
         }
 
         {
-            recur_lock(lock_);
+            auto guard = recur_lock(lock_);
             p_in("snapshot idx %" PRIu64 " log_term %" PRIu64 " created, "
                  "compact the log store if needed",
                  s->get_last_log_idx(), s->get_last_log_term());

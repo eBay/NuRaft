@@ -47,9 +47,9 @@ public:
     __nocopy__(asio_service);
 
 public:
-    virtual void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) __override__;
+    void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) override;
 
-    virtual std::shared_ptr< rpc_client > create_client(const std::string& endpoint) __override__;
+    std::shared_ptr< rpc_client > create_client(const std::string& endpoint) override;
 
     std::shared_ptr< rpc_listener > create_rpc_listener(uint16_t listening_port, std::shared_ptr< logger >& l);
 
@@ -58,7 +58,7 @@ public:
     uint32_t get_active_workers();
 
 private:
-    virtual void cancel_impl(std::shared_ptr< delayed_task >& task) __override__;
+    void cancel_impl(std::shared_ptr< delayed_task >& task) override;
 
     asio_service_impl* impl_;
 

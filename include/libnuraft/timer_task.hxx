@@ -37,7 +37,7 @@ public:
     timer_task(executor& e, T ctx, int32_t type = 0) : delayed_task(type), exec_(e), ctx_(ctx) {}
 
 protected:
-    virtual void exec() __override__ {
+    void exec() override {
         if (exec_) { exec_(ctx_); }
     }
 
@@ -54,7 +54,7 @@ public:
     explicit timer_task(executor& e, int32_t type = 0) : delayed_task(type), exec_(e) {}
 
 protected:
-    virtual void exec() __override__ {
+    void exec() override {
         if (exec_) { exec_(); }
     }
 

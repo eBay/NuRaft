@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _LOG_VALUE_TYPE_HXX_
-#define _LOG_VALUE_TYPE_HXX_
+#pragma once
 
 namespace nuraft {
 
@@ -33,4 +32,3 @@ enum class log_val_type : uint8_t {
 };
 
 }
-#endif // _LOG_VALUE_TYPE_HXX_

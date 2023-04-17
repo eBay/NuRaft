@@ -52,7 +52,7 @@ void raft_server::check_srv_to_leave_timeout() {
 }
 
 void raft_server::handle_hb_timeout(int32_t srv_id) {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
 
     check_srv_to_leave_timeout();
 
@@ -153,7 +153,7 @@ void raft_server::handle_hb_timeout(int32_t srv_id) {
 void raft_server::restart_election_timer() {
     // don't start the election timer while this server is still catching up the logs
     // or this server is the leader
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     if (catching_up_ || role_ == srv_role::leader) { return; }
 
     // If election timer was not allowed, clear the flag.
@@ -187,7 +187,7 @@ void raft_server::stop_election_timer() {
 
 void raft_server::handle_election_timeout() {
     p_tr("election timeout");
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     if (stopping_) {
         p_wn("Triggered election timer but server is shutting down");
         return;
