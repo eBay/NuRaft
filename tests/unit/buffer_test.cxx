@@ -48,7 +48,7 @@ int buffer_basic_test(size_t buf_size) {
 
     CHK_EQ(100 * sz_int, buf->pos());
 
-    ulong long_val = std::numeric_limits< uint >::max();
+    uint64_t long_val = std::numeric_limits< uint >::max();
     long_val += rnd();
     buf->put(long_val);
 
@@ -86,9 +86,9 @@ int buffer_basic_test(size_t buf_size) {
     }
 
     CHK_EQ(long_val, buf->get_uint64());
-    CHK_EQ(b, buf->get_byte());
+    CHK_EQ(std::to_integer<uint8_t>(b), std::to_integer<uint8_t>(buf->get_byte()));
     CHK_EQ(std::string("a string"), std::string(buf->get_str()));
-    CHK_EQ(b1, buf->get_byte());
+    CHK_EQ(std::to_integer<uint8_t>(b1), std::to_integer<uint8_t>(buf->get_byte()));
     CHK_EQ(0, std::memcmp(raw_str, buf->get_raw(sizeof(raw_str)), sizeof(raw_str)));
     CHK_EQ(std::string("another string"), std::string(buf->get_str()));
     CHK_EQ(std::string("another string"), std::string(buf2->get_str()));
@@ -99,17 +99,17 @@ int buffer_basic_test(size_t buf_size) {
     std::stringstream stream;
     long_val = std::numeric_limits< uint >::max();
     long_val += rnd();
-    std::shared_ptr< buffer > lbuf(buffer::alloc(sizeof(ulong)));
+    std::shared_ptr< buffer > lbuf(buffer::alloc(sizeof(uint64_t)));
     lbuf->put(long_val);
     lbuf->pos(0);
 
     stream << *lbuf;
     stream.seekp(0);
 
-    std::shared_ptr< buffer > lbuf1(buffer::alloc(sizeof(ulong)));
+    std::shared_ptr< buffer > lbuf1(buffer::alloc(sizeof(uint64_t)));
     stream >> *lbuf1;
 
-    ulong long_val_copy = lbuf1->get_uint64();
+    uint64_t long_val_copy = lbuf1->get_uint64();
     CHK_EQ(long_val, long_val_copy);
 
     std::shared_ptr< buffer > buf4(buffer::alloc(sz_int * 100));

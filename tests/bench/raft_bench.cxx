@@ -36,28 +36,28 @@ public:
     dummy_sm() : last_commit_idx_(0) {}
     ~dummy_sm() {}
 
-    std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) {
-        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(ulong));
+    std::shared_ptr< buffer > commit(const uint64_t log_idx, buffer& data) {
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(uint64_t));
         ret->put(log_idx);
         ret->pos(0);
         last_commit_idx_ = log_idx;
         return ret;
     }
 
-    std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) { return nullptr; }
+    std::shared_ptr< buffer > pre_commit(const uint64_t log_idx, buffer& data) { return nullptr; }
 
-    void rollback(const ulong log_idx, buffer& data) {}
-    void save_snapshot_data(snapshot& s, const ulong offset, buffer& data) {}
-    void save_logical_snp_obj(snapshot& s, ulong& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
+    void rollback(const uint64_t log_idx, buffer& data) {}
+    void save_snapshot_data(snapshot& s, const uint64_t offset, buffer& data) {}
+    void save_logical_snp_obj(snapshot& s, uint64_t& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
         obj_id++;
     }
     bool apply_snapshot(snapshot& s) { return true; }
-    int read_snapshot_data(snapshot& s, const ulong offset, buffer& data) { return 0; }
+    int read_snapshot_data(snapshot& s, const uint64_t offset, buffer& data) { return 0; }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, uint64_t obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         is_last_obj = true;
-        data_out = buffer::alloc(sizeof(ulong));
+        data_out = buffer::alloc(sizeof(uint64_t));
         data_out->put(obj_id);
         data_out->pos(0);
         return 0;
@@ -70,7 +70,7 @@ public:
         return last_snapshot_;
     }
 
-    ulong last_commit_index() { return last_commit_idx_; }
+    uint64_t last_commit_index() { return last_commit_idx_; }
 
     void create_snapshot(snapshot& s, async_result< bool >::handler_type& when_done) {
         {

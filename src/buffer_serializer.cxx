@@ -59,14 +59,14 @@ limitations under the License.
 
 #define get16l(ptr, val)                                                                                               \
     {                                                                                                                  \
-        val = std::to_integer< uint16_t >(ptr[1]);                                                                     \
+        val |= std::to_integer< uint8_t >(ptr[1]);                                                                     \
         val <<= 8;                                                                                                     \
-        val |= std::to_integer< uint16_t >(ptr[0]);                                                                    \
+        val |= std::to_integer< uint8_t >(ptr[0]);                                                                     \
     }
 
 #define get16b(ptr, val)                                                                                               \
     {                                                                                                                  \
-        val = std::to_integer< uint16_t >(ptr[0]);                                                                     \
+        val |= std::to_integer< uint16_t >(ptr[0]);                                                                    \
         val <<= 8;                                                                                                     \
         val |= std::to_integer< uint16_t >(ptr[1]);                                                                    \
     }
@@ -74,37 +74,29 @@ limitations under the License.
 #define get32l(ptr, val)                                                                                               \
     {                                                                                                                  \
         get16l((ptr + sizeof(uint16_t)), val);                                                                         \
-        val <<= 16;                                                                                                    \
-        uint16_t tmp;                                                                                                  \
-        get16l((ptr), tmp);                                                                                            \
-        val |= tmp;                                                                                                    \
+        val <<= 8;                                                                                                     \
+        get16l((ptr), val);                                                                                            \
     }
 
 #define get32b(ptr, val)                                                                                               \
     {                                                                                                                  \
+        get16b((ptr), val);                                                                                            \
+        val <<= 8;                                                                                                     \
         get16b((ptr + sizeof(uint16_t)), val);                                                                         \
-        val <<= 16;                                                                                                    \
-        uint16_t tmp;                                                                                                  \
-        get16b((ptr), tmp);                                                                                            \
-        val |= tmp;                                                                                                    \
     }
 
 #define get64l(ptr, val)                                                                                               \
     {                                                                                                                  \
         get32l((ptr + sizeof(uint32_t)), val);                                                                         \
-        val <<= 32;                                                                                                    \
-        uint32_t tmp;                                                                                                  \
-        get32l((ptr), tmp);                                                                                            \
-        val |= tmp;                                                                                                    \
+        val <<= 8;                                                                                                     \
+        get32l((ptr), val);                                                                                            \
     }
 
 #define get64b(ptr, val)                                                                                               \
     {                                                                                                                  \
+        get32b((ptr), val);                                                                                            \
+        val <<= 8;                                                                                                     \
         get32b((ptr + sizeof(uint32_t)), val);                                                                         \
-        val <<= 32;                                                                                                    \
-        uint32_t tmp;                                                                                                  \
-        get32b((ptr), tmp);                                                                                            \
-        val |= tmp;                                                                                                    \
     }
 
 #define chk_length(val)                                                                                                \

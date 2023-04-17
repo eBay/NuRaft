@@ -63,12 +63,12 @@ public:
         memcpy(&payload_out, bs.get_raw(log.size()), sizeof(op_payload));
     }
 
-    std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > pre_commit(const uint64_t log_idx, buffer& data) {
         // Nothing to do with pre-commit in this example.
         return nullptr;
     }
 
-    std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > commit(const uint64_t log_idx, buffer& data) {
         op_payload payload;
         dec_log(data, payload);
 
@@ -102,17 +102,17 @@ public:
         return ret;
     }
 
-    void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) {
+    void commit_config(const uint64_t log_idx, std::shared_ptr< cluster_config >& new_conf) {
         // Nothing to do with configuration change. Just update committed index.
         last_committed_idx_ = log_idx;
     }
 
-    void rollback(const ulong log_idx, buffer& data) {
+    void rollback(const uint64_t log_idx, buffer& data) {
         // Nothing to do with rollback,
         // as this example doesn't do anything on pre-commit.
     }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, uint64_t obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         std::shared_ptr< snapshot_ctx > ctx = nullptr;
         {
@@ -136,7 +136,7 @@ public:
 
         } else {
             // Object ID > 0: second object, put actual value.
-            data_out = buffer::alloc(sizeof(ulong));
+            data_out = buffer::alloc(sizeof(uint64_t));
             buffer_serializer bs(data_out);
             bs.put_u64(ctx->value_);
             is_last_obj = true;
@@ -144,7 +144,7 @@ public:
         return 0;
     }
 
-    void save_logical_snp_obj(snapshot& s, ulong& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
+    void save_logical_snp_obj(snapshot& s, uint64_t& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
         if (obj_id == 0) {
             // Object ID == 0: it contains dummy value, create snapshot context.
             std::shared_ptr< buffer > snp_buf = s.serialize();
@@ -190,7 +190,7 @@ public:
         return ctx->snapshot_;
     }
 
-    ulong last_commit_index() { return last_committed_idx_; }
+    uint64_t last_commit_index() { return last_committed_idx_; }
 
     void create_snapshot(snapshot& s, async_result< bool >::handler_type& when_done) {
         if (!async_snapshot_) {

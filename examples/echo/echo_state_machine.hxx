@@ -32,7 +32,7 @@ public:
 
     ~echo_state_machine() {}
 
-    std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > pre_commit(const uint64_t log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
         std::string str = bs.get_str();
@@ -42,7 +42,7 @@ public:
         return nullptr;
     }
 
-    std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > commit(const uint64_t log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
         std::string str = bs.get_str();
@@ -55,12 +55,12 @@ public:
         return nullptr;
     }
 
-    void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) {
+    void commit_config(const uint64_t log_idx, std::shared_ptr< cluster_config >& new_conf) {
         // Nothing to do with configuration change. Just update committed index.
         last_committed_idx_ = log_idx;
     }
 
-    void rollback(const ulong log_idx, buffer& data) {
+    void rollback(const uint64_t log_idx, buffer& data) {
         // Extract string from `data.
         buffer_serializer bs(data);
         std::string str = bs.get_str();
@@ -69,7 +69,7 @@ public:
         std::cout << "rollback " << log_idx << ": " << str << std::endl;
     }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, uint64_t obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         // Put dummy data.
         data_out = buffer::alloc(sizeof(int32_t));
@@ -80,7 +80,7 @@ public:
         return 0;
     }
 
-    void save_logical_snp_obj(snapshot& s, ulong& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
+    void save_logical_snp_obj(snapshot& s, uint64_t& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
         std::cout << "save snapshot " << s.get_last_log_idx() << " term " << s.get_last_log_term() << " object ID "
                   << obj_id << std::endl;
         // Request next object.
@@ -106,7 +106,7 @@ public:
         return last_snapshot_;
     }
 
-    ulong last_commit_index() { return last_committed_idx_; }
+    uint64_t last_commit_index() { return last_committed_idx_; }
 
     void create_snapshot(snapshot& s, async_result< bool >::handler_type& when_done) {
         std::cout << "create snapshot " << s.get_last_log_idx() << " term " << s.get_last_log_term() << std::endl;

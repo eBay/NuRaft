@@ -47,36 +47,36 @@ public:
 
     ~TestSm() {}
 
-    std::shared_ptr< buffer > commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > commit(const uint64_t log_idx, buffer& data) {
         std::lock_guard< std::mutex > ll(dataLock);
         commits[log_idx] = buffer::copy(data);
 
-        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(ulong));
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(uint64_t));
         buffer_serializer bs(ret);
         bs.put_u64(log_idx);
         return ret;
     }
 
-    void commit_config(const ulong log_idx, std::shared_ptr< cluster_config >& new_conf) {
+    void commit_config(const uint64_t log_idx, std::shared_ptr< cluster_config >& new_conf) {
         lastCommittedConfigIdx = log_idx;
     }
 
-    std::shared_ptr< buffer > pre_commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > pre_commit(const uint64_t log_idx, buffer& data) {
         std::lock_guard< std::mutex > ll(dataLock);
         preCommits[log_idx] = buffer::copy(data);
 
-        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(ulong));
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(uint64_t));
         buffer_serializer bs(ret);
         bs.put_u64(log_idx);
         return ret;
     }
 
-    void rollback(const ulong log_idx, buffer& data) {
+    void rollback(const uint64_t log_idx, buffer& data) {
         std::lock_guard< std::mutex > ll(dataLock);
         rollbacks.push_back(log_idx);
     }
 
-    void save_logical_snp_obj(snapshot& s, ulong& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
+    void save_logical_snp_obj(snapshot& s, uint64_t& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
         if (snpDelayMs) { TestSuite::sleep_ms(snpDelayMs); }
 
         if (obj_id == 0) {
@@ -86,7 +86,7 @@ public:
             return;
         }
 
-        if (data.size() == sizeof(ulong)) {
+        if (data.size() == sizeof(uint64_t)) {
             // Special object representing config change.
             // Nothing to do for state machine.
             // Request next object.
@@ -95,7 +95,7 @@ public:
         }
 
         buffer_serializer bs(data);
-        ulong log_idx = bs.get_u64();
+        uint64_t log_idx = bs.get_u64();
 
         // In this test state machine implementation,
         // obj id should be always the same as log index.
@@ -122,7 +122,7 @@ public:
         return true;
     }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, ulong obj_id, std::shared_ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, uint64_t obj_id, std::shared_ptr< buffer >& data_out,
                              bool& is_last_obj) {
         if (!user_snp_ctx) {
             // Create a dummy context with a magic number.
@@ -142,10 +142,10 @@ public:
         if (obj_id == 0) {
             // First object contains metadata:
             //   Put first log index and the last log index.
-            data_out = buffer::alloc(sizeof(ulong) * 2);
+            data_out = buffer::alloc(sizeof(uint64_t) * 2);
             buffer_serializer bs(data_out);
 
-            ulong first_idx = 0;
+            uint64_t first_idx = 0;
             auto entry = commits.begin();
             if (entry != commits.end()) { first_idx = entry->first; }
 
@@ -165,12 +165,12 @@ public:
         if (entry == commits.end()) {
             // Corresponding log number doesn't exist,
             // it happens when that log number is used for config change.
-            data_out = buffer::alloc(sizeof(ulong));
+            data_out = buffer::alloc(sizeof(uint64_t));
             buffer_serializer bs(data_out);
             bs.put_u64(obj_id);
         } else {
             std::shared_ptr< buffer > local_data = entry->second;
-            data_out = buffer::alloc(sizeof(ulong) + sizeof(int32_t) + local_data->size());
+            data_out = buffer::alloc(sizeof(uint64_t) + sizeof(int32_t) + local_data->size());
             buffer_serializer bs(data_out);
             bs.put_u64(obj_id);
             bs.put_i32((int32_t)local_data->size());
@@ -205,7 +205,7 @@ public:
         return lastSnapshot;
     }
 
-    ulong last_commit_index() {
+    uint64_t last_commit_index() {
         std::lock_guard< std::mutex > ll(dataLock);
         auto entry = commits.rbegin();
         if (entry == commits.rend()) return 0;
@@ -224,7 +224,7 @@ public:
         when_done(ret, except);
     }
 
-    void set_next_batch_size_hint_in_bytes(ulong to) { customBatchSize = to; }
+    void set_next_batch_size_hint_in_bytes(uint64_t to) { customBatchSize = to; }
 
     int64_t get_next_batch_size_hint_in_bytes() { return customBatchSize; }
 
@@ -292,7 +292,7 @@ public:
         return true;
     }
 
-    ulong isCommitted(const std::string& msg) {
+    uint64_t isCommitted(const std::string& msg) {
         std::lock_guard< std::mutex > ll(dataLock);
         for (auto& entry : commits) {
             std::shared_ptr< buffer > bb = entry.second;
@@ -304,14 +304,14 @@ public:
         return 0;
     }
 
-    std::shared_ptr< buffer > getData(ulong log_idx) const {
+    std::shared_ptr< buffer > getData(uint64_t log_idx) const {
         std::lock_guard< std::mutex > ll(dataLock);
         auto entry = commits.find(log_idx);
         if (entry == commits.end()) return nullptr;
         return entry->second;
     }
 
-    void truncateData(ulong log_idx_upto) {
+    void truncateData(uint64_t log_idx_upto) {
         auto entry = preCommits.lower_bound(log_idx_upto);
         preCommits.erase(entry, preCommits.end());
         auto entry2 = commits.lower_bound(log_idx_upto);

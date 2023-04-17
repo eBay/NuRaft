@@ -669,10 +669,10 @@ int response_hint_test(bool with_meta) {
     return 0;
 }
 
-static void async_handler(std::list< ulong >* idx_list, std::mutex* idx_list_lock, std::shared_ptr< buffer >& result,
+static void async_handler(std::list< uint64_t >* idx_list, std::mutex* idx_list_lock, std::shared_ptr< buffer >& result,
                           std::shared_ptr< std::exception >& err) {
     result->pos(0);
-    ulong idx = result->get_uint64();
+    uint64_t idx = result->get_uint64();
     if (idx_list) {
         std::lock_guard< std::mutex > l(*idx_list_lock);
         idx_list->push_back(idx);
@@ -708,7 +708,7 @@ int async_append_handler_test() {
     // Append messages asynchronously.
     const size_t NUM = 10;
     std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     std::mutex idx_list_lock;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
@@ -1988,7 +1988,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     // Append messages asynchronously.
     const size_t NUM = 10;
     std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
         handlers.clear();
@@ -2107,7 +2107,7 @@ int full_consensus_test() {
     // Append messages asynchronously.
     const size_t NUM = 10;
     std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
         handlers.clear();
@@ -2192,7 +2192,7 @@ int custom_commit_condition_test() {
     // Append messages asynchronously.
     const size_t NUM = 10;
     std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
         handlers.clear();
@@ -2272,7 +2272,7 @@ int parallel_log_append_test() {
     // Append messages asynchronously.
     const size_t NUM = 10;
     std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
         handlers.clear();
@@ -2348,7 +2348,7 @@ int custom_resolver_test() {
     // Append messages asynchronously.
     const size_t NUM = 10;
     std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&]() {
         handlers.clear();
@@ -2422,7 +2422,7 @@ int log_timestamp_test() {
     // Append messages asynchronously.
     const size_t NUM = 5;
     std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     std::mutex idx_list_lock;
     auto do_async_append = [&](RaftAsioPkg& target_srv) {
         handlers.clear();

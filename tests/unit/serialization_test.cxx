@@ -38,9 +38,9 @@ int32_t rnd() {
     return rnd_func();
 }
 
-ulong long_val(int val) {
-    ulong base = std::numeric_limits< uint >::max();
-    return base + (ulong)val;
+uint64_t long_val(int val) {
+    uint64_t base = std::numeric_limits< uint >::max();
+    return base + (uint64_t)val;
 }
 
 int srv_config_test() {
@@ -136,9 +136,9 @@ int snapshot_sync_req_test(bool done) {
     CHK_EQ(rnd_buf->size(), buf1.size());
 
     for (size_t i = 0; i < buf1.size(); ++i) {
-        byte* d = rnd_buf->data();
-        byte* d1 = buf1.data();
-        CHK_EQ(*(d + i), *(d1 + i));
+        auto const d = std::to_integer<uint8_t>(*(rnd_buf->data() + 1));
+        auto const d1 = std::to_integer<uint8_t>(*(buf1.data() + 1));
+        CHK_EQ(d, d1);
     }
 
     return 0;
@@ -178,11 +178,11 @@ int log_entry_test() {
     std::shared_ptr< log_entry > entry1 = log_entry::deserialize(*buf2);
 
     CHK_EQ(entry->get_term(), entry1->get_term());
-    CHK_EQ(entry->get_val_type(), entry1->get_val_type());
+    CHK_EQ(static_cast<uint8_t>(entry->get_val_type()), static_cast<uint8_t>(entry1->get_val_type()));
     CHK_EQ(entry->get_buf().size(), entry1->get_buf().size());
     for (size_t i = 0; i < entry->get_buf().size(); ++i) {
-        byte b1 = entry->get_buf().get_byte();
-        byte b2 = entry1->get_buf().get_byte();
+        auto const b1 = std::to_integer<uint8_t>(entry->get_buf().get_byte());
+        auto const b2 = std::to_integer<uint8_t>(entry1->get_buf().get_byte());
         CHK_EQ(b1, b2);
     }
     return 0;

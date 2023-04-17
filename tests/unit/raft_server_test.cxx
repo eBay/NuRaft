@@ -298,7 +298,7 @@ int add_node_error_cases_test() {
 
     { // Attempt to add more than one server at once.
         std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((ulong)0, msg_type::add_server_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+            std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
         for (size_t ii = 1; ii < num_srvs; ++ii) {
             RaftPkg* ff = pkgs[ii];
             std::shared_ptr< srv_config > srv = ff->getTestMgr()->get_srv_config();
@@ -314,7 +314,7 @@ int add_node_error_cases_test() {
 
     { // Attempt to add server with wrong message type.
         std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((ulong)0, msg_type::add_server_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+            std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
         RaftPkg* ff = pkgs[1];
         std::shared_ptr< srv_config > srv = ff->getTestMgr()->get_srv_config();
         std::shared_ptr< buffer > buf(srv->serialize());
@@ -388,7 +388,7 @@ int add_node_error_cases_test() {
     };
     { // Attempt to add S3 to S2 (non-leader), through RPC.
         std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((ulong)0, msg_type::add_server_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+            std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
         std::shared_ptr< srv_config > srv = s3.getTestMgr()->get_srv_config();
         std::shared_ptr< buffer > buf(srv->serialize());
         std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
@@ -525,7 +525,7 @@ int remove_node_error_cases_test() {
 
     { // Attempt to remove more than one server at once.
         std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((ulong)0, msg_type::remove_server_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+            std::make_shared< req_msg >((uint64_t)0, msg_type::remove_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
         for (size_t ii = 1; ii < num_srvs; ++ii) {
             RaftPkg* ff = pkgs[ii];
             std::shared_ptr< srv_config > srv = ff->getTestMgr()->get_srv_config();
@@ -552,7 +552,7 @@ int remove_node_error_cases_test() {
     };
     { // Attempt to remove S3 to S2 (non-leader), through RPC.
         std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((ulong)0, msg_type::remove_server_request, 0, 0, (ulong)0, (ulong)0, (ulong)0);
+            std::make_shared< req_msg >((uint64_t)0, msg_type::remove_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
         std::shared_ptr< buffer > buf(buffer::alloc(sz_int));
         buf->put(s3.myId);
         buf->pos(0);
@@ -1968,7 +1968,7 @@ int snapshot_manual_creation_test() {
     uint64_t committed_index = s1.raftServer->get_committed_log_idx();
 
     // Create a manual snapshot.
-    ulong log_idx = s1.raftServer->create_snapshot();
+    uint64_t log_idx = s1.raftServer->create_snapshot();
     CHK_EQ(committed_index, log_idx);
     CHK_EQ(log_idx, s1.raftServer->get_last_snapshot_idx());
 
@@ -2176,7 +2176,7 @@ int join_empty_node_test() {
     return 0;
 }
 
-static int async_handler(std::list< ulong >* idx_list,
+static int async_handler(std::list< uint64_t >* idx_list,
                          std::shared_ptr< cmd_result< std::shared_ptr< buffer > > >& cmd_result,
                          cmd_result_code expected_code, std::shared_ptr< buffer >& result,
                          std::shared_ptr< std::exception >& err) {
@@ -2184,7 +2184,7 @@ static int async_handler(std::list< ulong >* idx_list,
 
     if (expected_code == cmd_result_code::OK) {
         result->pos(0);
-        ulong idx = result->get_uint64();
+        uint64_t idx = result->get_uint64();
         if (idx_list) { idx_list->push_back(idx); }
 
     } else {
@@ -2244,7 +2244,7 @@ int async_append_handler_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Now all async handlers should have result.
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     for (auto& entry : handlers) {
         std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > result = entry;
         cmd_result< std::shared_ptr< buffer > >::handler_type my_handler = std::bind(
@@ -2343,7 +2343,7 @@ int async_append_handler_cancel_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Now all async handlers should have been cancelled.
-    std::list< ulong > idx_list;
+    std::list< uint64_t > idx_list;
     for (auto& entry : handlers) {
         std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > result = entry;
         cmd_result< std::shared_ptr< buffer > >::handler_type my_handler = std::bind(
@@ -2560,7 +2560,7 @@ int custom_term_counter_test() {
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
-    auto custom_term = [](ulong cur_term) -> ulong {
+    auto custom_term = [](uint64_t cur_term) -> uint64_t {
         // Increase by 10.
         return (cur_term / 10) + 10;
     };
