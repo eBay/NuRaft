@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _LOG_STORE_HXX_
-#define _LOG_STORE_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "log_entry.hxx"
 #include "pp_util.hxx"
@@ -184,5 +182,3 @@ public:
 };
 
 } // namespace nuraft
-
-#endif //_LOG_STORE_HXX_

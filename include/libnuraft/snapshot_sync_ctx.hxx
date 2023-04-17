@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _SNAPSHOT_SYNC_CTX_HXX_
-#define _SNAPSHOT_SYNC_CTX_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "event_awaiter.hxx"
 #include "internal_timer.hxx"
 #include "pp_util.hxx"
@@ -175,5 +173,3 @@ private:
 };
 
 } // namespace nuraft
-
-#endif //_SNAPSHOT_SYNC_CTX_HXX_

@@ -41,7 +41,7 @@ std::shared_ptr< snapshot > snapshot::deserialize(buffer_serializer& bs) {
 std::shared_ptr< buffer > snapshot::serialize() {
     std::shared_ptr< buffer > conf_buf = last_config_->serialize();
     std::shared_ptr< buffer > buf = buffer::alloc(conf_buf->size() + sz_uint64_t * 3 + sz_byte);
-    buf->put((byte)type_);
+    buf->put(std::byte{type_});
     buf->put(last_log_idx_);
     buf->put(last_log_term_);
     buf->put(size_);

@@ -21,6 +21,7 @@ limitations under the License.
 #include "buffer.hxx"
 #include "stat_mgr.hxx"
 
+#include <cstddef>
 #include <cstring>
 #include <iostream>
 
@@ -66,6 +67,8 @@ limitations under the License.
     (__is_big_block(p)) ? (byte*)((byte*)(((uint32_t*)(p)) + 2)) : (byte*)((byte*)(((uint16_t*)(p)) + 2))
 
 namespace nuraft {
+
+using std::byte;
 
 static void free_buffer(buffer* buf) {
     static stat_elem& num_active = *stat_mgr::get_instance()->create_stat(stat_elem::COUNTER, "num_active_buffers");

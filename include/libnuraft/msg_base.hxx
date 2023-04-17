@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _MSG_BASE_HXX_
-#define _MSG_BASE_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "msg_type.hxx"
 #include "pp_util.hxx"
 
@@ -51,4 +49,3 @@ private:
 };
 
 } // namespace nuraft
-#endif //_MSG_BASE_HXX_

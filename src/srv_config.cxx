@@ -46,7 +46,7 @@ std::shared_ptr< buffer > srv_config::serialize() const {
     buf->put(dc_id_);
     buf->put(endpoint_);
     buf->put(aux_);
-    buf->put((byte)(learner_ ? (1) : (0)));
+    buf->put(learner_ ? std::byte{0x01} : std::byte{0x00});
     buf->put(priority_);
     buf->pos(0);
     return buf;

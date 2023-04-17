@@ -30,6 +30,8 @@ using namespace nuraft;
 
 namespace buffer_test {
 
+using std::byte;
+
 int buffer_basic_test(size_t buf_size) {
     std::shared_ptr< buffer > buf = buffer::alloc(buf_size);
 

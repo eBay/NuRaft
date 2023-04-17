@@ -255,7 +255,7 @@ std::shared_ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& re
         // Put dummy CTX to end the snapshot sync.
         std::shared_ptr< buffer > done_ctx = buffer::alloc(1);
         done_ctx->pos(0);
-        done_ctx->put((byte)0);
+        done_ctx->put(std::byte{0x00});
         done_ctx->pos(0);
         resp->set_ctx(done_ctx);
         return resp;
@@ -276,7 +276,7 @@ std::shared_ptr< resp_msg > raft_server::handle_install_snapshot_req(req_msg& re
                 // Add a context buffer to inform installation is done.
                 std::shared_ptr< buffer > done_ctx = buffer::alloc(1);
                 done_ctx->pos(0);
-                done_ctx->put((byte)0);
+                done_ctx->put(std::byte{0x00});
                 done_ctx->pos(0);
                 resp->set_ctx(done_ctx);
             }

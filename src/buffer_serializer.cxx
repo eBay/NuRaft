@@ -104,6 +104,8 @@ limitations under the License.
 
 namespace nuraft {
 
+using std::byte;
+
 buffer_serializer::buffer_serializer(buffer& src_buf, buffer_serializer::endianness endian) :
         endian_(endian), buf_(src_buf), pos_(0) {}
 

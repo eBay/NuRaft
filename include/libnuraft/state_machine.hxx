@@ -21,7 +21,6 @@ limitations under the License.
 #pragma once
 
 #include "async.hxx"
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "pp_util.hxx"
 

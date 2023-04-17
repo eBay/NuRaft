@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "asio_service.hxx"
 #include "async.hxx"
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "callback.hxx"

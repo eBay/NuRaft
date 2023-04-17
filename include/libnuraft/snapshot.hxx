@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _SNAPSHOT_HXX_
-#define _SNAPSHOT_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "pp_util.hxx"
@@ -79,5 +77,3 @@ private:
 };
 
 } // namespace nuraft
-
-#endif

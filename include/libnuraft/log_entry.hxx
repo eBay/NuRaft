@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _LOG_ENTRY_HXX_
-#define _LOG_ENTRY_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "log_val_type.hxx"
 
@@ -75,7 +73,7 @@ public:
         buff_->pos(0);
         std::shared_ptr< buffer > buf = buffer::alloc(sizeof(uint64_t) + sizeof(char) + buff_->size());
         buf->put(term_);
-        buf->put((static_cast< byte >(value_type_)));
+        buf->put((static_cast< std::byte >(value_type_)));
         buf->put(*buff_);
         buf->pos(0);
         return buf;
@@ -119,5 +117,3 @@ private:
 };
 
 } // namespace nuraft
-
-#endif //_LOG_ENTRY_HXX_

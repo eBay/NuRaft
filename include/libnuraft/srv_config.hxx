@@ -20,7 +20,6 @@ limitations under the License.
 
 #pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "pp_util.hxx"

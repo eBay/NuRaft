@@ -293,7 +293,7 @@ public:
                      //  due to async_read() above, header_ size will be always
                      //  equal to or greater than RPC_REQ_HEADER_SIZE.
                      header_->pos(0);
-                     byte* header_data = header_->data();
+                     auto header_data = header_->data();
                      uint32_t crc_local = crc32_8(header_data, RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN, 0);
 
                      header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
@@ -309,7 +309,7 @@ public:
                      }
 
                      header_->pos(0);
-                     if (header_->get_byte() == byte{0x1}) {
+                     if (header_->get_byte() == std::byte{0x1}) {
                          // Means that this is RPC_RESP, shouldn't happen.
                          p_er("Wrong packet: expected REQ, got RESP");
                          this->stop();
@@ -436,7 +436,7 @@ private:
                 // If flag is set, read meta first.
                 if (flags_ & INCLUDE_META) {
                     size_t meta_len = 0;
-                    const byte* meta_raw = (const byte*)ss.get_bytes(meta_len);
+                    auto meta_raw = reinterpret_cast<std::byte const*>(ss.get_bytes(meta_len));
                     if (meta_len) { meta_str = std::string((const char*)meta_raw, meta_len); }
                 }
 
@@ -555,7 +555,7 @@ private:
             std::shared_ptr< buffer > resp_buf = buffer::alloc(buf_size);
             buffer_serializer bs(resp_buf);
 
-            auto const RESP_MARKER = byte{0x1};
+            auto const RESP_MARKER = std::byte{0x1};
             bs.put_u8(RESP_MARKER);
             bs.put_u8(resp->get_type());
             bs.put_i32(resp->get_src());
@@ -969,11 +969,11 @@ public:
         std::shared_ptr< buffer > req_buf = buffer::alloc(RPC_REQ_HEADER_SIZE + meta_size + log_data_size);
 
         req_buf->pos(0);
-        byte* req_buf_data = req_buf->data();
+        auto req_buf_data = req_buf->data();
 
-        auto marker = byte{0x0};
+        auto const marker = std::byte{0x0};
         req_buf->put(marker);
-        req_buf->put((byte)req->get_type());
+        req_buf->put(static_cast<std::byte>(req->get_type()));
         req_buf->put(req->get_src());
         req_buf->put(req->get_dst());
         req_buf->put(req->get_term());
@@ -989,7 +989,7 @@ public:
         req_buf->put((uint64_t)flags_and_crc);
 
         // Handling meta if the flag is set.
-        if (flags & INCLUDE_META) { req_buf->put((byte*)meta_str.data(), meta_str.size()); }
+        if (flags & INCLUDE_META) { req_buf->put(reinterpret_cast<std::byte*>(meta_str.data()), meta_str.size()); }
 
         for (auto& it : log_entry_bufs) {
             req_buf->put(*(it));
@@ -1198,15 +1198,15 @@ private:
         }
 
         bs.pos(1);
-        auto msg_type_val = byte{bs.get_u8()};
+        auto msg_type_val = std::byte{bs.get_u8()};
         int32_t src = bs.get_i32();
         int32_t dst = bs.get_i32();
         uint64_t term = bs.get_u64();
         uint64_t nxt_idx = bs.get_u64();
-        auto accepted_val = byte{bs.get_u8()};
+        auto accepted_val = std::byte{bs.get_u8()};
         int32_t carried_data_size = bs.get_i32();
         std::shared_ptr< resp_msg > rsp(
-            std::make_shared< resp_msg >(term, (msg_type)msg_type_val, src, dst, nxt_idx, accepted_val == byte{1}));
+            std::make_shared< resp_msg >(term, (msg_type)msg_type_val, src, dst, nxt_idx, accepted_val == std::byte{1}));
 
         if (!(flags & INCLUDE_META) && impl_->get_options().read_resp_meta_ &&
             impl_->get_options().invoke_resp_cb_on_empty_meta_) {

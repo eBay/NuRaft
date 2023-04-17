@@ -234,7 +234,7 @@ int worker_func(TestSuite::ThreadArgs* _args) {
     worker_params* args = static_cast< worker_params* >(_args);
 
     std::shared_ptr< buffer > msg = buffer::alloc(args->config_.payload_size_);
-    msg->put((byte)0x0);
+    msg->put(std::byte{0x00});
 
     while (!args->stop_signal_) {
         size_t num_ops = 0;

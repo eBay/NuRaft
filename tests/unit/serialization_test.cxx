@@ -30,6 +30,8 @@ using namespace nuraft;
 
 namespace serialization_test {
 
+using std::byte;
+
 int32_t rnd() {
     static uint seed = (uint)std::chrono::system_clock::now().time_since_epoch().count();
     static std::default_random_engine engine(seed);

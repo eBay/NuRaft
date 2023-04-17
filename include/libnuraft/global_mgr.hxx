@@ -20,7 +20,6 @@ limitations under the License.
 #pragma once
 
 #include "asio_service_options.hxx"
-#include "basic_types.hxx"
 #include "pp_util.hxx"
 
 #include <atomic>

@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _SRV_STATE_HXX_
-#define _SRV_STATE_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 
@@ -148,5 +146,3 @@ private:
 };
 
 } // namespace nuraft
-
-#endif

@@ -20,9 +20,9 @@ limitations under the License.
 
 #pragma once
 
-#include "basic_types.hxx"
 #include "pp_util.hxx"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -110,7 +110,7 @@ public:
      *
      * @return Pointer to the current position.
      */
-    byte* data() const;
+    std::byte* data() const;
 
     /**
      * Get the memory pointer to the beginning of the data,
@@ -118,7 +118,7 @@ public:
      *
      * @return Pointer to the begining of the data.
      */
-    byte* data_begin() const;
+    std::byte* data_begin() const;
 
     /*********************************************************
      *
@@ -153,7 +153,7 @@ public:
      *
      * @return 1-byte unsigned integer.
      */
-    byte get_byte();
+    std::byte get_byte();
 
     /**
      * Read 4-byte length followed by byte array, and then return them.
@@ -163,7 +163,7 @@ public:
      * @param[out] len Size of returned byte array.
      * @return Pointer to the starting point of byte array.
      */
-    const byte* get_bytes(size_t& len);
+    const std::byte* get_bytes(size_t& len);
 
     /**
      * Read byte array of given buffer's size,
@@ -190,14 +190,14 @@ public:
      * @param len Size to read.
      * @return Pointer to the starting point of byte array.
      */
-    byte* get_raw(size_t len);
+    std::byte* get_raw(size_t len);
 
     /**
      * Put an 1-byte unsigned integer.
      *
      * @param b 1-byte unsigned integer.
      */
-    void put(byte b);
+    void put(std::byte b);
 
     /**
      * Put a byte array.
@@ -208,7 +208,7 @@ public:
      * @param len Length of the byte array.
      */
     void put(const char* ba, size_t len);
-    void put(const byte* ba, size_t len);
+    void put(const std::byte* ba, size_t len);
 
     /**
      * Put a 4-byte signed integer.
@@ -264,7 +264,7 @@ public:
      * @param ba Pointer to the byte array.
      * @param len Length of the byte array.
      */
-    void put_raw(const byte* ba, size_t len);
+    void put_raw(const std::byte* ba, size_t len);
 };
 using buffer_ptr = std::shared_ptr< buffer >;
 

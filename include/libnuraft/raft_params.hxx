@@ -18,10 +18,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _RAFT_PARAMS_HXX_
-#define _RAFT_PARAMS_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "pp_util.hxx"
 
 #include <algorithm>
@@ -604,5 +602,3 @@ public:
 };
 
 } // namespace nuraft
-
-#endif //_RAFT_PARAMS_HXX_
