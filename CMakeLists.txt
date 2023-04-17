@@ -138,7 +138,7 @@ endif()
 
 # === Compiler options ===
 if (ADDRESS_SANITIZER GREATER 0)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fuse-ld=gold")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fuse-ld=gold -fsanitize=undefined -fsanitize-address-use-after-scope -DCDS_ADDRESS_SANITIZER_ENABLED -fno-omit-frame-pointer -fno-optimize-sibling-calls")
     message(STATUS "---- ADDRESS SANITIZER IS ON ----")
 endif()
 
