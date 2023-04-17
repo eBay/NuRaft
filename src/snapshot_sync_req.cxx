@@ -33,7 +33,7 @@ std::shared_ptr< snapshot_sync_req > snapshot_sync_req::deserialize(buffer_seria
     std::shared_ptr< snapshot > snp(snapshot::deserialize(bs));
     uint64_t offset = bs.get_u64();
     bool done = bs.get_u8() == 1;
-    auto src = reinterpret_cast<std::byte const*>(bs.data());
+    auto src = reinterpret_cast< std::byte const* >(bs.data());
     std::shared_ptr< buffer > b;
     if (bs.pos() < bs.size()) {
         size_t sz = bs.size() - bs.pos();

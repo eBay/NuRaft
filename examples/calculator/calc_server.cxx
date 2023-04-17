@@ -41,7 +41,8 @@ static bool ASYNC_SNAPSHOT_CREATION = false;
 
 calc_state_machine* get_sm() { return static_cast< calc_state_machine* >(stuff.sm_.get()); }
 
-void handle_result(std::shared_ptr< TestSuite::Timer > timer, raft_result& result, std::shared_ptr< std::exception >& err) {
+void handle_result(std::shared_ptr< TestSuite::Timer > timer, raft_result& result,
+                   std::shared_ptr< std::exception >& err) {
     if (result.get_result_code() != cmd_result_code::OK) {
         // Something went wrong.
         // This means committing this log failed,

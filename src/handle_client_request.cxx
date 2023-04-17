@@ -156,7 +156,7 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req(req_msg& req, const req_
             if (entry != commit_ret_elems_.end()) {
                 // Commit thread was faster than this.
                 elem = entry->second;
-                p_tr("commit thread was faster than this thread: %p", elem.get());
+                p_tr("commit thread was faster than this thread: %p", (void*)elem.get());
             } else {
                 commit_ret_elems_.insert(std::make_pair(last_idx, elem));
             }
@@ -181,7 +181,7 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req(req_msg& req, const req_
     } else {
         // Async replication:
         //   Immediately return with the result of pre-commit.
-        p_dv("asynchronously replicated %" PRIu64 ", return value %p", last_idx, ret_value.get());
+        p_dv("asynchronously replicated %" PRIu64 ", return value %p", last_idx, (void*)ret_value.get());
         resp->set_ctx(ret_value);
     }
 
@@ -191,7 +191,7 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req(req_msg& req, const req_
 
 std::shared_ptr< resp_msg > raft_server::handle_cli_req_callback(std::shared_ptr< commit_ret_elem > elem,
                                                                  std::shared_ptr< resp_msg > resp) {
-    p_dv("commit_ret_cv %" PRIu64 " %p sleep", elem->idx_, &elem->awaiter_);
+    p_dv("commit_ret_cv %" PRIu64 " %p sleep", elem->idx_, (void*)&elem->awaiter_);
 
     // Will wake up after timeout.
     elem->awaiter_.wait_ms(ctx_->get_params()->client_req_timeout_);
@@ -215,12 +215,12 @@ std::shared_ptr< resp_msg > raft_server::handle_cli_req_callback(std::shared_ptr
 
     if (elem->result_code_ == cmd_result_code::OK) {
         p_dv("[OK] commit_ret_cv %" PRIu64 " wake up (%" PRIu64 " us), return value %p", idx, elapsed_us,
-             ret_value.get());
+             (void*)ret_value.get());
     } else {
         // Null `ret_value`, most likely timeout.
         p_wn("[NOT OK] commit_ret_cv %" PRIu64 " wake up (%" PRIu64 " us), "
              "return value %p, result code %d",
-             idx, elapsed_us, ret_value.get(), elem->result_code_);
+             idx, elapsed_us, (void*)ret_value.get(), elem->result_code_);
         bool valid_leader = check_leadership_validity();
         if (valid_leader) {
             p_in("leadership is still valid");

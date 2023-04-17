@@ -65,6 +65,6 @@ private:
     std::shared_ptr< logger > l_;
 };
 
-};     // namespace nuraft
+}; // namespace nuraft
 
 #endif //_ASIO_SERVICE_HXX_

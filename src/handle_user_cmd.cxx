@@ -56,8 +56,8 @@ struct raft_server::auto_fwd_pkg {
 std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > raft_server::add_srv(const srv_config& srv) {
     std::shared_ptr< buffer > buf(srv.serialize());
     std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
-    std::shared_ptr< req_msg > req =
-        std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
+    std::shared_ptr< req_msg > req = std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0,
+                                                                 (uint64_t)0, (uint64_t)0, (uint64_t)0);
     req->log_entries().push_back(log);
     return send_msg_to_leader(req);
 }
@@ -67,8 +67,8 @@ std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > raft_server::remove_s
     buf->put(srv_id);
     buf->pos(0);
     std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
-    std::shared_ptr< req_msg > req =
-        std::make_shared< req_msg >((uint64_t)0, msg_type::remove_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
+    std::shared_ptr< req_msg > req = std::make_shared< req_msg >((uint64_t)0, msg_type::remove_server_request, 0, 0,
+                                                                 (uint64_t)0, (uint64_t)0, (uint64_t)0);
     req->log_entries().push_back(log);
     return send_msg_to_leader(req);
 }
@@ -169,10 +169,10 @@ raft_server::send_msg_to_leader(std::shared_ptr< req_msg >& req, const req_ext_p
         if (entry == auto_fwd_pkgs_.end()) {
             cur_pkg = std::make_shared< auto_fwd_pkg >();
             auto_fwd_pkgs_[leader_id] = cur_pkg;
-            p_tr("auto forwarding pkg for leader %d not found, created %p", leader_id, cur_pkg.get());
+            p_tr("auto forwarding pkg for leader %d not found, created %p", leader_id, (void*)cur_pkg.get());
         } else {
             cur_pkg = entry->second;
-            p_tr("auto forwarding pkg for leader %d exists %p", leader_id, cur_pkg.get());
+            p_tr("auto forwarding pkg for leader %d exists %p", leader_id, (void*)cur_pkg.get());
         }
     }
 
@@ -191,7 +191,7 @@ raft_server::send_msg_to_leader(std::shared_ptr< req_msg >& req, const req_ext_p
                 std::shared_ptr< srv_config > srv_conf = c_conf->get_server(leader_id);
                 rpc_cli = ctx_->rpc_cli_factory_->create_client(srv_conf->get_endpoint());
                 cur_pkg->rpc_client_in_use_.insert(rpc_cli);
-                p_tr("created a new connection %p", rpc_cli.get());
+                p_tr("created a new connection %p", (void*)rpc_cli.get());
 
             } else {
                 // Already reached the max, wait for idle connection.
@@ -226,7 +226,7 @@ raft_server::send_msg_to_leader(std::shared_ptr< req_msg >& req, const req_ext_p
             }
             cur_pkg->rpc_client_idle_.pop_front();
             cur_pkg->rpc_client_in_use_.insert(rpc_cli);
-            p_tr("idle connection %p", rpc_cli.get());
+            p_tr("idle connection %p", (void*)rpc_cli.get());
         }
         break;
     } while (true);
@@ -254,8 +254,8 @@ void raft_server::auto_fwd_release_rpc_cli(std::shared_ptr< auto_fwd_pkg > cur_p
     auto put_back_to_idle_list = [&cur_pkg, &rpc_cli, max_conns, this]() {
         cur_pkg->rpc_client_in_use_.erase(rpc_cli);
         cur_pkg->rpc_client_idle_.push_front(rpc_cli);
-        p_tr("release connection %p, idle %zu, in-use %zu, max %zu", rpc_cli.get(), cur_pkg->rpc_client_idle_.size(),
-             cur_pkg->rpc_client_in_use_.size(), max_conns);
+        p_tr("release connection %p, idle %zu, in-use %zu, max %zu", (void*)rpc_cli.get(),
+             cur_pkg->rpc_client_idle_.size(), cur_pkg->rpc_client_in_use_.size(), max_conns);
     };
 
     std::unique_lock< std::mutex > l(cur_pkg->lock_);

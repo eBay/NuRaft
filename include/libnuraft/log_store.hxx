@@ -80,7 +80,7 @@ public:
      * @param start The start log index number (inclusive)
      * @param cnt The number of log entries written.
      */
-    virtual void end_of_append_batch(uint64_t start, uint64_t cnt) {}
+    virtual void end_of_append_batch([[maybe_unused]] uint64_t start, [[maybe_unused]] uint64_t cnt) {}
 
     /**
      * Get log entries with index [start, end).
@@ -92,7 +92,8 @@ public:
      * @param end The end log index number (exclusive).
      * @return The log entries between [start, end).
      */
-    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(uint64_t start, uint64_t end) = 0;
+    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(uint64_t start,
+                                                                                       uint64_t end) = 0;
 
     /**
      * (Optional)
@@ -112,7 +113,7 @@ public:
      *         given by the batch_size_hint_in_bytes.
      */
     virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >
-    log_entries_ext(uint64_t start, uint64_t end, int64_t batch_size_hint_in_bytes = 0) {
+    log_entries_ext(uint64_t start, uint64_t end, [[maybe_unused]] int64_t batch_size_hint_in_bytes = 0) {
         return log_entries(start, end);
     }
 

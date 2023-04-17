@@ -868,7 +868,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
         // To avoid this node becomes next leader again, set timeout
         // value bigger than any others, just once at this time.
-        rand_timeout_ = [this]() -> auto {
+        rand_timeout_ = [this]() -> auto{
             return this->ctx_->get_params()->election_timeout_upper_bound_ +
                 this->ctx_->get_params()->election_timeout_lower_bound_;
         };

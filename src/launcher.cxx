@@ -66,4 +66,4 @@ bool raft_launcher::shutdown(size_t time_limit_sec) {
 
 } // namespace nuraft
 
-  // LCOV_EXCL_STOP
+// LCOV_EXCL_STOP

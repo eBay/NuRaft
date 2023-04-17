@@ -306,7 +306,7 @@ void raft_server::commit_app_log(uint64_t idx_to_commit, std::shared_ptr< log_en
                 elem->result_code_ = cmd_result_code::OK;
                 elem->ret_value_ = ret_value;
                 need_to_check_commit_ret = false;
-                p_dv("notify cb %" PRIu64 " %p", sm_idx, &elem->awaiter_);
+                p_dv("notify cb %" PRIu64 " %p", sm_idx, (void*)&elem->awaiter_);
 
                 switch (ctx_->get_params()->return_method_) {
                 case raft_params::blocking:
@@ -339,7 +339,7 @@ void raft_server::commit_app_log(uint64_t idx_to_commit, std::shared_ptr< log_en
             elem->ret_value_ = ret_value;
             p_tr("commit thread is invoked earlier than user thread, "
                  "log %" PRIu64 ", elem %p",
-                 sm_idx, elem.get());
+                 sm_idx, (void*)elem.get());
 
             switch (ctx_->get_params()->return_method_) {
             case raft_params::blocking:
@@ -701,7 +701,7 @@ void raft_server::reconfigure(const std::shared_ptr< cluster_config >& new_confi
                     void* user_ctx = snp_ctx->get_user_snp_ctx();
                     p_in("srv_to_leave_ has snapshot context %p and user context %p, "
                          "destroy them",
-                         snp_ctx.get(), user_ctx);
+                         (void*)snp_ctx.get(), user_ctx);
                     clear_snapshot_sync_ctx(*srv_to_leave_);
                 }
 

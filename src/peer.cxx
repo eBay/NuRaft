@@ -91,7 +91,7 @@ void peer::handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rp
                 p_wn("[EDGE CASE] got stale RPC response from %d: "
                      "current %p (%" PRIu64 "), from parameter %p (%" PRIu64 "). "
                      "will ignore this response",
-                     config_->get_id(), rpc_.get(), cur_rpc_id, my_rpc_client.get(), given_rpc_id);
+                     config_->get_id(), (void*)rpc_.get(), cur_rpc_id, (void*)my_rpc_client.get(), given_rpc_id);
                 return;
             }
             // WARNING:
@@ -142,7 +142,7 @@ void peer::handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rp
                 //   SHOULD NOT reset the new one.
                 p_wn("[EDGE CASE] RPC for %d has been reset before "
                      "returning error: current %p (%" PRIu64 "), from parameter %p (%" PRIu64 ")",
-                     config_->get_id(), rpc_.get(), cur_rpc_id, my_rpc_client.get(), given_rpc_id);
+                     config_->get_id(), (void*)rpc_.get(), cur_rpc_id, (void*)my_rpc_client.get(), given_rpc_id);
             }
         }
     }
@@ -180,7 +180,7 @@ bool peer::recreate_rpc(std::shared_ptr< srv_config >& config, context& ctx) {
         reconn_backoff_.set_duration_ms(new_duration_ms);
 
         rpc_ = factory->create_client(config->get_endpoint());
-        p_tr("%p reconnect peer %d", rpc_.get(), config_->get_id());
+        p_tr("%p reconnect peer %d", (void*)rpc_.get(), config_->get_id());
 
         // WARNING:
         //   A reconnection attempt should be treated as an activity,

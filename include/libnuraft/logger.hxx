@@ -37,7 +37,7 @@ public:
      *
      * @param log_line Contents of the log.
      */
-    virtual void debug(const std::string& log_line) {}
+    virtual void debug([[maybe_unused]] const std::string& log_line) {}
 
     /**
      * (Deprecated)
@@ -45,7 +45,7 @@ public:
      *
      * @param log_line Contents of the log.
      */
-    virtual void info(const std::string& log_line) {}
+    virtual void info([[maybe_unused]] const std::string& log_line) {}
 
     /**
      * (Deprecated)
@@ -53,7 +53,7 @@ public:
      *
      * @param log_line Contents of the log.
      */
-    virtual void warn(const std::string& log_line) {}
+    virtual void warn([[maybe_unused]] const std::string& log_line) {}
 
     /**
      * (Deprecated)
@@ -61,7 +61,7 @@ public:
      *
      * @param log_line Contents of the log.
      */
-    virtual void err(const std::string& log_line) {}
+    virtual void err([[maybe_unused]] const std::string& log_line) {}
 
     /**
      * Set the log level.
@@ -70,7 +70,7 @@ public:
      *
      * @param l New log level.
      */
-    virtual void set_level(int l) {}
+    virtual void set_level([[maybe_unused]] int l) {}
 
     /**
      * Get the current log level.
@@ -97,8 +97,9 @@ public:
      * @param line_number Line number of the log.
      * @param log_line Contents of the log.
      */
-    virtual void put_details(int level, const char* source_file, const char* func_name, size_t line_number,
-                             const std::string& log_line) {}
+    virtual void put_details([[maybe_unused]] int level, [[maybe_unused]] const char* source_file,
+                             [[maybe_unused]] const char* func_name, [[maybe_unused]] size_t line_number,
+                             [[maybe_unused]] const std::string& log_line) {}
 };
 
 } // namespace nuraft

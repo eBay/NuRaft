@@ -218,7 +218,7 @@ public:
             src_id_(-1),
             is_leader_(false),
             cached_port_(0) {
-        p_tr("asio rpc session created: %p", this);
+        p_tr("asio rpc session created: %p", (void*)this);
     }
 
     __nocopy__(rpc_session);
@@ -226,7 +226,7 @@ public:
 public:
     ~rpc_session() {
         close_socket();
-        p_tr("asio rpc session destroyed: %p", this);
+        p_tr("asio rpc session destroyed: %p", (void*)this);
     }
 
 public:
@@ -376,7 +376,7 @@ private:
 #endif
     }
 
-    void read_log_data(std::shared_ptr< buffer > log_ctx, const ERROR_CODE& err, size_t bytes_read) {
+    void read_log_data(std::shared_ptr< buffer > log_ctx, const ERROR_CODE& err, size_t) {
         if (!err) {
             this->read_complete(header_, log_ctx);
         } else {
@@ -436,7 +436,7 @@ private:
                 // If flag is set, read meta first.
                 if (flags_ & INCLUDE_META) {
                     size_t meta_len = 0;
-                    auto meta_raw = reinterpret_cast<std::byte const*>(ss.get_bytes(meta_len));
+                    auto meta_raw = reinterpret_cast< std::byte const* >(ss.get_bytes(meta_len));
                     if (meta_len) { meta_str = std::string((const char*)meta_raw, meta_len); }
                 }
 
@@ -498,7 +498,7 @@ private:
                 // WARNING: `self` should be captured to avoid releasing this `rpc_session`.
                 ret->when_ready([this, self, req,
                                  resp](cmd_result< std::shared_ptr< buffer >, std::shared_ptr< std::exception > >& res,
-                                       std::shared_ptr< std::exception >& exp) {
+                                       std::shared_ptr< std::exception >&) {
                     resp->set_ctx(res.get());
                     on_resp_ready(req, resp);
                     // This is needed to avoid circular reference.
@@ -688,7 +688,7 @@ public:
     }
 
 private:
-    void start(std::lock_guard< std::mutex >& listener_lock) {
+    void start(std::lock_guard< std::mutex >&) {
         if (!acceptor_.is_open()) { return; }
 
         std::shared_ptr< asio_rpc_listener > self(this->shared_from_this());
@@ -702,7 +702,7 @@ private:
             std::bind(&asio_rpc_listener::handle_accept, this, self, session, std::placeholders::_1));
     }
 
-    void handle_accept(std::shared_ptr< asio_rpc_listener > self, std::shared_ptr< rpc_session > session,
+    void handle_accept(std::shared_ptr< asio_rpc_listener >, std::shared_ptr< rpc_session > session,
                        const ERROR_CODE& err) {
         if (!err) {
             p_in("receive a incoming rpc connection");
@@ -782,11 +782,11 @@ public:
                 std::bind(&asio_rpc_client::verify_certificate, this, std::placeholders::_1, std::placeholders::_2));
 #endif
         }
-        p_tr("asio client created: %p", this);
+        p_tr("asio client created: %p", (void*)this);
     }
 
     virtual ~asio_rpc_client() {
-        p_tr("asio client destroyed: %p", this);
+        p_tr("asio client destroyed: %p", (void*)this);
         close_socket();
     }
 
@@ -810,7 +810,7 @@ public:
 
     ssl_socket::lowest_layer_type& socket() { return ssl_socket_.lowest_layer(); }
 
-    void send_retry(std::shared_ptr< asio_rpc_client > self, std::shared_ptr< asio::steady_timer > timer,
+    void send_retry(std::shared_ptr< asio_rpc_client >, std::shared_ptr< asio::steady_timer >,
                     std::shared_ptr< req_msg >& req, rpc_handler& when_done, uint64_t send_timeout_ms,
                     const ERROR_CODE& err) {
         if (err || num_send_fails_ >= SEND_RETRY_MAX) {
@@ -830,10 +830,9 @@ public:
         send(req, when_done, send_timeout_ms);
     }
 
-    void send(std::shared_ptr< req_msg >& req, rpc_handler& when_done,
-                      uint64_t send_timeout_ms = 0) override {
+    void send(std::shared_ptr< req_msg >& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0) override {
         if (abandoned_) {
-            p_er("client %p to %s:%s is already stale (SSL %s)", this, host_.c_str(), port_.c_str(),
+            p_er("client %p to %s:%s is already stale (SSL %s)", (void*)this, host_.c_str(), port_.c_str(),
                  (ssl_enabled_ ? "enabled" : "disabled"));
             std::shared_ptr< resp_msg > rsp;
             std::shared_ptr< rpc_exception > except(
@@ -844,7 +843,7 @@ public:
 
         std::shared_ptr< asio_rpc_client > self = this->shared_from_this();
         while (!socket().is_open()) { // Dummy one-time loop
-            p_db("socket %p to %s:%s is not opened yet", this, host_.c_str(), port_.c_str());
+            p_db("socket %p to %s:%s is not opened yet", (void*)this, host_.c_str(), port_.c_str());
 
             // WARNING:
             //   Only one thread can establish connection at a time.
@@ -973,7 +972,7 @@ public:
 
         auto const marker = std::byte{0x0};
         req_buf->put(marker);
-        req_buf->put(static_cast<std::byte>(req->get_type()));
+        req_buf->put(static_cast< std::byte >(req->get_type()));
         req_buf->put(req->get_src());
         req_buf->put(req->get_dst());
         req_buf->put(req->get_term());
@@ -989,7 +988,7 @@ public:
         req_buf->put((uint64_t)flags_and_crc);
 
         // Handling meta if the flag is set.
-        if (flags & INCLUDE_META) { req_buf->put(reinterpret_cast<std::byte*>(meta_str.data()), meta_str.size()); }
+        if (flags & INCLUDE_META) { req_buf->put(reinterpret_cast< std::byte* >(meta_str.data()), meta_str.size()); }
 
         for (auto& it : log_entry_bufs) {
             req_buf->put(*(it));
@@ -1040,14 +1039,14 @@ private:
         if (to == true) {
             bool exp = false;
             if (!socket_busy_.compare_exchange_strong(exp, true)) {
-                p_ft("socket %p is already in use, race happened on connection to %s:%s", this, host_.c_str(),
+                p_ft("socket %p is already in use, race happened on connection to %s:%s", (void*)this, host_.c_str(),
                      port_.c_str());
                 assert(0);
             }
         } else {
             bool exp = true;
             if (!socket_busy_.compare_exchange_strong(exp, false)) {
-                p_ft("socket %p is already idle, race happened on connection to %s:%s", this, host_.c_str(),
+                p_ft("socket %p is already idle, race happened on connection to %s:%s", (void*)this, host_.c_str(),
                      port_.c_str());
                 assert(0);
             }
@@ -1085,9 +1084,9 @@ private:
     }
 
     void connected(std::shared_ptr< req_msg >& req, rpc_handler& when_done, uint64_t send_timeout_ms,
-                   std::error_code err, asio::ip::tcp::resolver::iterator itor) {
+                   std::error_code err, asio::ip::tcp::resolver::iterator) {
         if (!err) {
-            p_in("%p connected to %s:%s (as a client)", this, host_.c_str(), port_.c_str());
+            p_in("%p connected to %s:%s (as a client)", (void*)this, host_.c_str(), port_.c_str());
             if (ssl_enabled_) {
 #ifdef SSL_LIBRARY_NOT_FOUND
                 assert(0); // Should not reach here.
@@ -1137,7 +1136,7 @@ private:
     }
 
     void sent(std::shared_ptr< req_msg >& req, std::shared_ptr< buffer >& buf, rpc_handler& when_done,
-              std::error_code err, size_t bytes_transferred) {
+              std::error_code err, size_t) {
         // Now we can safely free the `req_buf`.
         (void)buf;
         std::shared_ptr< asio_rpc_client > self(this->shared_from_this());
@@ -1163,7 +1162,7 @@ private:
     }
 
     void response_read(std::shared_ptr< req_msg >& req, rpc_handler& when_done, std::shared_ptr< buffer >& resp_buf,
-                       std::error_code err, size_t bytes_transferred) {
+                       std::error_code err, size_t) {
         std::shared_ptr< asio_rpc_client > self(this->shared_from_this());
         if (err) {
             abandoned_ = true;
@@ -1205,8 +1204,8 @@ private:
         uint64_t nxt_idx = bs.get_u64();
         auto accepted_val = std::byte{bs.get_u8()};
         int32_t carried_data_size = bs.get_i32();
-        std::shared_ptr< resp_msg > rsp(
-            std::make_shared< resp_msg >(term, (msg_type)msg_type_val, src, dst, nxt_idx, accepted_val == std::byte{1}));
+        std::shared_ptr< resp_msg > rsp(std::make_shared< resp_msg >(term, (msg_type)msg_type_val, src, dst, nxt_idx,
+                                                                     accepted_val == std::byte{1}));
 
         if (!(flags & INCLUDE_META) && impl_->get_options().read_resp_meta_ &&
             impl_->get_options().invoke_resp_cb_on_empty_meta_) {
@@ -1230,7 +1229,7 @@ private:
     }
 
     void ctx_read(std::shared_ptr< req_msg >& req, std::shared_ptr< resp_msg >& rsp, rpc_handler& when_done,
-                  std::shared_ptr< buffer >& ctx_buf, uint32_t flags, std::error_code err, size_t bytes_transferred) {
+                  std::shared_ptr< buffer >& ctx_buf, uint32_t flags, std::error_code, size_t) {
         if (!(flags & INCLUDE_META) && !(flags & INCLUDE_HINT)) {
             // Neither meta nor hint exists,
             // just use the buffer as it is for ctx.
@@ -1290,8 +1289,8 @@ private:
         when_done(rsp, except);
     }
 
-    bool handle_custom_resp_meta(std::shared_ptr< req_msg >& req, std::shared_ptr< resp_msg >& rsp,
-                                 rpc_handler& when_done, const std::string& meta_str) {
+    bool handle_custom_resp_meta(std::shared_ptr< req_msg >& req, std::shared_ptr< resp_msg >&, rpc_handler& when_done,
+                                 const std::string& meta_str) {
         bool meta_ok = impl_->get_options().read_resp_meta_(req_to_params(req), meta_str);
 
         if (!meta_ok) {
@@ -1402,7 +1401,7 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt, std::sha
 asio_service_impl::~asio_service_impl() { stop(); }
 
 #ifndef SSL_LIBRARY_NOT_FOUND
-std::string asio_service_impl::get_password(std::size_t size, asio::ssl::context_base::password_purpose purpose) {
+std::string asio_service_impl::get_password(std::size_t, asio::ssl::context_base::password_purpose) {
     // TODO: Implement here if need to use cert with passphrase.
     return "test";
 }
@@ -1458,7 +1457,7 @@ void asio_service_impl::worker_entry() {
     p_in("end of asio worker thread, remaining threads: %u", num_active_workers_.load());
 }
 
-void asio_service_impl::timer_handler(ERROR_CODE err) {
+void asio_service_impl::timer_handler(ERROR_CODE) {
     if (continue_.load() == 1) {
         asio_timer_.expires_after(std::chrono::duration_cast< std::chrono::nanoseconds >(std::chrono::hours(1000)));
         asio_timer_.async_wait(std::bind(&asio_service_impl::timer_handler, this, std::placeholders::_1));

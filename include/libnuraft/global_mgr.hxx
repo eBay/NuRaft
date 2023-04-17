@@ -102,8 +102,9 @@ public:
      * @param logger_inst Logger instance.
      * @return Asio service instance.
      */
-    static std::shared_ptr< asio_service > init_asio_service(const asio_service_options& asio_opt = asio_service_options(),
-                                                 std::shared_ptr< logger > logger_inst = nullptr);
+    static std::shared_ptr< asio_service >
+    init_asio_service(const asio_service_options& asio_opt = asio_service_options(),
+                      std::shared_ptr< logger > logger_inst = nullptr);
 
     /**
      * Get the global Asio service instance.

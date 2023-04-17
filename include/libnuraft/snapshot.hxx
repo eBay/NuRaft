@@ -37,8 +37,8 @@ public:
         logical_object = 0x2,
     };
 
-    snapshot(uint64_t last_log_idx, uint64_t last_log_term, const std::shared_ptr< cluster_config >& last_config, uint64_t size = 0,
-             type _type = logical_object) :
+    snapshot(uint64_t last_log_idx, uint64_t last_log_term, const std::shared_ptr< cluster_config >& last_config,
+             uint64_t size = 0, type _type = logical_object) :
             last_log_idx_(last_log_idx),
             last_log_term_(last_log_term),
             size_(size),

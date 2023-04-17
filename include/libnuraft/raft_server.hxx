@@ -827,8 +827,8 @@ protected:
     void reset_srv_to_join();
     void reset_srv_to_leave();
     std::shared_ptr< req_msg > create_append_entries_req(std::shared_ptr< peer >& pp);
-    std::shared_ptr< req_msg > create_sync_snapshot_req(std::shared_ptr< peer >& pp, uint64_t last_log_idx, uint64_t term,
-                                                        uint64_t commit_idx, bool& succeeded_out);
+    std::shared_ptr< req_msg > create_sync_snapshot_req(std::shared_ptr< peer >& pp, uint64_t last_log_idx,
+                                                        uint64_t term, uint64_t commit_idx, bool& succeeded_out);
     bool check_snapshot_timeout(std::shared_ptr< peer > pp);
     void destroy_user_snp_ctx(std::shared_ptr< snapshot_sync_ctx > sync_ctx);
     void clear_snapshot_sync_ctx(peer& pp);

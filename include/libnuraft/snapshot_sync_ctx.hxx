@@ -107,7 +107,8 @@ public:
      * @param h Response handler.
      * @return `true` if succeeds (when there is no pending request for the same peer).
      */
-    bool push(std::shared_ptr< raft_server > r, std::shared_ptr< peer > p, std::function< void(std::shared_ptr< resp_msg >&, std::shared_ptr< rpc_exception >&) >& h);
+    bool push(std::shared_ptr< raft_server > r, std::shared_ptr< peer > p,
+              std::function< void(std::shared_ptr< resp_msg >&, std::shared_ptr< rpc_exception >&) >& h);
 
     /**
      * Invoke IO thread.

@@ -47,7 +47,7 @@ bool raft_server::check_snapshot_timeout(std::shared_ptr< peer > pp) {
     if (sync_ctx->get_timer().timeout()) {
         p_wn("snapshot install task for peer %d timed out: %" PRIu64 " ms, "
              "reset snapshot sync context %p",
-             pp->get_id(), sync_ctx->get_timer().get_ms(), sync_ctx.get());
+             pp->get_id(), sync_ctx->get_timer().get_ms(), (void*)sync_ctx.get());
         clear_snapshot_sync_ctx(*pp);
         return true;
     }
@@ -65,13 +65,14 @@ void raft_server::clear_snapshot_sync_ctx(peer& pp) {
     std::shared_ptr< snapshot_sync_ctx > snp_ctx = pp.get_snapshot_sync_ctx();
     if (snp_ctx) {
         destroy_user_snp_ctx(snp_ctx);
-        p_tr("destroy snapshot sync ctx %p", snp_ctx.get());
+        p_tr("destroy snapshot sync ctx %p", (void*)snp_ctx.get());
     }
     pp.set_snapshot_in_sync(nullptr);
 }
 
 std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr< peer >& pp, uint64_t last_log_idx,
-                                                                 uint64_t term, uint64_t commit_idx, bool& succeeded_out) {
+                                                                 uint64_t term, uint64_t commit_idx,
+                                                                 bool& succeeded_out) {
     succeeded_out = false;
     peer& p = *pp;
     std::shared_ptr< raft_params > params = ctx_->get_params();
@@ -81,12 +82,12 @@ std::shared_ptr< req_msg > raft_server::create_sync_snapshot_req(std::shared_ptr
     uint64_t prev_sync_snp_log_idx = 0;
     if (sync_ctx) {
         snp = sync_ctx->get_snapshot();
-        p_db("previous sync_ctx exists %p, offset %" PRIu64 ", snp idx %" PRIu64 ", user_ctx %p", sync_ctx.get(),
-             sync_ctx->get_offset(), snp->get_last_log_idx(), sync_ctx->get_user_snp_ctx());
+        p_db("previous sync_ctx exists %p, offset %" PRIu64 ", snp idx %" PRIu64 ", user_ctx %p", (void*)sync_ctx.get(),
+             sync_ctx->get_offset(), snp->get_last_log_idx(), (void*)sync_ctx->get_user_snp_ctx());
         prev_sync_snp_log_idx = snp->get_last_log_idx();
 
         if (sync_ctx->get_timer().timeout()) {
-            p_in("previous sync_ctx %p timed out, reset it", sync_ctx.get());
+            p_in("previous sync_ctx %p timed out, reset it", (void*)sync_ctx.get());
             destroy_user_snp_ctx(sync_ctx);
             sync_ctx.reset();
             snp.reset();

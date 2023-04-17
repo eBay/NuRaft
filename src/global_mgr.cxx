@@ -191,7 +191,7 @@ void nuraft_global_mgr::request_append(std::shared_ptr< raft_server > server) {
         std::shared_ptr< logger >& l_ = server->l_;
         p_tr("added append request to global queue, "
              "server %p, queue length %zu",
-             server.get(), append_queue_.size());
+             (void*)server.get(), append_queue_.size());
     }
 
     // Find a sleeping worker and invoke.
@@ -222,7 +222,7 @@ void nuraft_global_mgr::request_commit(std::shared_ptr< raft_server > server) {
         std::shared_ptr< logger >& l_ = server->l_;
         p_tr("added commit request to global queue, "
              "server %p, queue length %zu",
-             server.get(), commit_queue_.size());
+             (void*)server.get(), commit_queue_.size());
     }
 
     // Find a sleeping worker and invoke.
@@ -281,7 +281,7 @@ void nuraft_global_mgr::commit_worker_loop(std::shared_ptr< worker_handle > hand
         // that can be queued in the meantime.
         skip_sleeping = true;
 
-        p_tr("execute commit for %p", target.get());
+        p_tr("execute commit for %p", (void*)target.get());
 
         if (target->sm_commit_paused_) {
             p_tr("commit of this server has been paused");

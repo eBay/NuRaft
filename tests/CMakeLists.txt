@@ -1,32 +1,30 @@
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+
 # === Basic Raft server functionality test ===
 add_executable(raft_server_test
                unit/raft_server_test.cxx
                unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+	       $<TARGET_OBJECTS:in_mem_logstore>)
 target_link_libraries(raft_server_test nuraft)
 
 # === Failure recovery & conflict resolution test ===
 add_executable(failure_test
                unit/failure_test.cxx
                unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+	       $<TARGET_OBJECTS:in_mem_logstore>)
 target_link_libraries(failure_test nuraft)
 
 # === ASIO network stuff test ===
 add_executable(asio_service_test
                unit/asio_service_test.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+	       $<TARGET_OBJECTS:in_mem_logstore>)
 add_dependencies(asio_service_test build_ssl_key)
 target_link_libraries(asio_service_test nuraft)
 
 # === Benchmark ===
 add_executable(raft_bench
                bench/raft_bench.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+	       $<TARGET_OBJECTS:in_mem_logstore>)
 target_link_libraries(raft_bench nuraft)
 
 

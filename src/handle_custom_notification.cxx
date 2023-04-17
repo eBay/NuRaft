@@ -195,7 +195,7 @@ std::shared_ptr< resp_msg > raft_server::handle_out_of_log_msg(req_msg& req,
 }
 
 std::shared_ptr< resp_msg > raft_server::handle_leadership_takeover(req_msg& req,
-                                                                    std::shared_ptr< custom_notification_msg > msg,
+                                                                    std::shared_ptr< custom_notification_msg >,
                                                                     std::shared_ptr< resp_msg > resp) {
     if (is_leader()) {
         p_er("got leadership takeover request from peer %d, "
@@ -215,7 +215,7 @@ std::shared_ptr< resp_msg > raft_server::handle_leadership_takeover(req_msg& req
 }
 
 std::shared_ptr< resp_msg > raft_server::handle_resignation_request(req_msg& req,
-                                                                    std::shared_ptr< custom_notification_msg > msg,
+                                                                    std::shared_ptr< custom_notification_msg >,
                                                                     std::shared_ptr< resp_msg > resp) {
     if (!is_leader()) {
         p_er("got resignation request from peer %d, "

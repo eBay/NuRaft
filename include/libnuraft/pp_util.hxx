@@ -26,7 +26,7 @@ limitations under the License.
 #define __nocopy__(clazz)                                                                                              \
 private:                                                                                                               \
     clazz(const clazz&) = delete;                                                                                      \
-    clazz& operator=(const clazz&) = delete;
+    clazz& operator=(const clazz&) = delete
 
 #define __interface_body__(clazz)                                                                                      \
 public:                                                                                                                \
@@ -34,7 +34,7 @@ public:                                                                         
     virtual ~clazz() = default;                                                                                        \
     __nocopy__(clazz)
 
-using auto_lock = std::lock_guard<std::mutex>;
+using auto_lock = std::lock_guard< std::mutex >;
 using recur_lock = std::unique_lock< std::recursive_mutex >;
 
 auto constexpr sz_int = sizeof(int32_t);
