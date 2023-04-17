@@ -33,7 +33,7 @@ limitations under the License.
 namespace nuraft {
 
 void raft_server::set_priority(const int srv_id, const int new_priority) {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
 
     // Do nothing if not a leader.
     if (id_ != leader_) {

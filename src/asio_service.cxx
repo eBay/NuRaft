@@ -202,7 +202,7 @@ typedef std::function< void(const std::shared_ptr< rpc_session >&) > session_clo
 class rpc_session : public std::enable_shared_from_this< rpc_session >, public raft_server_handler {
 public:
     rpc_session(uint64_t id, asio_service_impl* _impl, asio::io_service& io, ssl_context& ssl_ctx, bool _enable_ssl,
-                std::shared_ptr< msg_handler >& handler, std::shared_ptr< logger >& logger,
+                std::shared_ptr< raft_server >& handler, std::shared_ptr< logger >& logger,
                 session_closed_callback& callback) :
             session_id_(id),
             impl_(_impl),
@@ -611,7 +611,7 @@ private:
 private:
     uint64_t session_id_;
     asio_service_impl* impl_;
-    std::shared_ptr< msg_handler > handler_;
+    std::shared_ptr< raft_server > handler_;
     asio::ip::tcp::socket socket_;
     ssl_socket ssl_socket_;
     bool ssl_enabled_;
@@ -665,7 +665,7 @@ public:
         acceptor_.close();
     }
 
-    void listen(std::shared_ptr< msg_handler >& handler) override {
+    void listen(std::shared_ptr< raft_server >& handler) override {
         std::lock_guard< std::mutex > guard(listener_lock_);
         handler_ = handler;
         stopped_ = false;
@@ -738,7 +738,7 @@ private:
     ssl_context& ssl_ctx_;
 
     std::mutex listener_lock_;
-    std::shared_ptr< msg_handler > handler_;
+    std::shared_ptr< raft_server > handler_;
     bool stopped_;
     asio::ip::tcp::acceptor acceptor_;
 

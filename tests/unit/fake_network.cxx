@@ -82,7 +82,7 @@ std::shared_ptr< rpc_client > FakeNetwork::create_client(const std::string& endp
     return ret;
 }
 
-void FakeNetwork::listen(std::shared_ptr< msg_handler >& _handler) { handler = _handler; }
+void FakeNetwork::listen(std::shared_ptr< raft_server >& _handler) { handler = _handler; }
 
 std::shared_ptr< resp_msg > FakeNetwork::gotMsg(std::shared_ptr< req_msg >& msg) {
     std::shared_ptr< resp_msg > resp = raft_server_handler::process_req(handler.get(), *msg);

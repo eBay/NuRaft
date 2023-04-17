@@ -55,7 +55,7 @@ public:
 
     std::shared_ptr< rpc_client > create_client(const std::string& endpoint);
 
-    void listen(std::shared_ptr< msg_handler >& handler);
+    void listen(std::shared_ptr< raft_server >& handler);
 
     std::shared_ptr< resp_msg > gotMsg(std::shared_ptr< req_msg >& msg);
 
@@ -92,7 +92,7 @@ public:
 private:
     std::string myEndpoint;
     std::shared_ptr< FakeNetworkBase > base;
-    std::shared_ptr< msg_handler > handler;
+    std::shared_ptr< raft_server > handler;
     // NOTE: We don't use `unordered_map` as the order of traversal
     //       will be different according to platforms. We should make
     //       the test deterministic.

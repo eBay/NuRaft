@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _RPC_CLI_HXX_
-#define _RPC_CLI_HXX_
+#pragma once
 
 #include "async.hxx"
 #include "req_msg.hxx"
@@ -48,5 +47,3 @@ public:
 };
 
 } // namespace nuraft
-
-#endif //_RPC_CLI_HXX_

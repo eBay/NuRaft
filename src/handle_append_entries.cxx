@@ -59,7 +59,7 @@ void raft_server::append_entries_in_bg() {
 }
 
 void raft_server::append_entries_in_bg_exec() {
-    recur_lock(lock_);
+    auto guard = recur_lock(lock_);
     request_append_entries();
 }
 
@@ -296,7 +296,7 @@ std::shared_ptr< req_msg > raft_server::create_append_entries_req(std::shared_pt
     uint64_t starting_idx(1L);
 
     {
-        recur_lock(lock_);
+        auto guard = recur_lock(lock_);
         starting_idx = log_store_->start_index();
         cur_nxt_idx = precommit_index_ + 1;
         commit_idx = quick_commit_index_;
@@ -304,7 +304,7 @@ std::shared_ptr< req_msg > raft_server::create_append_entries_req(std::shared_pt
     }
 
     {
-        std::lock_guard< std::mutex > guard(p.get_lock());
+        auto guard = auto_lock(p.get_lock());
         if (p.get_next_log_idx() == 0L) { p.set_next_log_idx(cur_nxt_idx); }
 
         last_log_idx = p.get_next_log_idx() - 1;
@@ -825,7 +825,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         need_to_catchup = p->clear_pending_commit() || resp.get_next_idx() < log_store_->next_slot();
 
     } else {
-        std::lock_guard< std::mutex > guard(p->get_lock());
+        auto guard = auto_lock(p->get_lock());
         uint64_t prev_next_log = p->get_next_log_idx();
         if (resp.get_next_idx() > 0 && prev_next_log > resp.get_next_idx()) {
             // fast move for the peer to catch up
@@ -995,7 +995,7 @@ void raft_server::notify_log_append_completion(bool ok) {
     p_tr("got log append completion notification: %s", ok ? "OK" : "FAILED");
 
     if (role_ == srv_role::leader) {
-        recur_lock(lock_);
+        auto guard = recur_lock(lock_);
         if (!ok) {
             // If log appending fails, leader should resign immediately.
             p_er("log appending failed, resign immediately");
@@ -1021,7 +1021,7 @@ void raft_server::notify_log_append_completion(bool ok) {
         if (!ok) {
             // If log appending fails for follower, there is no way to proceed it.
             // We should stop the server immediately.
-            recur_lock(lock_);
+            auto guard = recur_lock(lock_);
             p_ft("log appending failed, stop this server");
             ctx_->state_mgr_->system_exit(N21_log_flush_failed);
             return;
