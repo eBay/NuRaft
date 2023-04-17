@@ -1638,23 +1638,37 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     }
 }
 
+// `ssl_context` constructor with `SSL_CTX*` is supported by ASIO later than 1.16.1.
+#if (ASIO_VERSION >= 101601) && \
+    (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
+    !defined(LIBRESSL_VERSION_NUMBER)
+
 namespace {
 
-ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provider_func, ssl_context::method method) {
-    if (ctx_provider_func)
+ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provider_func,
+                                      ssl_context::method method)
+{
+    if (ctx_provider_func) {
         return ssl_context(ctx_provider_func());
-    else
+    } else {
         return ssl_context(method);
+    }
 }
 
 }
+
+#endif
 
 asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                                      ptr<logger> l)
     : io_svc_()
-#if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
-    , ssl_server_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_server_, ssl_context::tlsv12_server))
-    , ssl_client_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_client_, ssl_context::tlsv12_client))
+#if (ASIO_VERSION >= 101601) && \
+    (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
+    !defined(LIBRESSL_VERSION_NUMBER)
+    , ssl_server_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_server_,
+                                                ssl_context::tlsv12_server))
+    , ssl_client_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_client_,
+                                                ssl_context::tlsv12_client))
 #else
     , ssl_server_ctx_(ssl_context::sslv23)  // Any version
     , ssl_client_ctx_(ssl_context::sslv23)
