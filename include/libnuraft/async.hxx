@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _ASYNC_HXX_
-#define _ASYNC_HXX_
+#pragma once
 
 #include "msg_type.hxx"
 #include "pp_util.hxx"
@@ -297,5 +296,3 @@ template < typename T, typename TE = std::shared_ptr< std::exception > >
 using result_ptr = std::shared_ptr< cmd_result< T, TE > >;
 
 } // namespace nuraft
-
-#endif //_ASYNC_HXX_
