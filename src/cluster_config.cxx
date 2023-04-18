@@ -25,7 +25,7 @@ namespace nuraft {
 ptr<buffer> cluster_config::serialize() const {
     size_t sz = 2 * sz_ulong + sz_int + sz_byte;
     std::vector<ptr<buffer>> srv_buffs;
-    for (cluster_config::const_srv_itor it = servers_.begin(); it != servers_.end(); ++it) {
+    for (auto it = servers_.cbegin(); it != servers_.cend(); ++it) {
         ptr<buffer> buf = (*it)->serialize();
         srv_buffs.push_back(buf);
         sz += buf->size();

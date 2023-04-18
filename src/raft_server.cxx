@@ -196,7 +196,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                               log_store_->start_index() );
           i < log_store_->next_slot();
           ++i ) {
-        ptr<log_entry> entry(log_store_->entry_at(i));
+        auto const entry = log_store_->entry_at(i);
         if (entry->get_val_type() == log_val_type::conf) {
             p_in( "detect a configuration change "
                   "that is not committed yet at index %" PRIu64 "", i );
@@ -206,8 +206,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     }
 
     std::stringstream peer_info_msg;
-    std::list< ptr<srv_config> >& srvs = c_conf->get_servers();
-    for (cluster_config::srv_itor it = srvs.begin(); it != srvs.end(); ++it) {
+    auto srvs_end = c_conf->get_servers().end();
+    for (auto it = c_conf->get_servers().begin(); it != srvs_end; ++it) {
         ptr<srv_config> cur_srv = *it;
         if (cur_srv->get_id() != id_) {
             timer_task<int32>::executor exec =
@@ -737,8 +737,9 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
 
 void raft_server::reset_peer_info() {
     ptr<cluster_config> c_config = get_config();
-    p_db("servers: %zu\n", c_config->get_servers().size());
-    if (c_config->get_servers().size() > 1) {
+    auto const srv_cnt = c_config->get_servers().size();
+    p_db("servers: %zu\n", srv_cnt);
+    if (srv_cnt > 1) {
         ptr<srv_config> my_srv_config = c_config->get_server(id_);
         if (!my_srv_config) {
             // It means that this node was removed, and then
@@ -1582,7 +1583,7 @@ void raft_server::get_srv_config_all
      ( std::vector< ptr<srv_config> >& configs_out ) const
 {
     ptr<cluster_config> c_conf = get_config();
-    std::list< ptr<srv_config> >& servers = c_conf->get_servers();
+    auto& servers = c_conf->get_servers();
     for (auto& entry: servers) configs_out.push_back(entry);
 }
 

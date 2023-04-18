@@ -52,9 +52,6 @@ public:
     __nocopy__(cluster_config);
 
 public:
-    typedef std::list<ptr<srv_config>>::iterator srv_itor;
-    typedef std::list<ptr<srv_config>>::const_iterator const_srv_itor;
-
     static ptr<cluster_config> deserialize(buffer& buf);
 
     static ptr<cluster_config> deserialize(buffer_serializer& buf);
@@ -70,6 +67,10 @@ public:
 
     ulong get_prev_log_idx() const {
         return prev_log_idx_;
+    }
+
+    const std::list<ptr<srv_config>>& get_servers() const {
+        return servers_;
     }
 
     std::list<ptr<srv_config>>& get_servers() {

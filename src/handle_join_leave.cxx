@@ -498,8 +498,8 @@ void raft_server::rm_srv_from_cluster(int32 srv_id) {
     ptr<cluster_config> new_conf = cs_new<cluster_config>
                                    ( log_store_->next_slot(),
                                      cur_conf->get_log_idx() );
-    for ( cluster_config::const_srv_itor it = cur_conf->get_servers().begin();
-          it != cur_conf->get_servers().end();
+    for (auto it = cur_conf->get_servers().cbegin();
+          it != cur_conf->get_servers().cend();
           ++it ) {
         if ((*it)->get_id() != srv_id) {
             new_conf->get_servers().push_back(*it);
