@@ -1643,6 +1643,9 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
     !defined(LIBRESSL_VERSION_NUMBER)
 
+#define DEFAULT_SERVER_CTX ssl_context::tlsv12_server
+#define DEFAULT_CLIENT_CTX ssl_context::tlsv12_client
+
 namespace {
 
 ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provider_func,
@@ -1657,6 +1660,11 @@ ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provide
 
 }
 
+#else
+
+#define DEFAULT_SERVER_CTX ssl_context::sslv23
+#define DEFAULT_CLIENT_CTX ssl_context::sslv23
+
 #endif
 
 asio_service_impl::asio_service_impl(const asio_service::options& _opt,
@@ -1666,12 +1674,12 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
     (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
     !defined(LIBRESSL_VERSION_NUMBER)
     , ssl_server_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_server_,
-                                                ssl_context::tlsv12_server))
+                                                DEFAULT_SERVER_CTX))
     , ssl_client_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_client_,
-                                                ssl_context::tlsv12_client))
+                                                DEFAULT_CLIENT_CTX))
 #else
-    , ssl_server_ctx_(ssl_context::sslv23)  // Any version
-    , ssl_client_ctx_(ssl_context::sslv23)
+    , ssl_server_ctx_(DEFAULT_SERVER_CTX)  // Any version
+    , ssl_client_ctx_(DEFAULT_CLIENT_CTX)
 #endif
     , asio_timer_(io_svc_)
     , continue_(1)
@@ -1692,6 +1700,8 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
 
         // Provider gives properly configured server contex
         if (!_opt.ssl_context_provider_server_) {
+            p_in("server SSL context method %d", DEFAULT_SERVER_CTX);
+
             // For server (listener)
             ssl_server_ctx_.set_options( ssl_context::default_workarounds |
                                          ssl_context::no_sslv2 |
@@ -1705,12 +1715,18 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                             ( _opt.server_cert_file_ );
             ssl_server_ctx_.use_private_key_file( _opt.server_key_file_,
                                                   ssl_context::pem );
+        } else {
+            p_in("custom server SSL context is given");
         }
 
         // Provider gives properly configured client contex
         if (!_opt.ssl_context_provider_client_) {
+            p_in("client SSL context method %d", DEFAULT_CLIENT_CTX);
+
             // For client
             ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+        } else {
+            p_in("custom client SSL context is given");
         }
 #endif
     }
