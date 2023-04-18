@@ -83,7 +83,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                               ptr<resp_msg>& resp,
                               ptr<rpc_exception>& err )
 {
-    std::unordered_set<int> msg_types_to_free( {
+    const static std::unordered_set<int> msg_types_to_free( {
         msg_type::append_entries_request,
         msg_type::install_snapshot_request,
         msg_type::request_vote_request,
