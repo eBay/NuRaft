@@ -1638,6 +1638,7 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     }
 }
 
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L) && !defined(LIBRESSL_VERSION_NUMBER)
 namespace {
 
 ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provider_func, ssl_context::method method) {
@@ -1648,6 +1649,7 @@ ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provide
 }
 
 }
+#endif
 
 asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                                      ptr<logger> l)
