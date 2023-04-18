@@ -18,13 +18,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _LOG_ENTRY_HXX_
-#define _LOG_ENTRY_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "log_val_type.hxx"
-#include "ptr.hxx"
 
 #ifdef _NO_EXCEPTION
 #include <cassert>
@@ -35,34 +32,20 @@ namespace nuraft {
 
 class log_entry {
 public:
-    log_entry(ulong term,
-              const ptr<buffer>& buff,
-              log_val_type value_type = log_val_type::app_log,
-              uint64_t log_timestamp = 0)
-        : term_(term)
-        , value_type_(value_type)
-        , buff_(buff)
-        , timestamp_us_(log_timestamp)
-        {}
+    log_entry(uint64_t term, const std::shared_ptr< buffer >& buff, log_val_type value_type = log_val_type::app_log,
+              uint64_t log_timestamp = 0) :
+            term_(term), value_type_(value_type), buff_(buff), timestamp_us_(log_timestamp) {}
 
     __nocopy__(log_entry);
 
 public:
-    ulong get_term() const {
-        return term_;
-    }
+    uint64_t get_term() const { return term_; }
 
-    void set_term(ulong term) {
-        term_ = term;
-    }
+    void set_term(uint64_t term) { term_ = term; }
 
-    log_val_type get_val_type() const {
-        return value_type_;
-    }
+    log_val_type get_val_type() const { return value_type_; }
 
-    bool is_buf_null() const {
-        return (buff_.get()) ? false : true;
-    }
+    bool is_buf_null() const { return (buff_.get()) ? false : true; }
 
     buffer& get_buf() const {
         // We accept nil buffer, but in that case,
@@ -80,39 +63,31 @@ public:
         return *buff_;
     }
 
-    ptr<buffer> get_buf_ptr() const {
-        return buff_;
-    }
+    std::shared_ptr< buffer > get_buf_ptr() const { return buff_; }
 
-    uint64_t get_timestamp() const {
-        return timestamp_us_;
-    }
+    uint64_t get_timestamp() const { return timestamp_us_; }
 
-    void set_timestamp(uint64_t t) {
-        timestamp_us_ = t;
-    }
+    void set_timestamp(uint64_t t) { timestamp_us_ = t; }
 
-    ptr<buffer> serialize() {
+    std::shared_ptr< buffer > serialize() {
         buff_->pos(0);
-        ptr<buffer> buf = buffer::alloc( sizeof(ulong) +
-                                         sizeof(char) +
-                                         buff_->size() );
+        std::shared_ptr< buffer > buf = buffer::alloc(sizeof(uint64_t) + sizeof(char) + buff_->size());
         buf->put(term_);
-        buf->put( (static_cast<byte>(value_type_)) );
+        buf->put((static_cast< std::byte >(value_type_)));
         buf->put(*buff_);
         buf->pos(0);
         return buf;
     }
 
-    static ptr<log_entry> deserialize(buffer& buf) {
-        ulong term = buf.get_ulong();
-        log_val_type t = static_cast<log_val_type>(buf.get_byte());
-        ptr<buffer> data = buffer::copy(buf);
-        return cs_new<log_entry>(term, data, t);
+    static std::shared_ptr< log_entry > deserialize(buffer& buf) {
+        uint64_t term = buf.get_uint64();
+        log_val_type t = static_cast< log_val_type >(buf.get_byte());
+        std::shared_ptr< buffer > data = buffer::copy(buf);
+        return std::make_shared< log_entry >(term, data, t);
     }
 
-    static ulong term_in_buffer(buffer& buf) {
-        ulong term = buf.get_ulong();
+    static uint64_t term_in_buffer(buffer& buf) {
+        uint64_t term = buf.get_uint64();
         buf.pos(0); // reset the position
         return term;
     }
@@ -121,7 +96,7 @@ private:
     /**
      * The term number when this log entry was generated.
      */
-    ulong term_;
+    uint64_t term_;
 
     /**
      * Type of this log entry.
@@ -131,7 +106,7 @@ private:
     /**
      * Actual data that this log entry carries.
      */
-    ptr<buffer> buff_;
+    std::shared_ptr< buffer > buff_;
 
     /**
      * The timestamp (since epoch) when this log entry was generated
@@ -141,7 +116,4 @@ private:
     uint64_t timestamp_us_;
 };
 
-}
-
-#endif //_LOG_ENTRY_HXX_
-
+} // namespace nuraft

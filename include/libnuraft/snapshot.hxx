@@ -18,14 +18,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _SNAPSHOT_HXX_
-#define _SNAPSHOT_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 namespace nuraft {
 
@@ -40,63 +37,43 @@ public:
         logical_object = 0x2,
     };
 
-    snapshot(ulong last_log_idx,
-             ulong last_log_term,
-             const ptr<cluster_config>& last_config,
-             ulong size = 0,
-             type _type = logical_object)
-        : last_log_idx_(last_log_idx)
-        , last_log_term_(last_log_term)
-        , size_(size)
-        , last_config_(last_config)
-        , type_(_type)
-        {}
+    snapshot(uint64_t last_log_idx, uint64_t last_log_term, const std::shared_ptr< cluster_config >& last_config,
+             uint64_t size = 0, type _type = logical_object) :
+            last_log_idx_(last_log_idx),
+            last_log_term_(last_log_term),
+            size_(size),
+            last_config_(last_config),
+            type_(_type) {}
 
     __nocopy__(snapshot);
 
 public:
-    ulong get_last_log_idx() const {
-        return last_log_idx_;
-    }
+    uint64_t get_last_log_idx() const { return last_log_idx_; }
 
-    ulong get_last_log_term() const {
-        return last_log_term_;
-    }
+    uint64_t get_last_log_term() const { return last_log_term_; }
 
-    ulong size() const {
-        return size_;
-    }
+    uint64_t size() const { return size_; }
 
-    void set_size(ulong size) {
-        size_ = size;
-    }
+    void set_size(uint64_t size) { size_ = size; }
 
-    type get_type() const {
-        return type_;
-    }
+    type get_type() const { return type_; }
 
-    void set_type(type src) {
-        type_ = src;
-    }
+    void set_type(type src) { type_ = src; }
 
-    const ptr<cluster_config>& get_last_config() const {
-        return last_config_;
-    }
+    const std::shared_ptr< cluster_config >& get_last_config() const { return last_config_; }
 
-    static ptr<snapshot> deserialize(buffer& buf);
+    static std::shared_ptr< snapshot > deserialize(buffer& buf);
 
-    static ptr<snapshot> deserialize(buffer_serializer& bs);
+    static std::shared_ptr< snapshot > deserialize(buffer_serializer& bs);
 
-    ptr<buffer> serialize();
+    std::shared_ptr< buffer > serialize();
 
 private:
-    ulong last_log_idx_;
-    ulong last_log_term_;
-    ulong size_;
-    ptr<cluster_config> last_config_;
+    uint64_t last_log_idx_;
+    uint64_t last_log_term_;
+    uint64_t size_;
+    std::shared_ptr< cluster_config > last_config_;
     type type_;
 };
 
-}
-
-#endif
+} // namespace nuraft

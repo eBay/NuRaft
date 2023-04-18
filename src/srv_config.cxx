@@ -22,40 +22,34 @@ limitations under the License.
 
 namespace nuraft {
 
-ptr<srv_config> srv_config::deserialize(buffer& buf) {
+std::shared_ptr< srv_config > srv_config::deserialize(buffer& buf) {
     buffer_serializer bs(buf);
     return deserialize(bs);
 }
 
-ptr<srv_config> srv_config::deserialize(buffer_serializer& bs) {
-    int32 id = bs.get_i32();
-    int32 dc_id = bs.get_i32();
+std::shared_ptr< srv_config > srv_config::deserialize(buffer_serializer& bs) {
+    auto id = bs.get_i32();
+    auto dc_id = bs.get_i32();
     const char* endpoint_char = bs.get_cstr();
     const char* aux_char = bs.get_cstr();
-    std::string endpoint( (endpoint_char) ? endpoint_char : std::string() );
-    std::string aux( (aux_char) ? aux_char : std::string() );
-    byte is_learner = bs.get_u8();
-    int32 priority = bs.get_i32();
-    return cs_new<srv_config>(id, dc_id, endpoint, aux, is_learner, priority);
+    std::string endpoint((endpoint_char) ? endpoint_char : std::string());
+    std::string aux((aux_char) ? aux_char : std::string());
+    auto is_learner = bs.get_u8();
+    auto priority = bs.get_i32();
+    return std::make_shared< srv_config >(id, dc_id, endpoint, aux, is_learner, priority);
 }
 
-ptr<buffer> srv_config::serialize() const{
-    ptr<buffer> buf = buffer::alloc(
-        sz_int +
-        sz_int +
-        (endpoint_.length()+1) +
-        (aux_.length()+1) +
-        1 +
-        sz_int
-    );
+std::shared_ptr< buffer > srv_config::serialize() const {
+    std::shared_ptr< buffer > buf =
+        buffer::alloc(sz_int + sz_int + (endpoint_.length() + 1) + (aux_.length() + 1) + 1 + sz_int);
     buf->put(id_);
     buf->put(dc_id_);
     buf->put(endpoint_);
     buf->put(aux_);
-    buf->put((byte)(learner_?(1):(0)));
+    buf->put(learner_ ? std::byte{0x01} : std::byte{0x00});
     buf->put(priority_);
     buf->pos(0);
     return buf;
 }
 
-} // namespace nuraft;
+} // namespace nuraft

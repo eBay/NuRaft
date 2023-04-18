@@ -28,34 +28,23 @@ limitations under the License.
 
 using namespace nuraft;
 
-namespace calc_server {
-
 class calc_state_machine : public state_machine {
 public:
-    calc_state_machine(bool async_snapshot = false)
-        : cur_value_(0)
-        , last_committed_idx_(0)
-        , async_snapshot_(async_snapshot)
-        {}
+    calc_state_machine(bool async_snapshot = false) :
+            cur_value_(0), last_committed_idx_(0), async_snapshot_(async_snapshot) {}
 
     ~calc_state_machine() {}
 
-    enum op_type : int {
-        ADD = 0x0,
-        SUB = 0x1,
-        MUL = 0x2,
-        DIV = 0x3,
-        SET = 0x4
-    };
+    enum op_type : int { ADD = 0x0, SUB = 0x1, MUL = 0x2, DIV = 0x3, SET = 0x4 };
 
     struct op_payload {
         op_type type_;
         int oprnd_;
     };
 
-    static ptr<buffer> enc_log(const op_payload& payload) {
+    static std::shared_ptr< buffer > enc_log(const op_payload& payload) {
         // Encode from {operator, operand} to Raft log.
-        ptr<buffer> ret = buffer::alloc(sizeof(op_payload));
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(op_payload));
         buffer_serializer bs(ret);
 
         // WARNING: We don't consider endian-safety in this example.
@@ -72,53 +61,60 @@ public:
         memcpy(&payload_out, bs.get_raw(log.size()), sizeof(op_payload));
     }
 
-    ptr<buffer> pre_commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > pre_commit(const uint64_t log_idx, buffer& data) {
         // Nothing to do with pre-commit in this example.
         return nullptr;
     }
 
-    ptr<buffer> commit(const ulong log_idx, buffer& data) {
+    std::shared_ptr< buffer > commit(const uint64_t log_idx, buffer& data) {
         op_payload payload;
         dec_log(data, payload);
 
         int64_t prev_value = cur_value_;
         switch (payload.type_) {
-        case ADD:   prev_value += payload.oprnd_;   break;
-        case SUB:   prev_value -= payload.oprnd_;   break;
-        case MUL:   prev_value *= payload.oprnd_;   break;
-        case DIV:   prev_value /= payload.oprnd_;   break;
+        case ADD:
+            prev_value += payload.oprnd_;
+            break;
+        case SUB:
+            prev_value -= payload.oprnd_;
+            break;
+        case MUL:
+            prev_value *= payload.oprnd_;
+            break;
+        case DIV:
+            prev_value /= payload.oprnd_;
+            break;
         default:
-        case SET:   prev_value  = payload.oprnd_;   break;
+        case SET:
+            prev_value = payload.oprnd_;
+            break;
         }
         cur_value_ = prev_value;
 
         last_committed_idx_ = log_idx;
 
         // Return Raft log number as a return result.
-        ptr<buffer> ret = buffer::alloc( sizeof(log_idx) );
+        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(log_idx));
         buffer_serializer bs(ret);
         bs.put_u64(log_idx);
         return ret;
     }
 
-    void commit_config(const ulong log_idx, ptr<cluster_config>& new_conf) {
+    void commit_config(const uint64_t log_idx, std::shared_ptr< cluster_config >& new_conf) {
         // Nothing to do with configuration change. Just update committed index.
         last_committed_idx_ = log_idx;
     }
 
-    void rollback(const ulong log_idx, buffer& data) {
+    void rollback(const uint64_t log_idx, buffer& data) {
         // Nothing to do with rollback,
         // as this example doesn't do anything on pre-commit.
     }
 
-    int read_logical_snp_obj(snapshot& s,
-                             void*& user_snp_ctx,
-                             ulong obj_id,
-                             ptr<buffer>& data_out,
-                             bool& is_last_obj)
-    {
-        ptr<snapshot_ctx> ctx = nullptr;
-        {   std::lock_guard<std::mutex> ll(snapshots_lock_);
+    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, uint64_t obj_id, std::shared_ptr< buffer >& data_out,
+                             bool& is_last_obj) {
+        std::shared_ptr< snapshot_ctx > ctx = nullptr;
+        {
+            std::lock_guard< std::mutex > ll(snapshots_lock_);
             auto entry = snapshots_.find(s.get_last_log_idx());
             if (entry == snapshots_.end()) {
                 // Snapshot doesn't exist.
@@ -131,31 +127,26 @@ public:
 
         if (obj_id == 0) {
             // Object ID == 0: first object, put dummy data.
-            data_out = buffer::alloc( sizeof(int32) );
+            data_out = buffer::alloc(sizeof(int32_t));
             buffer_serializer bs(data_out);
             bs.put_i32(0);
             is_last_obj = false;
 
         } else {
             // Object ID > 0: second object, put actual value.
-            data_out = buffer::alloc( sizeof(ulong) );
+            data_out = buffer::alloc(sizeof(uint64_t));
             buffer_serializer bs(data_out);
-            bs.put_u64( ctx->value_ );
+            bs.put_u64(ctx->value_);
             is_last_obj = true;
         }
         return 0;
     }
 
-    void save_logical_snp_obj(snapshot& s,
-                              ulong& obj_id,
-                              buffer& data,
-                              bool is_first_obj,
-                              bool is_last_obj)
-    {
+    void save_logical_snp_obj(snapshot& s, uint64_t& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
         if (obj_id == 0) {
             // Object ID == 0: it contains dummy value, create snapshot context.
-            ptr<buffer> snp_buf = s.serialize();
-            ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
+            std::shared_ptr< buffer > snp_buf = s.serialize();
+            std::shared_ptr< snapshot > ss = snapshot::deserialize(*snp_buf);
             create_snapshot_internal(ss);
 
         } else {
@@ -163,7 +154,7 @@ public:
             buffer_serializer bs(data);
             int64_t local_value = (int64_t)bs.get_u64();
 
-            std::lock_guard<std::mutex> ll(snapshots_lock_);
+            std::lock_guard< std::mutex > ll(snapshots_lock_);
             auto entry = snapshots_.find(s.get_last_log_idx());
             assert(entry != snapshots_.end());
             entry->second->value_ = local_value;
@@ -173,11 +164,11 @@ public:
     }
 
     bool apply_snapshot(snapshot& s) {
-        std::lock_guard<std::mutex> ll(snapshots_lock_);
+        std::lock_guard< std::mutex > ll(snapshots_lock_);
         auto entry = snapshots_.find(s.get_last_log_idx());
         if (entry == snapshots_.end()) return false;
 
-        ptr<snapshot_ctx> ctx = entry->second;
+        std::shared_ptr< snapshot_ctx > ctx = entry->second;
         cur_value_ = ctx->value_;
         return true;
     }
@@ -187,23 +178,19 @@ public:
         // `user_snp_ctx`. Nothing to do in this function.
     }
 
-    ptr<snapshot> last_snapshot() {
+    std::shared_ptr< snapshot > last_snapshot() {
         // Just return the latest snapshot.
-        std::lock_guard<std::mutex> ll(snapshots_lock_);
+        std::lock_guard< std::mutex > ll(snapshots_lock_);
         auto entry = snapshots_.rbegin();
         if (entry == snapshots_.rend()) return nullptr;
 
-        ptr<snapshot_ctx> ctx = entry->second;
+        std::shared_ptr< snapshot_ctx > ctx = entry->second;
         return ctx->snapshot_;
     }
 
-    ulong last_commit_index() {
-        return last_committed_idx_;
-    }
+    uint64_t last_commit_index() { return last_committed_idx_; }
 
-    void create_snapshot(snapshot& s,
-                         async_result<bool>::handler_type& when_done)
-    {
+    void create_snapshot(snapshot& s, async_result< bool >::handler_type& when_done) {
         if (!async_snapshot_) {
             // Create a snapshot in a synchronous way (blocking the thread).
             create_snapshot_sync(s, when_done);
@@ -217,17 +204,16 @@ public:
 
 private:
     struct snapshot_ctx {
-        snapshot_ctx( ptr<snapshot>& s, int64_t v )
-            : snapshot_(s), value_(v) {}
-        ptr<snapshot> snapshot_;
+        snapshot_ctx(std::shared_ptr< snapshot >& s, int64_t v) : snapshot_(s), value_(v) {}
+        std::shared_ptr< snapshot > snapshot_;
         int64_t value_;
     };
 
-    void create_snapshot_internal(ptr<snapshot> ss) {
-        std::lock_guard<std::mutex> ll(snapshots_lock_);
+    void create_snapshot_internal(std::shared_ptr< snapshot > ss) {
+        std::lock_guard< std::mutex > ll(snapshots_lock_);
 
         // Put into snapshot map.
-        ptr<snapshot_ctx> ctx = cs_new<snapshot_ctx>(ss, cur_value_);
+        std::shared_ptr< snapshot_ctx > ctx = std::make_shared< snapshot_ctx >(ss, cur_value_);
         snapshots_[ss->get_last_log_idx()] = ctx;
 
         // Maintain last 3 snapshots only.
@@ -240,54 +226,48 @@ private:
         }
     }
 
-    void create_snapshot_sync(snapshot& s,
-                              async_result<bool>::handler_type& when_done)
-    {
+    void create_snapshot_sync(snapshot& s, async_result< bool >::handler_type& when_done) {
         // Clone snapshot from `s`.
-        ptr<buffer> snp_buf = s.serialize();
-        ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
+        std::shared_ptr< buffer > snp_buf = s.serialize();
+        std::shared_ptr< snapshot > ss = snapshot::deserialize(*snp_buf);
         create_snapshot_internal(ss);
 
-        ptr<std::exception> except(nullptr);
+        std::shared_ptr< std::exception > except(nullptr);
         bool ret = true;
         when_done(ret, except);
 
-        std::cout << "snapshot (" << ss->get_last_log_term() << ", "
-                  << ss->get_last_log_idx() << ") has been created synchronously"
-                  << std::endl;
+        std::cout << "snapshot (" << ss->get_last_log_term() << ", " << ss->get_last_log_idx()
+                  << ") has been created synchronously" << std::endl;
     }
 
-    void create_snapshot_async(snapshot& s,
-                               async_result<bool>::handler_type& when_done)
-    {
+    void create_snapshot_async(snapshot& s, async_result< bool >::handler_type& when_done) {
         // Clone snapshot from `s`.
-        ptr<buffer> snp_buf = s.serialize();
-        ptr<snapshot> ss = snapshot::deserialize(*snp_buf);
+        std::shared_ptr< buffer > snp_buf = s.serialize();
+        std::shared_ptr< snapshot > ss = snapshot::deserialize(*snp_buf);
 
         // Note that this is a very naive and inefficient example
         // that creates a new thread for each snapshot creation.
-        std::thread t_hdl([this, ss, when_done]{
+        std::thread t_hdl([this, ss, when_done] {
             create_snapshot_internal(ss);
 
-            ptr<std::exception> except(nullptr);
+            std::shared_ptr< std::exception > except(nullptr);
             bool ret = true;
             when_done(ret, except);
 
-            std::cout << "snapshot (" << ss->get_last_log_term() << ", "
-                      << ss->get_last_log_idx() << ") has been created asynchronously"
-                      << std::endl;
+            std::cout << "snapshot (" << ss->get_last_log_term() << ", " << ss->get_last_log_idx()
+                      << ") has been created asynchronously" << std::endl;
         });
         t_hdl.detach();
     }
 
     // State machine's current value.
-    std::atomic<int64_t> cur_value_;
+    std::atomic< int64_t > cur_value_;
 
     // Last committed Raft log number.
-    std::atomic<uint64_t> last_committed_idx_;
+    std::atomic< uint64_t > last_committed_idx_;
 
     // Keeps the last 3 snapshots, by their Raft log numbers.
-    std::map< uint64_t, ptr<snapshot_ctx> > snapshots_;
+    std::map< uint64_t, std::shared_ptr< snapshot_ctx > > snapshots_;
 
     // Mutex for `snapshots_`.
     std::mutex snapshots_lock_;
@@ -295,6 +275,3 @@ private:
     // If `true`, snapshot will be created asynchronously.
     bool async_snapshot_;
 };
-
-}; // namespace calc_server
-

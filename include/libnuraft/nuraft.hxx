@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "asio_service.hxx"
 #include "async.hxx"
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "callback.hxx"
@@ -35,7 +34,6 @@ limitations under the License.
 #include "log_entry.hxx"
 #include "log_store.hxx"
 #include "logger.hxx"
-#include "ptr.hxx"
 #include "raft_params.hxx"
 #include "raft_server.hxx"
 #include "rpc_cli_factory.hxx"
@@ -49,4 +47,3 @@ limitations under the License.
 #include "timer_task.hxx"
 
 #include "launcher.hxx"
-

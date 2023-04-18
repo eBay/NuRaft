@@ -20,12 +20,11 @@ limitations under the License.
 #pragma once
 
 #include "asio_service_options.hxx"
-#include "basic_types.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 #include <atomic>
 #include <list>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <unordered_set>
@@ -41,11 +40,7 @@ class raft_server;
  * Configurations for the initialization of `nuraft_global_mgr`.
  */
 struct nuraft_global_config {
-    nuraft_global_config()
-        : num_commit_threads_(1)
-        , num_append_threads_(1)
-        , max_scheduling_unit_ms_(200)
-        {}
+    nuraft_global_config() : num_commit_threads_(1), num_append_threads_(1), max_scheduling_unit_ms_(200) {}
 
     /**
      * The number of globally shared threads executing the
@@ -75,16 +70,15 @@ public:
     ~nuraft_global_mgr();
 
     __nocopy__(nuraft_global_mgr);
-public:
 
+public:
     /**
      * Initialize the global instance.
      *
      * @return If succeeds, the initialized instance.
      *         If already initialized, the existing instance.
      */
-    static nuraft_global_mgr* init(const nuraft_global_config& config =
-                                       __DEFAULT_NURAFT_GLOBAL_CONFIG);
+    static nuraft_global_mgr* init(const nuraft_global_config& config = __DEFAULT_NURAFT_GLOBAL_CONFIG);
 
     /**
      * Shutdown the global instance and free all resources.
@@ -108,9 +102,9 @@ public:
      * @param logger_inst Logger instance.
      * @return Asio service instance.
      */
-    static ptr<asio_service> init_asio_service(
-        const asio_service_options& asio_opt = asio_service_options(),
-        ptr<logger> logger_inst = nullptr);
+    static std::shared_ptr< asio_service >
+    init_asio_service(const asio_service_options& asio_opt = asio_service_options(),
+                      std::shared_ptr< logger > logger_inst = nullptr);
 
     /**
      * Get the global Asio service instance.
@@ -118,7 +112,7 @@ public:
      * @return Asio service instance.
      *         `nullptr` if not initialized.
      */
-    static ptr<asio_service> get_asio_service();
+    static std::shared_ptr< asio_service > get_asio_service();
 
     /**
      * This function is called by the constructor of `raft_server`.
@@ -139,14 +133,14 @@ public:
      *
      * @param server Raft server instance to request `append_entries`.
      */
-    void request_append(ptr<raft_server> server);
+    void request_append(std::shared_ptr< raft_server > server);
 
     /**
      * Request background commit execution for the given server.
      *
      * @param server Raft server instance to execute commit.
      */
-    void request_commit(ptr<raft_server> server);
+    void request_commit(std::shared_ptr< raft_server > server);
 
 private:
     struct worker_handle;
@@ -159,12 +153,12 @@ private:
     /**
      * Loop for commit worker threads.
      */
-    void commit_worker_loop(ptr<worker_handle> handle);
+    void commit_worker_loop(std::shared_ptr< worker_handle > handle);
 
     /**
      * Loop for append worker threads.
      */
-    void append_worker_loop(ptr<worker_handle> handle);
+    void append_worker_loop(std::shared_ptr< worker_handle > handle);
 
     /**
      * Lock for global Asio service instance.
@@ -174,7 +168,7 @@ private:
     /**
      * Global Asio service instance.
      */
-    ptr<asio_service> asio_service_;
+    std::shared_ptr< asio_service > asio_service_;
 
     /**
      * Global config.
@@ -184,29 +178,29 @@ private:
     /**
      * Counter for assigning thread ID.
      */
-    std::atomic<size_t> thread_id_counter_;
+    std::atomic< size_t > thread_id_counter_;
 
     /**
      * Commit thread pool.
      */
-    std::vector< ptr<worker_handle> > commit_workers_;
+    std::vector< std::shared_ptr< worker_handle > > commit_workers_;
 
     /**
      * Commit thread pool.
      */
-    std::vector< ptr<worker_handle> > append_workers_;
+    std::vector< std::shared_ptr< worker_handle > > append_workers_;
 
     /**
      * Commit requests.
      * Duplicate requests from the same `raft_server` will not be allowed.
      */
-    std::list< ptr<raft_server> > commit_queue_;
+    std::list< std::shared_ptr< raft_server > > commit_queue_;
 
     /**
      * A set for efficient duplicate checking of `raft_server`.
      * It will contain all `raft_server`s currently in `commit_queue_`.
      */
-    std::unordered_set< ptr<raft_server> > commit_server_set_;
+    std::unordered_set< std::shared_ptr< raft_server > > commit_server_set_;
 
     /**
      * Lock for `commit_queue_` and `commit_server_set_`.
@@ -217,13 +211,13 @@ private:
      * Append (replication) requests.
      * Duplicate requests from the same `raft_server` will not be allowed.
      */
-    std::list< ptr<raft_server> > append_queue_;
+    std::list< std::shared_ptr< raft_server > > append_queue_;
 
     /**
      * A set for efficient duplicate checking of `raft_server`.
      * It will contain all `raft_server`s currently in `append_queue_`.
      */
-    std::unordered_set< ptr<raft_server> > append_server_set_;
+    std::unordered_set< std::shared_ptr< raft_server > > append_server_set_;
 
     /**
      * Lock for `append_queue_` and `append_server_set_`.
@@ -231,5 +225,4 @@ private:
     std::mutex append_queue_lock_;
 };
 
-} // namespace nuraft;
-
+} // namespace nuraft

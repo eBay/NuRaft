@@ -28,16 +28,15 @@ using namespace nuraft;
 
 namespace timer_test {
 
-void timer_invoke_handler(std::atomic<size_t>* counter) {
+void timer_invoke_handler(std::atomic< size_t >* counter) {
     if (counter) (*counter)++;
 }
 
 int timer_basic_test() {
     asio_service svc;
-    std::atomic<size_t> counter(0);
-    timer_task<void>::executor handler = std::bind( timer_invoke_handler,
-                                                    &counter );
-    ptr<delayed_task> task = cs_new< timer_task<void> >( handler );
+    std::atomic< size_t > counter(0);
+    timer_task< void >::executor handler = std::bind(timer_invoke_handler, &counter);
+    std::shared_ptr< delayed_task > task = std::make_shared< timer_task< void > >(handler);
 
     // Set 200 ms timer and wait 300 ms.
     svc.schedule(task, 200);
@@ -59,10 +58,9 @@ int timer_basic_test() {
 
 int timer_cancel_test() {
     asio_service svc;
-    std::atomic<size_t> counter(0);
-    timer_task<void>::executor handler = std::bind( timer_invoke_handler,
-                                                    &counter );
-    ptr<delayed_task> task = cs_new< timer_task<void> >( handler );
+    std::atomic< size_t > counter(0);
+    timer_task< void >::executor handler = std::bind(timer_invoke_handler, &counter);
+    std::shared_ptr< delayed_task > task = std::make_shared< timer_task< void > >(handler);
 
     // Set 300 ms timer, wait 100 ms, and then cancel it.
     svc.schedule(task, 300);
@@ -91,7 +89,7 @@ int timer_cancel_test() {
     return 0;
 }
 
-}  // namespace timer_test;
+} // namespace timer_test
 using namespace timer_test;
 
 int main(int argc, char** argv) {
@@ -99,13 +97,9 @@ int main(int argc, char** argv) {
 
     ts.options.printTestMessage = false;
 
-    ts.doTest( "timer basic test",
-               timer_basic_test );
+    ts.doTest("timer basic test", timer_basic_test);
 
-    ts.doTest( "timer cancel test",
-               timer_cancel_test );
+    ts.doTest("timer cancel test", timer_cancel_test);
 
     return 0;
 }
-
-

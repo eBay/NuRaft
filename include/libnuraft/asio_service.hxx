@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _ASIO_SERVICE_HXX_
-#define _ASIO_SERVICE_HXX_
+#pragma once
 
 #include "asio_service_options.hxx"
 #include "delayed_task_scheduler.hxx"
@@ -35,44 +34,34 @@ namespace nuraft {
 class asio_service_impl;
 class logger;
 class rpc_listener;
-class asio_service
-    : public delayed_task_scheduler
-    , public rpc_client_factory {
+class asio_service : public delayed_task_scheduler, public rpc_client_factory {
 public:
     using meta_cb_params = asio_service_meta_cb_params;
     using options = asio_service_options;
 
-    asio_service(const options& _opt = options(),
-                 ptr<logger> _l = nullptr);
+    asio_service(const options& _opt = options(), std::shared_ptr< logger > _l = nullptr);
 
     ~asio_service();
 
     __nocopy__(asio_service);
 
 public:
-    virtual void schedule(ptr<delayed_task>& task,
-                          int32 milliseconds)
-                 __override__;
+    void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) override;
 
-    virtual ptr<rpc_client> create_client(const std::string& endpoint)
-                            __override__;
+    std::shared_ptr< rpc_client > create_client(const std::string& endpoint) override;
 
-    ptr<rpc_listener> create_rpc_listener(ushort listening_port,
-                                          ptr<logger>& l);
+    std::shared_ptr< rpc_listener > create_rpc_listener(uint16_t listening_port, std::shared_ptr< logger >& l);
 
     void stop();
 
     uint32_t get_active_workers();
 
 private:
-    virtual void cancel_impl(ptr<delayed_task>& task)
-                 __override__;
+    void cancel_impl(std::shared_ptr< delayed_task >& task) override;
 
     asio_service_impl* impl_;
 
-    ptr<logger> l_;
+    std::shared_ptr< logger > l_;
 };
 
-};
-
-#endif //_ASIO_SERVICE_HXX_
+} // namespace nuraft

@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _RPC_CLIENT_FACTORY_HXX_
-#define _RPC_CLIENT_FACTORY_HXX_
+#pragma once
 
 #include "rpc_cli.hxx"
 
@@ -29,9 +28,7 @@ class rpc_client_factory {
     __interface_body__(rpc_client_factory);
 
 public:
-    virtual ptr<rpc_client> create_client(const std::string& endpoint) = 0;
+    virtual std::shared_ptr< rpc_client > create_client(const std::string& endpoint) = 0;
 };
 
-}
-
-#endif
+} // namespace nuraft

@@ -18,8 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _RAFT_SERVER_HXX_
-#define _RAFT_SERVER_HXX_
+#pragma once
 
 #include "async.hxx"
 #include "callback.hxx"
@@ -58,25 +57,18 @@ class state_machine;
 class state_mgr;
 struct context;
 struct raft_params;
-class raft_server : public std::enable_shared_from_this<raft_server> {
+class raft_server : public std::enable_shared_from_this< raft_server > {
     friend class nuraft_global_mgr;
     friend class raft_server_handler;
     friend class snapshot_io_mgr;
+
 public:
     struct init_options {
-        init_options()
-            : skip_initial_election_timeout_(false)
-            , start_server_in_constructor_(true)
-            , test_mode_flag_(false)
-            {}
-
-        init_options(bool skip_initial_election_timeout,
-                     bool start_server_in_constructor,
-                     bool test_mode_flag)
-            : skip_initial_election_timeout_(skip_initial_election_timeout)
-            , start_server_in_constructor_(start_server_in_constructor)
-            , test_mode_flag_(test_mode_flag)
-            {}
+        init_options() = default;
+        init_options(bool skip_initial_election_timeout, bool start_server_in_constructor, bool test_mode_flag) :
+                _skip_initial_election_timeout(skip_initial_election_timeout),
+                _start_server_in_constructor(start_server_in_constructor),
+                _test_mode_flag(test_mode_flag) {}
 
         /**
          * If `true`, the election timer will not be initiated
@@ -87,96 +79,76 @@ public:
          * Purpose: to avoid becoming leader when there is only one
          *          node in the cluster.
          */
-        bool skip_initial_election_timeout_;
+        bool _skip_initial_election_timeout{false};
 
         /**
          * Callback function for hooking the operation.
          */
-        cb_func::func_type raft_callback_;
+        cb_func::func_type _raft_callback;
 
         /**
          * Option for compatiblity. Starts background commit and append threads
          * in constructor. Initialize election timer.
          */
-        bool start_server_in_constructor_;
+        bool _start_server_in_constructor{true};
 
         /**
-          * If `true`, test mode is enabled.
+         * If `true`, test mode is enabled.
          */
-        bool test_mode_flag_;
+        bool _test_mode_flag{false};
+
+        static init_options const __default_options;
     };
 
     struct limits {
-        limits()
-            : pre_vote_rejection_limit_(20)
-            , warning_limit_(20)
-            , response_limit_(20)
-            , leadership_limit_(20)
-            , reconnect_limit_(50)
-            , leave_limit_(5)
-            , vote_limit_(5)
-            {}
-
-        limits(const limits& src) {
-            *this = src;
-        }
-
-        limits& operator=(const limits& src) {
-            pre_vote_rejection_limit_ = src.pre_vote_rejection_limit_.load();
-            warning_limit_ = src.warning_limit_.load();
-            response_limit_ = src.response_limit_.load();
-            leadership_limit_  = src.leadership_limit_.load();
-            reconnect_limit_ = src.reconnect_limit_.load();
-            leave_limit_ = src.leave_limit_.load();
-            vote_limit_ = src.vote_limit_.load();
-            return *this;
-        }
+        limits() = default;
 
         /**
          * If pre-vote rejection count is greater than this limit,
          * Raft will re-establish the network connection;
          */
-        std::atomic<int32> pre_vote_rejection_limit_;
+        std::atomic< int32_t > pre_vote_rejection_limit_{20};
 
         /**
          * Max number of warnings before suppressing it.
          */
-        std::atomic<int32> warning_limit_;
+        std::atomic< int32_t > warning_limit_{20};
 
         /**
          * If a node is not responding more than this limit,
          * we treat that node as dead.
          */
-        std::atomic<int32> response_limit_;
+        std::atomic< int32_t > response_limit_{20};
 
         /**
          * Default value of leadership expiration
          * (multiplied by heartbeat interval).
          */
-        std::atomic<int32> leadership_limit_;
+        std::atomic< int32_t > leadership_limit_{20};
 
         /**
          * If connection is silent longer than this limit
          * (multiplied by heartbeat interval), we re-establish
          * the connection.
          */
-        std::atomic<int32> reconnect_limit_;
+        std::atomic< int32_t > reconnect_limit_{50};
 
         /**
          * If removed node is not responding more than this limit,
          * just force remove it from server list.
          */
-        std::atomic<int32> leave_limit_;
+        std::atomic< int32_t > leave_limit_{5};
 
         /**
          * For 2-node cluster, if the other peer is not responding for
          * pre-vote more than this limit, adjust quorum size.
          * Active only when `auto_adjust_quorum_for_small_cluster_` is enabled.
          */
-        std::atomic<int32> vote_limit_;
+        std::atomic< int32_t > vote_limit_{5};
     };
 
-    raft_server(context* ctx, const init_options& opt = init_options());
+    explicit raft_server(context* ctx);
+    raft_server(context* ctx, init_options const& opt);
 
     virtual ~raft_server();
 
@@ -215,8 +187,7 @@ public:
      * @param srv Configuration of server to add.
      * @return `get_accepted()` will be true on success.
      */
-    ptr< cmd_result< ptr<buffer> > >
-        add_srv(const srv_config& srv);
+    result_ptr< buffer_ptr > add_srv(const srv_config& srv);
 
     /**
      * Remove a server from the current cluster.
@@ -226,8 +197,7 @@ public:
      * @param srv_id ID of server to remove.
      * @return `get_accepted()` will be true on success.
      */
-    ptr< cmd_result< ptr<buffer> > >
-        remove_srv(const int srv_id);
+    result_ptr< buffer_ptr > remove_srv(const int srv_id);
 
     /**
      * Append and replicate the given logs.
@@ -241,8 +211,7 @@ public:
      *     In async mode, this function will return immediately, and the
      *     commit results will be set to returned `cmd_result` instance later.
      */
-    ptr< cmd_result< ptr<buffer> > >
-        append_entries(const std::vector< ptr<buffer> >& logs);
+    result_ptr< buffer_ptr > append_entries(const std::vector< buffer_ptr >& logs);
 
     /**
      * Parameters for `req_ext_cb` callback function.
@@ -309,9 +278,8 @@ public:
      *     In async mode, this function will return immediately, and the
      *     commit results will be set to returned `cmd_result` instance later.
      */
-    ptr< cmd_result< ptr<buffer> > >
-        append_entries_ext(const std::vector< ptr<buffer> >& logs,
-                           const req_ext_params& ext_params);
+    result_ptr< buffer_ptr > append_entries_ext(const std::vector< buffer_ptr >& logs,
+                                                const req_ext_params& ext_params);
 
     /**
      * Update the priority of given server.
@@ -334,8 +302,7 @@ public:
      * @param srv_id ID of server to update priority.
      * @param new_priority New priority.
      */
-    void broadcast_priority_change(const int srv_id,
-                                   const int new_priority);
+    void broadcast_priority_change(const int srv_id, const int new_priority);
 
     /**
      * Yield current leadership and becomes a follower. Only a leader
@@ -359,8 +326,7 @@ public:
      *                     If `-1`, the successor will be chosen
      *                     automatically.
      */
-    void yield_leadership(bool immediate_yield = false,
-                          int successor_id = -1);
+    void yield_leadership(bool immediate_yield = false, int successor_id = -1);
 
     /**
      * Send a request to the current leader to yield its leadership,
@@ -397,16 +363,14 @@ public:
      *
      * @return Server ID.
      */
-    int32 get_id() const
-    { return id_; }
+    int32_t get_id() const { return id_; }
 
     /**
      * Get the current term of this server.
      *
      * @return Term.
      */
-    ulong get_term() const
-    { return state_->get_term(); }
+    uint64_t get_term() const { return state_->get_term(); }
 
     /**
      * Get the term of given log index number.
@@ -414,48 +378,44 @@ public:
      * @param log_idx Log index number
      * @return Term of given log.
      */
-    ulong get_log_term(ulong log_idx) const
-    { return log_store_->term_at(log_idx); }
+    uint64_t get_log_term(uint64_t log_idx) const { return log_store_->term_at(log_idx); }
 
     /**
      * Get the term of the last log.
      *
      * @return Term of the last log.
      */
-    ulong get_last_log_term() const
-    { return log_store_->term_at(get_last_log_idx()); }
+    uint64_t get_last_log_term() const { return log_store_->term_at(get_last_log_idx()); }
 
     /**
      * Get the last log index number.
      *
      * @return Last log index number.
      */
-    ulong get_last_log_idx() const
-    { return log_store_->next_slot() - 1; }
+    uint64_t get_last_log_idx() const { return log_store_->next_slot() - 1; }
 
     /**
      * Get the last committed log index number of state machine.
      *
      * @return Last committed log index number of state machine.
      */
-    ulong get_committed_log_idx() const
-    { return sm_commit_index_.load(); }
+    uint64_t get_committed_log_idx() const { return sm_commit_index_.load(); }
 
     /**
      * Get the target log index number we are required to commit.
      *
      * @return Target committed log index number.
      */
-    ulong get_target_committed_log_idx() const
-    { return quick_commit_index_.load(); }
+    uint64_t get_target_committed_log_idx() const { return quick_commit_index_.load(); }
 
     /**
      * Get the leader's last committed log index number.
      *
      * @return The leader's last committed log index number.
      */
-    ulong get_leader_committed_log_idx() const
-    { return is_leader() ? get_committed_log_idx() : leader_commit_index_.load(); }
+    uint64_t get_leader_committed_log_idx() const {
+        return is_leader() ? get_committed_log_idx() : leader_commit_index_.load();
+    }
 
     /**
      * Calculate the log index to be committed
@@ -463,21 +423,21 @@ public:
      *
      * @return Expected committed log index.
      */
-    ulong get_expected_committed_log_idx();
+    uint64_t get_expected_committed_log_idx();
 
     /**
      * Get the current Raft cluster config.
      *
      * @return Cluster config.
      */
-    ptr<cluster_config> get_config() const;
+    std::shared_ptr< cluster_config > get_config() const;
 
     /**
      * Get log store instance.
      *
      * @return Log store instance.
      */
-    ptr<log_store> get_log_store() const { return log_store_; }
+    std::shared_ptr< log_store > get_log_store() const { return log_store_; }
 
     /**
      * Get data center ID of the given server.
@@ -486,7 +446,7 @@ public:
      * @return -1 if given server ID does not exist.
      *          0 if data center ID was not assigned.
      */
-    int32 get_dc_id(int32 srv_id) const;
+    int32_t get_dc_id(int32_t srv_id) const;
 
     /**
      * Get auxiliary context stored in the server config.
@@ -494,7 +454,7 @@ public:
      * @param srv_id Server ID.
      * @return Auxiliary context.
      */
-    std::string get_aux(int32 srv_id) const ;
+    std::string get_aux(int32_t srv_id) const;
 
     /**
      * Get the ID of current leader.
@@ -502,11 +462,10 @@ public:
      * @return Leader ID
      *         -1 if there is no live leader.
      */
-    int32 get_leader() const {
+    int32_t get_leader() const {
         // We should handle the case when `role_` is already
         // updated, but `leader_` value is stale.
-        if ( leader_ == id_ &&
-             role_ != srv_role::leader ) return -1;
+        if (leader_ == id_ && role_ != srv_role::leader) return -1;
         return leader_;
     }
 
@@ -516,8 +475,7 @@ public:
      * @return `true` if it is leader.
      */
     bool is_leader() const {
-        if ( leader_ == id_ &&
-             role_ == srv_role::leader ) return true;
+        if (leader_ == id_ && role_ == srv_role::leader) return true;
         return false;
     }
 
@@ -527,7 +485,7 @@ public:
      * @return `true` if live leader exists.
      */
     bool is_leader_alive() const {
-        if ( leader_ == -1 || !hb_alive_ ) return false;
+        if (leader_ == -1 || !hb_alive_) return false;
         return true;
     }
 
@@ -537,40 +495,36 @@ public:
      * @param srv_id Server ID.
      * @return Server configuration.
      */
-    ptr<srv_config> get_srv_config(int32 srv_id) const;
+    std::shared_ptr< srv_config > get_srv_config(int32_t srv_id) const;
 
     /**
      * Get the configuration of all servers.
      *
      * @param[out] configs_out Set of server configurations.
      */
-    void get_srv_config_all(std::vector< ptr<srv_config> >& configs_out) const;
+    void get_srv_config_all(std::vector< std::shared_ptr< srv_config > >& configs_out) const;
 
     /**
      * Peer info structure.
      */
     struct peer_info {
-        peer_info()
-            : id_(-1)
-            , last_log_idx_(0)
-            , last_succ_resp_us_(0)
-            {}
+        peer_info() : id_(-1), last_log_idx_(0), last_succ_resp_us_(0) {}
 
         /**
          * Peer ID.
          */
-        int32 id_;
+        int32_t id_;
 
         /**
          * The last log index that the peer has, from this server's point of view.
          */
-        ulong last_log_idx_;
+        uint64_t last_log_idx_;
 
         /**
          * The elapsed time since the last successful response from this peer,
          * in microsecond.
          */
-        ulong last_succ_resp_us_;
+        uint64_t last_succ_resp_us_;
     };
 
     /**
@@ -579,14 +533,14 @@ public:
      * @param srv_id Server ID.
      * @return Peer info.
      */
-    peer_info get_peer_info(int32 srv_id) const;
+    peer_info get_peer_info(int32_t srv_id) const;
 
     /**
      * Get the info of all peers. Only leader will return peer info.
      *
      * @return Vector of peer info.
      */
-    std::vector<peer_info> get_peer_info_all() const;
+    std::vector< peer_info > get_peer_info_all() const;
 
     /**
      * Shut down server instance.
@@ -652,8 +606,7 @@ public:
      * @return `true` on success.
      *         `false` if stat does not exist, or is not histogram type.
      */
-    static bool get_stat_histogram(const std::string& name,
-                                   std::map<double, uint64_t>& histogram_out);
+    static bool get_stat_histogram(const std::string& name, std::map< double, uint64_t >& histogram_out);
 
     /**
      * Reset given stat to zero.
@@ -680,23 +633,8 @@ public:
      * @param err_msg Will contain a message if error happens.
      * @return `true` on success.
      */
-    static bool apply_config_log_entry(ptr<log_entry>& le,
-                                       ptr<state_mgr>& s_mgr,
+    static bool apply_config_log_entry(std::shared_ptr< log_entry >& le, std::shared_ptr< state_mgr >& s_mgr,
                                        std::string& err_msg);
-
-    /**
-     * Get the current Raft limit values.
-     *
-     * @return Raft limit values.
-     */
-    static limits get_raft_limits();
-
-    /**
-     * Update the Raft limits with given values.
-     *
-     * @param new_limits New values to set.
-     */
-    static void set_raft_limits(const limits& new_limits);
 
     /**
      * Invoke internal callback function given by user,
@@ -706,8 +644,7 @@ public:
      * @param param Parameters.
      * @return cb_func::ReturnCode.
      */
-    CbReturnCode invoke_callback(cb_func::Type type,
-                                 cb_func::Param* param);
+    CbReturnCode invoke_callback(cb_func::Type type, cb_func::Param* param);
 
     /**
      * Set a custom callback function for increasing term.
@@ -768,7 +705,7 @@ public:
      *
      * @return Log index number of the created snapshot or`0` if failed.
      */
-    ulong create_snapshot();
+    uint64_t create_snapshot();
 
     /**
      * Get the log index number of the last snapshot.
@@ -776,38 +713,35 @@ public:
      * @return Log index number of the last snapshot.
      *         `0` if snapshot does not exist.
      */
-    ulong get_last_snapshot_idx() const;
+    uint64_t get_last_snapshot_idx() const;
 
 protected:
-    typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
+    typedef std::unordered_map< int32_t, std::shared_ptr< peer > >::const_iterator peer_itor;
 
     struct commit_ret_elem;
 
     struct pre_vote_status_t {
-        pre_vote_status_t()
-            : quorum_reject_count_(0)
-            , failure_count_(0)
-            { reset(0); }
-        void reset(ulong _term) {
+        pre_vote_status_t() : quorum_reject_count_(0), failure_count_(0) { reset(0); }
+        void reset(uint64_t _term) {
             term_ = _term;
             done_ = false;
             live_ = dead_ = abandoned_ = 0;
         }
-        ulong term_;
-        std::atomic<bool> done_;
-        std::atomic<int32> live_;
-        std::atomic<int32> dead_;
-        std::atomic<int32> abandoned_;
+        uint64_t term_;
+        std::atomic< bool > done_;
+        std::atomic< int32_t > live_;
+        std::atomic< int32_t > dead_;
+        std::atomic< int32_t > abandoned_;
 
         /**
          * Number of pre-vote rejections by quorum.
          */
-        std::atomic<int32> quorum_reject_count_;
+        std::atomic< int32_t > quorum_reject_count_;
 
         /**
          * Number of pre-vote failures due to not-responding peers.
          */
-        std::atomic<int32> failure_count_;
+        std::atomic< int32_t > failure_count_;
     };
 
     /**
@@ -822,49 +756,46 @@ protected:
      * @param req Request.
      * @return Response.
      */
-    virtual ptr<resp_msg> process_req(req_msg& req, const req_ext_params& ext_params);
+    virtual std::shared_ptr< resp_msg > process_req(req_msg& req, const req_ext_params& ext_params);
 
     void apply_and_log_current_params();
     void cancel_schedulers();
-    void schedule_task(ptr<delayed_task>& task, int32 milliseconds);
-    void cancel_task(ptr<delayed_task>& task);
+    void schedule_task(std::shared_ptr< delayed_task >& task, int32_t milliseconds);
+    void cancel_task(std::shared_ptr< delayed_task >& task);
     bool check_leadership_validity();
     void check_leadership_transfer();
     void update_rand_timeout();
     void cancel_global_requests();
 
-    bool is_regular_member(const ptr<peer>& p);
-    int32 get_num_voting_members();
-    int32 get_quorum_for_election();
-    int32 get_quorum_for_commit();
-    int32 get_leadership_expiry();
+    bool is_regular_member(const std::shared_ptr< peer >& p);
+    uint32_t get_num_voting_members();
+    int32_t get_quorum_for_election();
+    uint32_t get_quorum_for_commit();
+    int32_t get_leadership_expiry();
     size_t get_not_responding_peers();
     size_t get_num_stale_peers();
 
-    ptr<resp_msg> handle_append_entries(req_msg& req);
-    ptr<resp_msg> handle_prevote_req(req_msg& req);
-    ptr<resp_msg> handle_vote_req(req_msg& req);
-    ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
-    ptr<resp_msg> handle_cli_req(req_msg& req,
-                                 const req_ext_params& ext_params,
-                                 uint64_t timestamp_us);
-    ptr<resp_msg> handle_cli_req_callback(ptr<commit_ret_elem> elem,
-                                          ptr<resp_msg> resp);
-    ptr< cmd_result< ptr<buffer> > >
-        handle_cli_req_callback_async(ptr< cmd_result< ptr<buffer> > > async_res);
+    std::shared_ptr< resp_msg > handle_append_entries(req_msg& req);
+    std::shared_ptr< resp_msg > handle_prevote_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_vote_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
+    std::shared_ptr< resp_msg > handle_cli_req(req_msg& req, const req_ext_params& ext_params, uint64_t timestamp_us);
+    std::shared_ptr< resp_msg > handle_cli_req_callback(std::shared_ptr< commit_ret_elem > elem,
+                                                        std::shared_ptr< resp_msg > resp);
+    result_ptr< buffer_ptr > handle_cli_req_callback_async(result_ptr< buffer_ptr > async_res);
 
     void drop_all_pending_commit_elems();
 
-    ptr<resp_msg> handle_ext_msg(req_msg& req);
-    ptr<resp_msg> handle_install_snapshot_req(req_msg& req);
-    ptr<resp_msg> handle_rm_srv_req(req_msg& req);
-    ptr<resp_msg> handle_add_srv_req(req_msg& req);
-    ptr<resp_msg> handle_log_sync_req(req_msg& req);
-    ptr<resp_msg> handle_join_cluster_req(req_msg& req);
-    ptr<resp_msg> handle_leave_cluster_req(req_msg& req);
-    ptr<resp_msg> handle_priority_change_req(req_msg& req);
-    ptr<resp_msg> handle_reconnect_req(req_msg& req);
-    ptr<resp_msg> handle_custom_notification_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_ext_msg(req_msg& req);
+    std::shared_ptr< resp_msg > handle_install_snapshot_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_rm_srv_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_add_srv_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_log_sync_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_join_cluster_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_leave_cluster_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_priority_change_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_reconnect_req(req_msg& req);
+    std::shared_ptr< resp_msg > handle_custom_notification_req(req_msg& req);
 
     void handle_join_cluster_resp(resp_msg& resp);
     void handle_log_sync_resp(resp_msg& resp);
@@ -877,8 +808,8 @@ protected:
     void initiate_vote(bool force_vote = false);
     void request_vote(bool force_vote);
     void request_append_entries();
-    bool request_append_entries(ptr<peer> p);
-    void handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
+    bool request_append_entries(std::shared_ptr< peer > p);
+    void handle_peer_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err);
     void handle_append_entries_resp(resp_msg& resp);
     void handle_install_snapshot_resp(resp_msg& resp);
     void handle_install_snapshot_resp_new_member(resp_msg& resp);
@@ -888,26 +819,23 @@ protected:
     void handle_reconnect_resp(resp_msg& resp);
     void handle_custom_notification_resp(resp_msg& resp);
 
-    bool try_update_precommit_index(ulong desired, const size_t MAX_ATTEMPTS = 10);
+    bool try_update_precommit_index(uint64_t desired, const size_t MAX_ATTEMPTS = 10);
 
-    void handle_ext_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
+    void handle_ext_resp(std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err);
     void handle_ext_resp_err(rpc_exception& err);
-    void handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p);
+    void handle_join_leave_rpc_err(msg_type t_msg, std::shared_ptr< peer > p);
     void reset_srv_to_join();
     void reset_srv_to_leave();
-    ptr<req_msg> create_append_entries_req(ptr<peer>& pp);
-    ptr<req_msg> create_sync_snapshot_req(ptr<peer>& pp,
-                                          ulong last_log_idx,
-                                          ulong term,
-                                          ulong commit_idx,
-                                          bool& succeeded_out);
-    bool check_snapshot_timeout(ptr<peer> pp);
-    void destroy_user_snp_ctx(ptr<snapshot_sync_ctx> sync_ctx);
+    std::shared_ptr< req_msg > create_append_entries_req(std::shared_ptr< peer >& pp);
+    std::shared_ptr< req_msg > create_sync_snapshot_req(std::shared_ptr< peer >& pp, uint64_t last_log_idx,
+                                                        uint64_t term, uint64_t commit_idx, bool& succeeded_out);
+    bool check_snapshot_timeout(std::shared_ptr< peer > pp);
+    void destroy_user_snp_ctx(std::shared_ptr< snapshot_sync_ctx > sync_ctx);
     void clear_snapshot_sync_ctx(peer& pp);
-    void commit(ulong target_idx);
-    bool snapshot_and_compact(ulong committed_idx, bool forced_creation = false);
-    bool update_term(ulong term);
-    void reconfigure(const ptr<cluster_config>& new_config);
+    void commit(uint64_t target_idx);
+    bool snapshot_and_compact(uint64_t committed_idx, bool forced_creation = false);
+    bool update_term(uint64_t term);
+    void reconfigure(const std::shared_ptr< cluster_config >& new_config);
     void update_target_priority();
     void decay_target_priority();
     bool reconnect_client(peer& p);
@@ -916,18 +844,16 @@ protected:
     void check_srv_to_leave_timeout();
     void enable_hb_for_peer(peer& p);
     void stop_election_timer();
-    void handle_hb_timeout(int32 srv_id);
+    void handle_hb_timeout(int32_t srv_id);
     void reset_peer_info();
     void handle_election_timeout();
-    void sync_log_to_new_srv(ulong start_idx);
+    void sync_log_to_new_srv(uint64_t start_idx);
     void invite_srv_to_join_cluster();
-    void rm_srv_from_cluster(int32 srv_id);
+    void rm_srv_from_cluster(int32_t srv_id);
     int get_snapshot_sync_block_size() const;
-    void on_snapshot_completed(ptr<snapshot>& s,
-                               bool result,
-                               ptr<std::exception>& err);
-    void on_retryable_req_err(ptr<peer>& p, ptr<req_msg>& req);
-    ulong term_for_log(ulong log_idx);
+    void on_snapshot_completed(std::shared_ptr< snapshot >& s, bool result, std::shared_ptr< std::exception >& err);
+    void on_retryable_req_err(std::shared_ptr< peer >& p, std::shared_ptr< req_msg >& req);
+    uint64_t term_for_log(uint64_t log_idx);
 
     void commit_in_bg();
     bool commit_in_bg_exec(size_t timeout_ms = 0);
@@ -935,45 +861,35 @@ protected:
     void append_entries_in_bg();
     void append_entries_in_bg_exec();
 
-    void commit_app_log(ulong idx_to_commit,
-                        ptr<log_entry>& le,
-                        bool need_to_handle_commit_elem);
-    void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
+    void commit_app_log(uint64_t idx_to_commit, std::shared_ptr< log_entry >& le, bool need_to_handle_commit_elem);
+    void commit_conf(uint64_t idx_to_commit, std::shared_ptr< log_entry >& le);
 
-    ptr< cmd_result< ptr<buffer> > >
-        send_msg_to_leader(ptr<req_msg>& req,
-                           const req_ext_params& ext_params = req_ext_params());
+    result_ptr< buffer_ptr > send_msg_to_leader(std::shared_ptr< req_msg >& req,
+                                                const req_ext_params& ext_params = req_ext_params());
 
-    void auto_fwd_release_rpc_cli(ptr<auto_fwd_pkg> cur_pkg,
-                                  ptr<rpc_client> rpc_cli);
+    void auto_fwd_release_rpc_cli(std::shared_ptr< auto_fwd_pkg > cur_pkg, std::shared_ptr< rpc_client > rpc_cli);
 
-
-    void auto_fwd_resp_handler(ptr<cmd_result<ptr<buffer>>> presult,
-                               ptr<auto_fwd_pkg> cur_pkg,
-                               ptr<rpc_client> rpc_cli,
-                               ptr<resp_msg>& resp,
-                               ptr<rpc_exception>& err);
+    void auto_fwd_resp_handler(result_ptr< buffer_ptr > presult, std::shared_ptr< auto_fwd_pkg > cur_pkg,
+                               std::shared_ptr< rpc_client > rpc_cli, std::shared_ptr< resp_msg >& resp,
+                               std::shared_ptr< rpc_exception >& err);
     void cleanup_auto_fwd_pkgs();
 
-    void set_config(const ptr<cluster_config>& new_config);
-    ptr<snapshot> get_last_snapshot() const;
-    void set_last_snapshot(const ptr<snapshot>& new_snapshot);
+    void set_config(const std::shared_ptr< cluster_config >& new_config);
+    std::shared_ptr< snapshot > get_last_snapshot() const;
+    void set_last_snapshot(const std::shared_ptr< snapshot >& new_snapshot);
 
-    ulong store_log_entry(ptr<log_entry>& entry, ulong index = 0);
+    uint64_t store_log_entry(std::shared_ptr< log_entry >& entry, uint64_t index = 0);
 
-    ptr<resp_msg> handle_out_of_log_msg(req_msg& req,
-                                        ptr<custom_notification_msg> msg,
-                                        ptr<resp_msg> resp);
+    std::shared_ptr< resp_msg > handle_out_of_log_msg(req_msg& req, std::shared_ptr< custom_notification_msg > msg,
+                                                      std::shared_ptr< resp_msg > resp);
 
-    ptr<resp_msg> handle_leadership_takeover(req_msg& req,
-                                             ptr<custom_notification_msg> msg,
-                                             ptr<resp_msg> resp);
+    std::shared_ptr< resp_msg > handle_leadership_takeover(req_msg& req, std::shared_ptr< custom_notification_msg > msg,
+                                                           std::shared_ptr< resp_msg > resp);
 
-    ptr<resp_msg> handle_resignation_request(req_msg& req,
-                                             ptr<custom_notification_msg> msg,
-                                             ptr<resp_msg> resp);
+    std::shared_ptr< resp_msg > handle_resignation_request(req_msg& req, std::shared_ptr< custom_notification_msg > msg,
+                                                           std::shared_ptr< resp_msg > resp);
 
-    void remove_peer_from_peers(const ptr<peer>& pp);
+    void remove_peer_from_peers(const std::shared_ptr< peer >& pp);
 
     void check_overall_status();
 
@@ -1004,34 +920,34 @@ protected:
     /**
      * Condition variable to invoke append thread.
      */
-    EventAwaiter* bg_append_ea_;
+    std::unique_ptr< EventAwaiter > bg_append_ea_;
 
     /**
      * `true` if this server is ready to serve operation.
      */
-    std::atomic<bool> initialized_;
+    std::atomic< bool > initialized_;
 
     /**
      * Current leader ID.
      * If leader currently does not exist, it will be -1.
      */
-    std::atomic<int32> leader_;
+    std::atomic< int32_t > leader_;
 
     /**
      * (Read-only)
      * ID of this server.
      */
-    int32 id_;
+    int32_t id_;
 
     /**
      * Current priority of this server, protected by `lock_`.
      */
-    int32 my_priority_;
+    int32_t my_priority_;
 
     /**
      * Current target priority for vote, protected by `lock_`.
      */
-    int32 target_priority_;
+    int32_t target_priority_;
 
     /**
      * Timer that will be reset on `target_priority_` change.
@@ -1041,23 +957,23 @@ protected:
     /**
      * Number of servers responded my vote request, protected by `lock_`.
      */
-    int32 votes_responded_;
+    uint32_t votes_responded_;
 
     /**
      * Number of servers voted for me, protected by `lock_`.
      */
-    int32 votes_granted_;
+    int32_t votes_granted_;
 
     /**
      * Last pre-committed index.
      */
-    std::atomic<ulong> precommit_index_;
+    std::atomic< uint64_t > precommit_index_;
 
     /**
      * Leader commit index, seen by this node last time.
      * Only valid when the current role is `follower`.
      */
-    std::atomic<ulong> leader_commit_index_;
+    std::atomic< uint64_t > leader_commit_index_;
 
     /**
      * Target commit index.
@@ -1067,30 +983,30 @@ protected:
      * value can be adjusted to the last log index number of the current
      * node, which might be smaller than `leader_commit_index_` value.
      */
-    std::atomic<ulong> quick_commit_index_;
+    std::atomic< uint64_t > quick_commit_index_;
 
     /**
      * Actual commit index of state machine.
      */
-    std::atomic<ulong> sm_commit_index_;
+    std::atomic< uint64_t > sm_commit_index_;
 
     /**
      * If `grace_period_of_lagging_state_machine_` option is enabled,
      * the server will not initiate vote if its state machine's commit
      * index is less than this number.
      */
-    std::atomic<ulong> lagging_sm_target_index_;
+    std::atomic< uint64_t > lagging_sm_target_index_;
 
     /**
      * (Read-only)
      * Initial commit index when this server started.
      */
-    ulong initial_commit_index_;
+    uint64_t initial_commit_index_;
 
     /**
      * `true` if this server is seeing alive leader.
      */
-    std::atomic<bool> hb_alive_;
+    std::atomic< bool > hb_alive_;
 
     /**
      * Current status of pre-vote, protected by `lock_`.
@@ -1115,63 +1031,63 @@ protected:
      * catching up the latest log. It will not receive
      * normal `append_entries` request while in catch-up status.
      */
-    std::atomic<bool> catching_up_;
+    std::atomic< bool > catching_up_;
 
     /**
      * `true` if this server receives out of log range message
      * from leader. Once this flag is set, this server will not
      * initiate leader election.
      */
-    std::atomic<bool> out_of_log_range_;
+    std::atomic< bool > out_of_log_range_;
 
     /**
      * `true` if this is a follower and its committed log index is close enough
      * to the leader's committed log index, so the data is fresh enough.
      */
-    std::atomic<bool> data_fresh_;
+    std::atomic< bool > data_fresh_;
 
     /**
      * `true` if this server is terminating.
      * Will not accept any request.
      */
-    std::atomic<bool> stopping_;
+    std::atomic< bool > stopping_;
 
     /**
      * `true` if background commit thread has been terminated.
      */
-    std::atomic<bool> commit_bg_stopped_;
+    std::atomic< bool > commit_bg_stopped_;
 
     /**
      * `true` if background append thread has been terminated.
      */
-    std::atomic<bool> append_bg_stopped_;
+    std::atomic< bool > append_bg_stopped_;
 
     /**
      * `true` if write operation is paused, as the first phase of
      * leader re-election.
      */
-    std::atomic<bool> write_paused_;
+    std::atomic< bool > write_paused_;
 
     /**
      * If `true`, state machine commit will be paused.
      */
-    std::atomic<bool> sm_commit_paused_;
+    std::atomic< bool > sm_commit_paused_;
 
     /**
      * If `true`, the background thread is doing state machine execution.
      */
-    std::atomic<bool> sm_commit_exec_in_progress_;
+    std::atomic< bool > sm_commit_exec_in_progress_;
 
     /**
      * Event awaiter notified when `sm_commit_exec_in_progress_` becomes `false`.
      */
-    EventAwaiter* ea_sm_commit_exec_in_progress_;
+    std::unique_ptr< EventAwaiter > ea_sm_commit_exec_in_progress_;
 
     /**
      * Server ID indicates the candidate for the next leader,
      * as a part of leadership takeover task.
      */
-    std::atomic<int32> next_leader_candidate_;
+    std::atomic< int32_t > next_leader_candidate_;
 
     /**
      * Timer that will start at pausing write.
@@ -1189,41 +1105,41 @@ protected:
      * `true` if this server is in the middle of
      * `append_entries` handler.
      */
-    std::atomic<bool> serving_req_;
+    std::atomic< bool > serving_req_;
 
     /**
      * Number of steps remaining to turn off this server.
      * Will be triggered once this server is removed from the cluster.
      * Protected by `lock_`.
      */
-    int32 steps_to_down_;
+    int32_t steps_to_down_;
 
     /**
      * `true` if this server is creating a snapshot.
      * Only one snapshot creation is allowed at a time.
      */
-    std::atomic<bool> snp_in_progress_;
+    std::atomic< bool > snp_in_progress_;
 
     /**
      * (Read-only, but its contents will change)
      * Server context.
      */
-    std::unique_ptr<context> ctx_;
+    std::unique_ptr< context > ctx_;
 
     /**
      * Scheduler.
      */
-    ptr<delayed_task_scheduler> scheduler_;
+    std::shared_ptr< delayed_task_scheduler > scheduler_;
 
     /**
      * Election timeout handler.
      */
-    timer_task<void>::executor election_exec_;
+    timer_task< void >::executor election_exec_;
 
     /**
      * Election timer.
      */
-    ptr<delayed_task> election_task_;
+    std::shared_ptr< delayed_task > election_task_;
 
     /**
      * The time when the election timer was reset last time.
@@ -1234,18 +1150,18 @@ protected:
      * Map of {Server ID, `peer` instance},
      * protected by `lock_`.
      */
-    std::unordered_map<int32, ptr<peer>> peers_;
+    std::unordered_map< int32_t, std::shared_ptr< peer > > peers_;
 
     /**
      * Map of {server ID, connection to corresponding server},
      * protected by `lock_`.
      */
-    std::unordered_map<int32, ptr<rpc_client>> rpc_clients_;
+    std::unordered_map< int32_t, std::shared_ptr< rpc_client > > rpc_clients_;
 
     /**
      * Map of {server ID, auto-forwarding components}.
      */
-    std::unordered_map<int32, ptr<auto_fwd_pkg>> auto_fwd_pkgs_;
+    std::unordered_map< int32_t, std::shared_ptr< auto_fwd_pkg > > auto_fwd_pkgs_;
 
     /**
      * Definition of request-response pairs.
@@ -1254,18 +1170,18 @@ protected:
         /**
          * Request.
          */
-        ptr<req_msg> req;
+        std::shared_ptr< req_msg > req;
 
         /**
          * Corresponding (future) response.
          */
-        ptr<cmd_result<ptr<buffer>>> resp;
+        result_ptr< buffer_ptr > resp;
     };
 
     /**
      * Queue of request-response pairs for auto-forwarding (async mode only).
      */
-    std::list<auto_fwd_req_resp> auto_fwd_reqs_;
+    std::list< auto_fwd_req_resp > auto_fwd_reqs_;
 
     /**
      * Lock for auto-forwarding queue.
@@ -1275,37 +1191,37 @@ protected:
     /**
      * Current role of this server.
      */
-    std::atomic<srv_role> role_;
+    std::atomic< srv_role > role_;
 
     /**
      * (Read-only, but its contents will change)
      * Server status (term and vote).
      */
-    ptr<srv_state> state_;
+    std::shared_ptr< srv_state > state_;
 
     /**
      * (Read-only)
      * Log store instance.
      */
-    ptr<log_store> log_store_;
+    std::shared_ptr< log_store > log_store_;
 
     /**
      * (Read-only)
      * State machine instance.
      */
-    ptr<state_machine> state_machine_;
+    std::shared_ptr< state_machine > state_machine_;
 
     /**
      * `true` if this server is receiving a snapshot.
      */
-    std::atomic<bool> receiving_snapshot_;
+    std::atomic< bool > receiving_snapshot_;
 
     /**
      * Election timeout count while receiving snapshot.
      * This happens when the sender (i.e., leader) is too slow
      * so that cannot send message before election timeout.
      */
-    std::atomic<ulong> et_cnt_receiving_snapshot_;
+    std::atomic< uint64_t > et_cnt_receiving_snapshot_;
 
     /**
      * (Read-only)
@@ -1317,23 +1233,23 @@ protected:
      * (Read-only)
      * Logger instance.
      */
-    ptr<logger> l_;
+    std::shared_ptr< logger > l_;
 
     /**
      * (Read-only)
      * Random generator for timeout.
      */
-    std::function<int32()> rand_timeout_;
+    std::function< int32_t() > rand_timeout_;
 
     /**
      * Previous config for debugging purpose, protected by `config_lock_`.
      */
-    ptr<cluster_config> stale_config_;
+    std::shared_ptr< cluster_config > stale_config_;
 
     /**
      * Current (committed) cluster config, protected by `config_lock_`.
      */
-    ptr<cluster_config> config_;
+    std::shared_ptr< cluster_config > config_;
 
     /**
      * Lock for cluster config.
@@ -1344,38 +1260,38 @@ protected:
      * Latest uncommitted cluster config changed from `config_`,
      * protected by `lock_`. `nullptr` if `config_` is the latest one.
      */
-    ptr<cluster_config> uncommitted_config_;
+    std::shared_ptr< cluster_config > uncommitted_config_;
 
     /**
      * Server that is preparing to join,
      * protected by `lock_`.
      */
-    ptr<peer> srv_to_join_;
+    std::shared_ptr< peer > srv_to_join_;
 
     /**
      * `true` if `sync_log_to_new_srv` needs to be called again upon
      * a temporary heartbeat.
      */
-    std::atomic<bool> srv_to_join_snp_retry_required_;
+    std::atomic< bool > srv_to_join_snp_retry_required_;
 
     /**
      * Server that is agreed to leave,
      * protected by `lock_`.
      */
-    ptr<peer> srv_to_leave_;
+    std::shared_ptr< peer > srv_to_leave_;
 
     /**
      * Target log index number containing the config that
      * this server is actually removed.
      * Connection to `srv_to_leave_` should be kept until this log.
      */
-    ulong srv_to_leave_target_idx_;
+    uint64_t srv_to_leave_target_idx_;
 
     /**
      * Config of the server preparing to join,
      * protected by `lock_`.
      */
-    ptr<srv_config> conf_to_add_;
+    std::shared_ptr< srv_config > conf_to_add_;
 
     /**
      * Lock of entire Raft operation.
@@ -1411,7 +1327,7 @@ protected:
      * Client requests waiting for replication.
      * Only used in blocking mode.
      */
-    std::map<ulong, ptr<commit_ret_elem>> commit_ret_elems_;
+    std::map< uint64_t, std::shared_ptr< commit_ret_elem > > commit_ret_elems_;
 
     /**
      * Lock for `commit_ret_elems_`.
@@ -1444,7 +1360,7 @@ protected:
     /**
      * Last snapshot instance.
      */
-    ptr<snapshot> last_snapshot_;
+    std::shared_ptr< snapshot > last_snapshot_;
 
     /**
      * Lock for `last_snapshot_`.
@@ -1471,7 +1387,7 @@ protected:
     /**
      * The term when `vote_init_timer_` was reset.
      */
-    std::atomic<ulong> vote_init_timer_term_;
+    std::atomic< uint64_t > vote_init_timer_term_;
 
     /**
      * (Experimental)
@@ -1482,14 +1398,12 @@ protected:
      * WARNING: We are assuming that only one thraed is using this
      *          awaiter at a time, by the help of `lock_`.
      */
-    EventAwaiter* ea_follower_log_append_;
+    std::unique_ptr< EventAwaiter > ea_follower_log_append_;
 
     /**
      * If `true`, test mode is enabled.
      */
-    std::atomic<bool> test_mode_flag_;
+    std::atomic< bool > test_mode_flag_;
 };
 
-} // namespace nuraft;
-
-#endif //_RAFT_SERVER_HXX_
+} // namespace nuraft

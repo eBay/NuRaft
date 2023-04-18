@@ -22,11 +22,11 @@ limitations under the License.
 
 namespace nuraft {
 
-ptr<buffer> cluster_config::serialize() const {
-    size_t sz = 2 * sz_ulong + sz_int + sz_byte;
-    std::vector<ptr<buffer>> srv_buffs;
+std::shared_ptr< buffer > cluster_config::serialize() const {
+    size_t sz = 2 * sz_uint64_t + sz_int + sz_byte;
+    std::vector< std::shared_ptr< buffer > > srv_buffs;
     for (auto it = servers_.cbegin(); it != servers_.cend(); ++it) {
-        ptr<buffer> buf = (*it)->serialize();
+        std::shared_ptr< buffer > buf = (*it)->serialize();
         srv_buffs.push_back(buf);
         sz += buf->size();
     }
@@ -34,12 +34,12 @@ ptr<buffer> cluster_config::serialize() const {
     sz += sz_int;
     sz += user_ctx_.size();
 
-    ptr<buffer> result = buffer::alloc(sz);
+    std::shared_ptr< buffer > result = buffer::alloc(sz);
     result->put(log_idx_);
     result->put(prev_log_idx_);
-    result->put((byte)(async_replication_ ? 1 : 0));
-    result->put((byte*)user_ctx_.data(), user_ctx_.size());
-    result->put((int32)servers_.size());
+    result->put(async_replication_ ? std::byte{0x01} : std::byte{0x00});
+    result->put(reinterpret_cast< std::byte const* >(user_ctx_.data()), user_ctx_.size());
+    result->put((int32_t)servers_.size());
     for (size_t i = 0; i < srv_buffs.size(); ++i) {
         result->put(*srv_buffs[i]);
     }
@@ -48,25 +48,24 @@ ptr<buffer> cluster_config::serialize() const {
     return result;
 }
 
-ptr<cluster_config> cluster_config::deserialize(buffer& buf) {
+std::shared_ptr< cluster_config > cluster_config::deserialize(buffer& buf) {
     buffer_serializer bs(buf);
     return deserialize(bs);
 }
 
-ptr<cluster_config> cluster_config::deserialize(buffer_serializer& bs) {
-    ulong log_idx = bs.get_u64();
-    ulong prev_log_idx = bs.get_u64();
+std::shared_ptr< cluster_config > cluster_config::deserialize(buffer_serializer& bs) {
+    uint64_t log_idx = bs.get_u64();
+    uint64_t prev_log_idx = bs.get_u64();
 
-    byte ec_byte = bs.get_u8();
-    bool ec = ec_byte ? true : false;
+    auto const ec = bs.get_u8() ? true : false;
 
     size_t ctx_len;
-    const byte* ctx_data = (const byte*)bs.get_bytes(ctx_len);
+    auto ctx_data = reinterpret_cast< std::byte const* >(bs.get_bytes(ctx_len));
     std::string user_ctx = std::string((const char*)ctx_data, ctx_len);
 
-    int32 cnt = bs.get_i32();
-    ptr<cluster_config> conf = cs_new<cluster_config>(log_idx, prev_log_idx, ec);
-    while (cnt -- > 0) {
+    int32_t cnt = bs.get_i32();
+    std::shared_ptr< cluster_config > conf = std::make_shared< cluster_config >(log_idx, prev_log_idx, ec);
+    while (cnt-- > 0) {
         conf->get_servers().push_back(srv_config::deserialize(bs));
     }
 
@@ -75,5 +74,4 @@ ptr<cluster_config> cluster_config::deserialize(buffer_serializer& bs) {
     return conf;
 }
 
-} // namespace nuraft;
-
+} // namespace nuraft

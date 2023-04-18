@@ -18,29 +18,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _DELAYED_TASK_SCHEDULER_HXX_
-#define _DELAYED_TASK_SCHEDULER_HXX_
+#pragma once
+
+#include <memory>
 
 #include "delayed_task.hxx"
-#include "ptr.hxx"
 
 namespace nuraft {
 
 class delayed_task_scheduler {
-__interface_body__(delayed_task_scheduler);
+    __interface_body__(delayed_task_scheduler);
 
 public:
-    virtual void schedule(ptr<delayed_task>& task, int32 milliseconds) = 0;
+    virtual void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) = 0;
 
-    void cancel(ptr<delayed_task>& task) {
+    void cancel(std::shared_ptr< delayed_task >& task) {
         cancel_impl(task);
         task->cancel();
     }
 
 private:
-    virtual void cancel_impl(ptr<delayed_task>& task) = 0;
+    virtual void cancel_impl(std::shared_ptr< delayed_task >& task) = 0;
 };
 
-}
-
-#endif //_DELAYED_TASK_SCHEDULER_HXX_
+} // namespace nuraft

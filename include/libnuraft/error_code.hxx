@@ -50,9 +50,8 @@ enum raft_err {
     N23_precommit_order_inversion = -23,
 };
 
-extern const char * raft_err_msg[];
+extern const char* raft_err_msg[];
 
-}
+} // namespace nuraft
 
 #endif //_ERROR_CODE_HXX_
-

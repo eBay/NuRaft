@@ -18,9 +18,9 @@ limitations under the License.
 #pragma once
 
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 namespace nuraft {
@@ -33,11 +33,9 @@ public:
         BIG = 0x1,
     };
 
-    buffer_serializer(buffer& src_buf,
-                      endianness endian = LITTLE);
+    buffer_serializer(buffer& src_buf, endianness endian = LITTLE);
 
-    buffer_serializer(ptr<buffer>& src_buf_ptr,
-                      endianness endian = LITTLE);
+    buffer_serializer(std::shared_ptr< buffer >& src_buf_ptr, endianness endian = LITTLE);
 
     __nocopy__(buffer_serializer);
 
@@ -76,6 +74,7 @@ public:
      * @param val 1-byte unsigned integer.
      */
     void put_u8(uint8_t val);
+    void put_u8(std::byte val);
 
     /**
      * Put 2-byte unsigned integer.
@@ -149,7 +148,7 @@ public:
      * WARNING:
      *   It does not put length info of given buffer,
      *   so caller should know the length of buffer in advance
-     *   before calling `get_buffer(ptr<buffer>)`.
+     *   before calling `get_buffer(std::shared_ptr<buffer>)`.
      *
      *   If not, please use `put_bytes(const void* raw_ptr, size_t len);`.
      *
@@ -260,7 +259,7 @@ public:
      *
      * @param dst Buffer where the data will be stored.
      */
-    void get_buffer(ptr<buffer>& dst);
+    void get_buffer(std::shared_ptr< buffer >& dst);
 
     /**
      * Read 4-byte length followed by byte array, and then return them.
@@ -302,5 +301,4 @@ private:
     size_t pos_;
 };
 
-}
-
+} // namespace nuraft

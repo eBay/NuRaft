@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(NuRaft VERSION 1.0.0 LANGUAGES CXX)
+set (CMAKE_CXX_STANDARD 17)
 
 # === Build type (default: RelWithDebInfo, O2) ===========
 if (NOT CMAKE_BUILD_TYPE)
@@ -80,10 +81,8 @@ endif()
 # === Compiler flags ===
 if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wextra -Werror -Wpedantic")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
 #        include_directories(BEFORE

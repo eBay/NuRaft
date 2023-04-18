@@ -18,14 +18,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _SNAPSHOT_SYNC_CTX_HXX_
-#define _SNAPSHOT_SYNC_CTX_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "event_awaiter.hxx"
 #include "internal_timer.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 #include <functional>
 #include <list>
@@ -44,21 +41,18 @@ class rpc_exception;
 class snapshot;
 class snapshot_sync_ctx {
 public:
-    snapshot_sync_ctx(const ptr<snapshot>& s,
-                      int peer_id,
-                      ulong timeout_ms,
-                      ulong offset = 0L);
+    snapshot_sync_ctx(const std::shared_ptr< snapshot >& s, int peer_id, uint64_t timeout_ms, uint64_t offset = 0L);
 
     __nocopy__(snapshot_sync_ctx);
 
 public:
-    const ptr<snapshot>& get_snapshot() const { return snapshot_; }
-    ulong get_offset() const { return offset_; }
-    ulong get_obj_idx() const { return obj_idx_; }
+    const std::shared_ptr< snapshot >& get_snapshot() const { return snapshot_; }
+    uint64_t get_offset() const { return offset_; }
+    uint64_t get_obj_idx() const { return obj_idx_; }
     void*& get_user_snp_ctx() { return user_snp_ctx_; }
 
-    void set_offset(ulong offset);
-    void set_obj_idx(ulong obj_idx) { obj_idx_ = obj_idx; }
+    void set_offset(uint64_t offset);
+    void set_obj_idx(uint64_t obj_idx) { obj_idx_ = obj_idx; }
     void set_user_snp_ctx(void* _user_snp_ctx) { user_snp_ctx_ = _user_snp_ctx; }
 
     timer_helper& get_timer() { return timer_; }
@@ -74,7 +68,7 @@ private:
     /**
      * Pointer to snapshot.
      */
-    ptr<snapshot> snapshot_;
+    std::shared_ptr< snapshot > snapshot_;
 
     /**
      * Current cursor of snapshot.
@@ -82,8 +76,8 @@ private:
      * but the legacy raw snapshot (offset_) is deprecated.
      */
     union {
-        ulong offset_;
-        ulong obj_idx_;
+        uint64_t offset_;
+        uint64_t obj_idx_;
     };
 
     /**
@@ -113,9 +107,8 @@ public:
      * @param h Response handler.
      * @return `true` if succeeds (when there is no pending request for the same peer).
      */
-    bool push(ptr<raft_server> r,
-              ptr<peer> p,
-              std::function< void(ptr<resp_msg>&, ptr<rpc_exception>&) >& h);
+    bool push(std::shared_ptr< raft_server > r, std::shared_ptr< peer > p,
+              std::function< void(std::shared_ptr< resp_msg >&, std::shared_ptr< rpc_exception >&) >& h);
 
     /**
      * Invoke IO thread.
@@ -152,7 +145,7 @@ private:
 
     void async_io_loop();
 
-    bool push(ptr<io_queue_elem>& elem);
+    bool push(std::shared_ptr< io_queue_elem >& elem);
 
     /**
      * A dedicated thread for reading snapshot object.
@@ -162,17 +155,17 @@ private:
     /**
      * Event awaiter for `io_thread_`.
      */
-    ptr<EventAwaiter> io_thread_ea_;
+    std::shared_ptr< EventAwaiter > io_thread_ea_;
 
     /**
      * `true` if we are closing this context.
      */
-    std::atomic<bool> terminating_;
+    std::atomic< bool > terminating_;
 
     /**
      * Request queue. Allow only one request per peer at a time.
      */
-    std::list< ptr<io_queue_elem> > queue_;
+    std::list< std::shared_ptr< io_queue_elem > > queue_;
 
     /**
      * Lock for `queue_`.
@@ -180,6 +173,4 @@ private:
     std::mutex queue_lock_;
 };
 
-}
-
-#endif //_SNAPSHOT_SYNC_CTX_HXX_
+} // namespace nuraft

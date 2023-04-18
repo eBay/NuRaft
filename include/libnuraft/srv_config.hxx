@@ -18,14 +18,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _SRV_CONFIG_HXX_
-#define _SRV_CONFIG_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "buffer.hxx"
 #include "buffer_serializer.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 #include <string>
 
@@ -34,40 +31,25 @@ namespace nuraft {
 class srv_config {
 public:
     // WARNING: Please see the comment at raft_server::raft_server(...).
-    const static int32 INIT_PRIORITY = 1;
+    const static int32_t INIT_PRIORITY = 1;
 
-    srv_config(int32 id, const std::string& endpoint)
-        : id_(id)
-        , dc_id_(0)
-        , endpoint_(endpoint)
-        , learner_(false)
-        , priority_(INIT_PRIORITY)
-        {}
+    srv_config(int32_t id, const std::string& endpoint) :
+            id_(id), dc_id_(0), endpoint_(endpoint), learner_(false), priority_(INIT_PRIORITY) {}
 
-    srv_config(int32 id,
-               int32 dc_id,
-               const std::string& endpoint,
-               const std::string& aux,
-               bool learner,
-               int32 priority = INIT_PRIORITY)
-        : id_(id)
-        , dc_id_(dc_id)
-        , endpoint_(endpoint)
-        , aux_(aux)
-        , learner_(learner)
-        , priority_(priority)
-        {}
+    srv_config(int32_t id, int32_t dc_id, const std::string& endpoint, const std::string& aux, bool learner,
+               int32_t priority = INIT_PRIORITY) :
+            id_(id), dc_id_(dc_id), endpoint_(endpoint), aux_(aux), learner_(learner), priority_(priority) {}
 
     __nocopy__(srv_config);
 
 public:
-    static ptr<srv_config> deserialize(buffer& buf);
+    static std::shared_ptr< srv_config > deserialize(buffer& buf);
 
-    static ptr<srv_config> deserialize(buffer_serializer& bs);
+    static std::shared_ptr< srv_config > deserialize(buffer_serializer& bs);
 
-    int32 get_id() const { return id_; }
+    int32_t get_id() const { return id_; }
 
-    int32 get_dc_id() const { return dc_id_; }
+    int32_t get_dc_id() const { return dc_id_; }
 
     const std::string& get_endpoint() const { return endpoint_; }
 
@@ -75,23 +57,23 @@ public:
 
     bool is_learner() const { return learner_; }
 
-    int32 get_priority() const { return priority_; }
+    int32_t get_priority() const { return priority_; }
 
-    void set_priority(const int32 new_val) { priority_ = new_val; }
+    void set_priority(const int32_t new_val) { priority_ = new_val; }
 
-    ptr<buffer> serialize() const;
+    std::shared_ptr< buffer > serialize() const;
 
 private:
     /**
      * ID of this server, should be positive number.
      */
-    int32 id_;
+    int32_t id_;
 
     /**
      * ID of datacenter where this server is located.
      * 0 if not used.
      */
-    int32 dc_id_;
+    int32_t dc_id_;
 
     /**
      * Endpoint (address + port).
@@ -115,9 +97,7 @@ private:
      * Priority of this node.
      * 0 will never be a leader.
      */
-    int32 priority_;
+    int32_t priority_;
 };
 
 } // namespace nuraft
-
-#endif

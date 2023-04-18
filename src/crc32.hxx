@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <stdint.h>
 #if defined(__linux__) || defined(__APPLE__)
-    #include <unistd.h>
+#include <unistd.h>
 #endif
 
 #ifdef __cplusplus

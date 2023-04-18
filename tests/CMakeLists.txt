@@ -1,9 +1,10 @@
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+
 # === Basic Raft server functionality test ===
 add_executable(raft_server_test
                unit/raft_server_test.cxx
                unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+               $<TARGET_OBJECTS:in_mem_logstore>)
 add_dependencies(raft_server_test
                  static_lib)
 target_link_libraries(raft_server_test
@@ -13,8 +14,7 @@ target_link_libraries(raft_server_test
 add_executable(failure_test
                unit/failure_test.cxx
                unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+               $<TARGET_OBJECTS:in_mem_logstore>)
 add_dependencies(failure_test
                  static_lib)
 target_link_libraries(failure_test
@@ -23,8 +23,7 @@ target_link_libraries(failure_test
 # === ASIO network stuff test ===
 add_executable(asio_service_test
                unit/asio_service_test.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+               $<TARGET_OBJECTS:in_mem_logstore>)
 add_dependencies(asio_service_test
                  static_lib
                  build_ssl_key)
@@ -35,8 +34,7 @@ target_link_libraries(asio_service_test
 # === Benchmark ===
 add_executable(raft_bench
                bench/raft_bench.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+               $<TARGET_OBJECTS:in_mem_logstore>)
 add_dependencies(raft_bench
                  static_lib)
 target_link_libraries(raft_bench

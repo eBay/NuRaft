@@ -18,19 +18,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _LOG_VALUE_TYPE_HXX_
-#define _LOG_VALUE_TYPE_HXX_
+#pragma once
 
 namespace nuraft {
 
-enum log_val_type : byte {
-    app_log         = 1,
-    conf            = 2,
-    cluster_server  = 3,
-    log_pack        = 4,
-    snp_sync_req    = 5,
-    custom          = 231,
+enum class log_val_type : uint8_t {
+    app_log = 1,
+    conf = 2,
+    cluster_server = 3,
+    log_pack = 4,
+    snp_sync_req = 5,
+    custom = 231,
 };
 
 }
-#endif // _LOG_VALUE_TYPE_HXX_

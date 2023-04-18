@@ -18,12 +18,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _STATE_MGR_HXX_
-#define _STATE_MGR_HXX_
+#pragma once
 
-#include "basic_types.hxx"
 #include "pp_util.hxx"
-#include "ptr.hxx"
 
 namespace nuraft {
 
@@ -45,7 +42,7 @@ public:
      *
      * @return Cluster config.
      */
-    virtual ptr<cluster_config> load_config() = 0;
+    virtual std::shared_ptr< cluster_config > load_config() = 0;
 
     /**
      * Save given cluster config.
@@ -71,21 +68,21 @@ public:
      *
      * @param Server state.
      */
-    virtual ptr<srv_state> read_state() = 0;
+    virtual std::shared_ptr< srv_state > read_state() = 0;
 
     /**
      * Get instance of user-defined Raft log store.
      *
      * @param Raft log store instance.
      */
-    virtual ptr<log_store> load_log_store() = 0;
+    virtual std::shared_ptr< log_store > load_log_store() = 0;
 
     /**
      * Get ID of this Raft server.
      *
      * @return Server ID.
      */
-    virtual int32 server_id() = 0;
+    virtual int32_t server_id() = 0;
 
     /**
      * System exit handler. This function will be invoked on
@@ -96,6 +93,4 @@ public:
     virtual void system_exit(const int exit_code) = 0;
 };
 
-}
-
-#endif //_STATE_MGR_HXX_
+} // namespace nuraft

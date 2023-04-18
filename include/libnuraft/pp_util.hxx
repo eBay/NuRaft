@@ -18,30 +18,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
-#ifndef _PP_UTIL_HXX_
-#define _PP_UTIL_HXX_
+#pragma once
 
-#define __override__ override
+#include <cstdint>
+#include <mutex>
 
-#define __nocopy__(clazz)                       \
-    private:                                    \
-    clazz(const clazz&) = delete;               \
-    clazz& operator=(const clazz&) = delete;    \
+#define __nocopy__(clazz)                                                                                              \
+private:                                                                                                               \
+    clazz(const clazz&) = delete;                                                                                      \
+    clazz& operator=(const clazz&) = delete
 
-#define nilptr nullptr
-
-#define __interface_body__(clazz)   \
-    public:                         \
-    clazz(){}                       \
-    virtual ~clazz() {}             \
+#define __interface_body__(clazz)                                                                                      \
+public:                                                                                                                \
+    clazz() = default;                                                                                                 \
+    virtual ~clazz() = default;                                                                                        \
     __nocopy__(clazz)
 
-#define auto_lock(lock)     std::lock_guard<std::mutex> guard(lock)
-#define recur_lock(lock)    std::unique_lock<std::recursive_mutex> guard(lock)
+using auto_lock = std::lock_guard< std::mutex >;
+using recur_lock = std::unique_lock< std::recursive_mutex >;
 
-#define sz_int      sizeof(int32)
-#define sz_ulong    sizeof(ulong)
-#define sz_byte     sizeof(byte)
-
-#endif //_PP_UTIL_HXX_
-
+auto constexpr sz_int = sizeof(int32_t);
+auto constexpr sz_uint64_t = sizeof(uint64_t);
+auto constexpr sz_byte = sizeof(std::byte);

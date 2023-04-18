@@ -33,14 +33,13 @@ protected:
      * @param srv `raft_server` instance.
      * @param req Request.
      * @param ext_params Extended parameters.
-     * @return ptr<resp_msg> Response.
+     * @return std::shared_ptr<resp_msg> Response.
      */
-    static ptr<resp_msg> process_req(raft_server* srv,
-                                     req_msg& req,
-                                     const raft_server::req_ext_params& ext_params =
-                                         raft_server::req_ext_params()) {
+    static std::shared_ptr< resp_msg >
+    process_req(raft_server* srv, req_msg& req,
+                const raft_server::req_ext_params& ext_params = raft_server::req_ext_params()) {
         return srv->process_req(req, ext_params);
     }
 };
 
-}
+} // namespace nuraft

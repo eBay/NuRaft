@@ -187,7 +187,7 @@ limitations under the License.
         << __COUT_STACK_INFO__                                          \
         << "    value of: " _CLM_B_BLUE #value _CLM_END "\n"            \
         << "    expected: " _CLM_B_GREEN << "NULL" << _CLM_END "\n";    \
-        printf("      actual: " _CLM_B_RED "%p" _CLM_END "\n", _v);     \
+        printf("      actual: " _CLM_B_RED "%p" _CLM_END "\n", (void*)_v);     \
         TestSuite::failHandler();                                       \
         return -1;                                                      \
     }                                                                   \
