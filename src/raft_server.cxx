@@ -1518,13 +1518,17 @@ ulong raft_server::term_for_log(ulong log_idx) {
 
     ptr<snapshot> last_snapshot(state_machine_->last_snapshot());
     if ( !last_snapshot || log_idx != last_snapshot->get_last_log_idx() ) {
-        p_er("bad log_idx %" PRIu64 " for retrieving the term value, "
+        static timer_helper bad_log_timer(1000000, true);
+        int log_lv = bad_log_timer.timeout_and_reset() ? L_ERROR : L_TRACE;
+
+        p_lv(log_lv, "bad log_idx %" PRIu64 " for retrieving the term value, "
              "will ignore this log req", log_idx);
         if (last_snapshot) {
-            p_er("last snapshot %p, log_idx %" PRIu64 ", snapshot last_log_idx %" PRIu64 "\n",
+            p_lv(log_lv, "last snapshot %p, log_idx %" PRIu64
+                 ", snapshot last_log_idx %" PRIu64 "\n",
                  last_snapshot.get(), log_idx, last_snapshot->get_last_log_idx());
         }
-        p_er("log_store_->start_index() %" PRIu64, log_store_->start_index());
+        p_lv(log_lv, "log_store_->start_index() %" PRIu64, log_store_->start_index());
         //ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
         //::exit(-1);
         return 0L;
