@@ -69,7 +69,7 @@ public:
         return prev_log_idx_;
     }
 
-    std::list<ptr<srv_config>> const& get_servers() const {
+    const std::list<ptr<srv_config>>& get_servers() const {
         return servers_;
     }
 
