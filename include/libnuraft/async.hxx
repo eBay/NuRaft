@@ -53,53 +53,54 @@ enum cmd_result_code {
     FAILED = -32768,
 };
 
-template < typename T, typename TE = std::shared_ptr< std::exception > >
-class cmd_result {
+template <typename T, typename TE = std::shared_ptr<std::exception>> class cmd_result {
 public:
     /**
      * This handler will be invoked with the result value only.
      */
-    using handler_type = std::function< void(T&, TE&) >;
+    using handler_type = std::function<void(T&, TE&)>;
 
     /**
      * This handler will be invoked with this instance.
      * User can get more detailed info from this.
      */
-    using handler_type2 = std::function< void(cmd_result< T, TE >&, TE&) >;
+    using handler_type2 = std::function<void(cmd_result<T, TE>&, TE&)>;
 
-    cmd_result() :
-            err_(),
-            code_(cmd_result_code::OK),
-            has_result_(false),
-            accepted_(false),
-            handler_(nullptr),
-            handler2_(nullptr) {}
+    cmd_result()
+        : err_()
+        , code_(cmd_result_code::OK)
+        , has_result_(false)
+        , accepted_(false)
+        , handler_(nullptr)
+        , handler2_(nullptr) {}
 
-    explicit cmd_result(T& result, cmd_result_code code = cmd_result_code::OK) :
-            result_(result),
-            err_(),
-            code_(code),
-            has_result_(true),
-            accepted_(false),
-            handler_(nullptr),
-            handler2_(nullptr) {}
+    explicit cmd_result(T& result, cmd_result_code code = cmd_result_code::OK)
+        : result_(result)
+        , err_()
+        , code_(code)
+        , has_result_(true)
+        , accepted_(false)
+        , handler_(nullptr)
+        , handler2_(nullptr) {}
 
-    explicit cmd_result(T& result, bool _accepted, cmd_result_code code = cmd_result_code::OK) :
-            result_(result),
-            err_(),
-            code_(code),
-            has_result_(true),
-            accepted_(_accepted),
-            handler_(nullptr),
-            handler2_(nullptr) {}
+    explicit cmd_result(T& result,
+                        bool _accepted,
+                        cmd_result_code code = cmd_result_code::OK)
+        : result_(result)
+        , err_()
+        , code_(code)
+        , has_result_(true)
+        , accepted_(_accepted)
+        , handler_(nullptr)
+        , handler2_(nullptr) {}
 
-    explicit cmd_result(const handler_type& handler) :
-            err_(),
-            code_(cmd_result_code::OK),
-            has_result_(true),
-            accepted_(false),
-            handler_(handler),
-            handler2_(nullptr) {}
+    explicit cmd_result(const handler_type& handler)
+        : err_()
+        , code_(cmd_result_code::OK)
+        , has_result_(true)
+        , accepted_(false)
+        , handler_(handler)
+        , handler2_(nullptr) {}
 
     ~cmd_result() {}
 
@@ -110,7 +111,7 @@ public:
      * Clear all internal data.
      */
     void reset() {
-        std::lock_guard< std::mutex > guard(lock_);
+        std::lock_guard<std::mutex> guard(lock_);
         err_ = TE();
         code_ = cmd_result_code::OK;
         has_result_ = false;
@@ -130,7 +131,7 @@ public:
     void when_ready(const handler_type& handler) {
         bool call_handler = false;
         {
-            std::lock_guard< std::mutex > guard(lock_);
+            std::lock_guard<std::mutex> guard(lock_);
             if (has_result_)
                 call_handler = true;
             else
@@ -149,7 +150,7 @@ public:
     void when_ready(const handler_type2& handler) {
         bool call_handler = false;
         {
-            std::lock_guard< std::mutex > guard(lock_);
+            std::lock_guard<std::mutex> guard(lock_);
             if (has_result_)
                 call_handler = true;
             else
@@ -169,7 +170,7 @@ public:
         bool call_handler = false;
         code_ = code;
         {
-            std::lock_guard< std::mutex > guard(lock_);
+            std::lock_guard<std::mutex> guard(lock_);
             result_ = result;
             err_ = err;
             has_result_ = true;
@@ -205,7 +206,7 @@ public:
      * @return void.
      */
     void set_result_code(cmd_result_code ec) {
-        std::lock_guard< std::mutex > guard(lock_);
+        std::lock_guard<std::mutex> guard(lock_);
         code_ = ec;
     }
 
@@ -215,7 +216,7 @@ public:
      * @return Result code.
      */
     cmd_result_code get_result_code() const {
-        std::lock_guard< std::mutex > guard(lock_);
+        std::lock_guard<std::mutex> guard(lock_);
         if (has_result_) {
             return code_;
         } else {
@@ -224,7 +225,7 @@ public:
     }
 
     bool has_result() const {
-        std::lock_guard< std::mutex > guard(lock_);
+        std::lock_guard<std::mutex> guard(lock_);
         return has_result_;
     }
 
@@ -236,22 +237,28 @@ public:
     std::string get_result_str() const {
         cmd_result_code code = get_result_code();
 
-        static std::unordered_map< int, std::string > code_str_map(
+        static std::unordered_map<int, std::string> code_str_map(
             {{cmd_result_code::OK, "Ok."},
              {cmd_result_code::CANCELLED, "Request cancelled."},
              {cmd_result_code::TIMEOUT, "Request timeout."},
              {cmd_result_code::NOT_LEADER, "This node is not a leader."},
              {cmd_result_code::BAD_REQUEST, "Invalid request."},
-             {cmd_result_code::SERVER_ALREADY_EXISTS, "Server already exists in the cluster."},
-             {cmd_result_code::CONFIG_CHANGING, "Previous configuration change has not been committed yet."},
+             {cmd_result_code::SERVER_ALREADY_EXISTS,
+              "Server already exists in the cluster."},
+             {cmd_result_code::CONFIG_CHANGING,
+              "Previous configuration change has not been committed yet."},
              {cmd_result_code::SERVER_IS_JOINING, "Other server is being added."},
              {cmd_result_code::SERVER_NOT_FOUND, "Cannot find server."},
              {cmd_result_code::CANNOT_REMOVE_LEADER, "Cannot remove leader."},
-             {cmd_result_code::TERM_MISMATCH, "The current term does not match the expected term."},
-             {cmd_result_code::RESULT_NOT_EXIST_YET, "Operation is in progress and the result does not exist yet."},
+             {cmd_result_code::TERM_MISMATCH,
+              "The current term does not match the expected term."},
+             {cmd_result_code::RESULT_NOT_EXIST_YET,
+              "Operation is in progress and the result does not exist yet."},
              {cmd_result_code::FAILED, "Failed."}});
         auto entry = code_str_map.find((int)code);
-        if (entry == code_str_map.end()) { return "Unknown (" + std::to_string((int)code) + ")."; }
+        if (entry == code_str_map.end()) {
+            return "Unknown (" + std::to_string((int)code) + ").";
+        }
         return entry->second;
     }
 
@@ -261,16 +268,20 @@ public:
      * @return Result value.
      */
     T& get() {
-        std::unique_lock< std::mutex > lock(lock_);
+        std::unique_lock<std::mutex> lock(lock_);
         if (has_result_) {
-            if (err_ == nullptr) { return result_; }
+            if (err_ == nullptr) {
+                return result_;
+            }
             // Return empty result rather than throw exception.
             // Caller should handle it properly.
             return empty_result_;
         }
 
         cv_.wait(lock);
-        if (err_ == nullptr) { return result_; }
+        if (err_ == nullptr) {
+            return result_;
+        }
 
         return empty_result_;
     }
@@ -289,10 +300,10 @@ private:
 };
 
 // For backward compatibility.
-template < typename T, typename TE = std::shared_ptr< std::exception > >
-using async_result = cmd_result< T, TE >;
+template <typename T, typename TE = std::shared_ptr<std::exception>>
+using async_result = cmd_result<T, TE>;
 
-template < typename T, typename TE = std::shared_ptr< std::exception > >
-using result_ptr = std::shared_ptr< cmd_result< T, TE > >;
+template <typename T, typename TE = std::shared_ptr<std::exception>>
+using result_ptr = std::shared_ptr<cmd_result<T, TE>>;
 
 } // namespace nuraft

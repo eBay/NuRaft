@@ -97,8 +97,10 @@ public:
      * @param line_number Line number of the log.
      * @param log_line Contents of the log.
      */
-    virtual void put_details([[maybe_unused]] int level, [[maybe_unused]] const char* source_file,
-                             [[maybe_unused]] const char* func_name, [[maybe_unused]] size_t line_number,
+    virtual void put_details([[maybe_unused]] int level,
+                             [[maybe_unused]] const char* source_file,
+                             [[maybe_unused]] const char* func_name,
+                             [[maybe_unused]] size_t line_number,
                              [[maybe_unused]] const std::string& log_line) {}
 };
 

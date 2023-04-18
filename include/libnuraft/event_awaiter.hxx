@@ -32,7 +32,8 @@ private:
     enum class AS { idle = 0x0, ready = 0x1, waiting = 0x2, done = 0x3 };
 
 public:
-    EventAwaiter() : status(AS::idle) {}
+    EventAwaiter()
+        : status(AS::idle) {}
 
     void reset() { status.store(AS::idle); }
 
@@ -44,7 +45,7 @@ public:
         AS expected = AS::idle;
         if (status.compare_exchange_strong(expected, AS::ready)) {
             // invoke() has not been invoked yet, wait for it.
-            std::unique_lock< std::mutex > l(cvLock);
+            std::unique_lock<std::mutex> l(cvLock);
             expected = AS::ready;
             if (status.compare_exchange_strong(expected, AS::waiting)) {
                 if (time_us) {
@@ -68,7 +69,7 @@ public:
             return;
         }
 
-        std::unique_lock< std::mutex > l(cvLock);
+        std::unique_lock<std::mutex> l(cvLock);
         expected = AS::ready;
         if (status.compare_exchange_strong(expected, AS::done)) {
             // wait() has been called earlier than invoke(),
@@ -81,7 +82,7 @@ public:
     }
 
 private:
-    std::atomic< AS > status;
+    std::atomic<AS> status;
     std::mutex cvLock;
     std::condition_variable cv;
 };

@@ -30,13 +30,18 @@ namespace nuraft {
 
 class req_msg : public msg_base {
 public:
-    req_msg(uint64_t term, msg_type type, int32_t src, int32_t dst, uint64_t last_log_term, uint64_t last_log_idx,
-            uint64_t commit_idx) :
-            msg_base(term, type, src, dst),
-            last_log_term_(last_log_term),
-            last_log_idx_(last_log_idx),
-            commit_idx_(commit_idx),
-            log_entries_() {}
+    req_msg(uint64_t term,
+            msg_type type,
+            int32_t src,
+            int32_t dst,
+            uint64_t last_log_term,
+            uint64_t last_log_idx,
+            uint64_t commit_idx)
+        : msg_base(term, type, src, dst)
+        , last_log_term_(last_log_term)
+        , last_log_idx_(last_log_idx)
+        , commit_idx_(commit_idx)
+        , log_entries_() {}
 
     ~req_msg() override {}
 
@@ -49,7 +54,7 @@ public:
 
     uint64_t get_commit_idx() const { return commit_idx_; }
 
-    std::vector< std::shared_ptr< log_entry > >& log_entries() { return log_entries_; }
+    std::vector<std::shared_ptr<log_entry>>& log_entries() { return log_entries_; }
 
 private:
     // Term of last log below.
@@ -66,7 +71,7 @@ private:
     uint64_t commit_idx_;
 
     // Logs. Can be empty.
-    std::vector< std::shared_ptr< log_entry > > log_entries_;
+    std::vector<std::shared_ptr<log_entry>> log_entries_;
 };
 
 } // namespace nuraft

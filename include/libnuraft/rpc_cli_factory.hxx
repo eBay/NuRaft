@@ -28,7 +28,7 @@ class rpc_client_factory {
     __interface_body__(rpc_client_factory);
 
 public:
-    virtual std::shared_ptr< rpc_client > create_client(const std::string& endpoint) = 0;
+    virtual std::shared_ptr<rpc_client> create_client(const std::string& endpoint) = 0;
 };
 
 } // namespace nuraft

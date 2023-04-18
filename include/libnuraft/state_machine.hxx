@@ -35,9 +35,11 @@ class state_machine {
 
 public:
     struct ext_op_params {
-        ext_op_params(uint64_t _log_idx, std::shared_ptr< buffer >& _data) : log_idx(_log_idx), data(_data) {}
+        ext_op_params(uint64_t _log_idx, std::shared_ptr<buffer>& _data)
+            : log_idx(_log_idx)
+            , data(_data) {}
         uint64_t log_idx;
-        std::shared_ptr< buffer >& data;
+        std::shared_ptr<buffer>& data;
         // May add more parameters in the future.
     };
 
@@ -56,7 +58,8 @@ public:
      * @param data Payload of the Raft log.
      * @return Result value of state machine.
      */
-    virtual std::shared_ptr< buffer > commit([[maybe_unused]] const uint64_t log_idx, [[maybe_unused]] buffer& data) {
+    virtual std::shared_ptr<buffer> commit([[maybe_unused]] const uint64_t log_idx,
+                                           [[maybe_unused]] buffer& data) {
         return nullptr;
     }
 
@@ -65,7 +68,7 @@ public:
      * Extended version of `commit`, for users want to keep
      * the data without any extra memory copy.
      */
-    virtual std::shared_ptr< buffer > commit_ext(const ext_op_params& params) {
+    virtual std::shared_ptr<buffer> commit_ext(const ext_op_params& params) {
         return commit(params.log_idx, *params.data);
     }
 
@@ -76,8 +79,9 @@ public:
      * @param log_idx Raft log number of the configuration change.
      * @param new_conf New cluster configuration.
      */
-    virtual void commit_config([[maybe_unused]] const uint64_t log_idx,
-                               [[maybe_unused]] std::shared_ptr< cluster_config >& new_conf) {}
+    virtual void
+    commit_config([[maybe_unused]] const uint64_t log_idx,
+                  [[maybe_unused]] std::shared_ptr<cluster_config>& new_conf) {}
 
     /**
      * Pre-commit the given Raft log.
@@ -92,8 +96,8 @@ public:
      * @param data Payload of the Raft log.
      * @return Result value of state machine.
      */
-    virtual std::shared_ptr< buffer > pre_commit([[maybe_unused]] const uint64_t log_idx,
-                                                 [[maybe_unused]] buffer& data) {
+    virtual std::shared_ptr<buffer> pre_commit([[maybe_unused]] const uint64_t log_idx,
+                                               [[maybe_unused]] buffer& data) {
         return nullptr;
     }
 
@@ -102,7 +106,7 @@ public:
      * Extended version of `pre_commit`, for users want to keep
      * the data without any extra memory copy.
      */
-    virtual std::shared_ptr< buffer > pre_commit_ext(const ext_op_params& params) {
+    virtual std::shared_ptr<buffer> pre_commit_ext(const ext_op_params& params) {
         return pre_commit(params.log_idx, *params.data);
     }
 
@@ -118,14 +122,17 @@ public:
      * @param log_idx Raft log number to commit.
      * @param data Payload of the Raft log.
      */
-    virtual void rollback([[maybe_unused]] const uint64_t log_idx, [[maybe_unused]] buffer& data) {}
+    virtual void rollback([[maybe_unused]] const uint64_t log_idx,
+                          [[maybe_unused]] buffer& data) {}
 
     /**
      * (Optional)
      * Extended version of `rollback`, for users want to keep
      * the data without any extra memory copy.
      */
-    virtual void rollback_ext(const ext_op_params& params) { rollback(params.log_idx, *params.data); }
+    virtual void rollback_ext(const ext_op_params& params) {
+        rollback(params.log_idx, *params.data);
+    }
 
     /**
      * (Optional)
@@ -160,7 +167,8 @@ public:
      * @param offset Byte offset of given chunk.
      * @param data Payload of given chunk.
      */
-    virtual void save_snapshot_data([[maybe_unused]] snapshot& s, [[maybe_unused]] const uint64_t offset,
+    virtual void save_snapshot_data([[maybe_unused]] snapshot& s,
+                                    [[maybe_unused]] const uint64_t offset,
                                     [[maybe_unused]] buffer& data) {}
 
     /**
@@ -186,8 +194,10 @@ public:
      * @param is_first_obj `true` if this is the first object.
      * @param is_last_obj `true` if this is the last object.
      */
-    virtual void save_logical_snp_obj([[maybe_unused]] snapshot& s, [[maybe_unused]] uint64_t& obj_id,
-                                      [[maybe_unused]] buffer& data, [[maybe_unused]] bool is_first_obj,
+    virtual void save_logical_snp_obj([[maybe_unused]] snapshot& s,
+                                      [[maybe_unused]] uint64_t& obj_id,
+                                      [[maybe_unused]] buffer& data,
+                                      [[maybe_unused]] bool is_first_obj,
                                       [[maybe_unused]] bool is_last_obj) {}
 
     /**
@@ -209,7 +219,8 @@ public:
      * @return Amount of bytes read.
      *         0 if failed.
      */
-    virtual int read_snapshot_data([[maybe_unused]] snapshot& s, [[maybe_unused]] const uint64_t offset,
+    virtual int read_snapshot_data([[maybe_unused]] snapshot& s,
+                                   [[maybe_unused]] const uint64_t offset,
                                    [[maybe_unused]] buffer& data) {
         return 0;
     }
@@ -235,8 +246,10 @@ public:
      * @param[out] is_last_obj Set `true` if this is the last object.
      * @return Negative number if failed.
      */
-    virtual int read_logical_snp_obj([[maybe_unused]] snapshot& s, [[maybe_unused]] void*& user_snp_ctx,
-                                     [[maybe_unused]] uint64_t obj_id, std::shared_ptr< buffer >& data_out,
+    virtual int read_logical_snp_obj([[maybe_unused]] snapshot& s,
+                                     [[maybe_unused]] void*& user_snp_ctx,
+                                     [[maybe_unused]] uint64_t obj_id,
+                                     std::shared_ptr<buffer>& data_out,
                                      bool& is_last_obj) {
         data_out = buffer::alloc(4); // A dummy buffer.
         is_last_obj = true;
@@ -261,7 +274,7 @@ public:
      *
      * @return Pointer to the latest snapshot.
      */
-    virtual std::shared_ptr< snapshot > last_snapshot() = 0;
+    virtual std::shared_ptr<snapshot> last_snapshot() = 0;
 
     /**
      * Get the last committed Raft log number.
@@ -282,7 +295,8 @@ public:
      * @param when_done Callback function that will be called after
      *                  snapshot creation is done.
      */
-    virtual void create_snapshot(snapshot& s, async_result< bool >::handler_type& when_done) = 0;
+    virtual void create_snapshot(snapshot& s,
+                                 async_result<bool>::handler_type& when_done) = 0;
 
     /**
      * Decide to create snapshot or not.
@@ -311,7 +325,9 @@ public:
      * Parameters for `adjust_commit_index` API.
      */
     struct adjust_commit_index_params {
-        adjust_commit_index_params() : current_commit_index_(0), expected_commit_index_(0) {}
+        adjust_commit_index_params()
+            : current_commit_index_(0)
+            , expected_commit_index_(0) {}
 
         /**
          * The current committed index.
@@ -327,7 +343,7 @@ public:
          * A map of <peer ID, peer's log index>, including the
          * leader and learners.
          */
-        std::unordered_map< int, uint64_t > peer_index_map_;
+        std::unordered_map<int, uint64_t> peer_index_map_;
     };
 
     /**

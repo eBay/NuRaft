@@ -159,8 +159,8 @@ public:
 private:
     Type stat_type_;
     std::string stat_name_;
-    std::atomic< uint64_t > counter_;
-    std::atomic< int64_t > gauge_;
+    std::atomic<uint64_t> counter_;
+    std::atomic<int64_t> gauge_;
     Histogram* hist_;
 };
 
@@ -173,7 +173,7 @@ public:
 
     stat_elem* create_stat(stat_elem::Type type, const std::string& stat_name);
 
-    void get_all_stats(std::vector< stat_elem* >& stats_out);
+    void get_all_stats(std::vector<stat_elem*>& stats_out);
 
     void reset_stat(const std::string& stat_name);
 
@@ -184,7 +184,7 @@ private:
     ~stat_mgr();
 
     std::mutex stat_map_lock_;
-    std::map< std::string, stat_elem* > stat_map_;
+    std::map<std::string, stat_elem*> stat_map_;
 };
 
 } // namespace nuraft

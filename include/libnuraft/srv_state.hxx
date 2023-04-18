@@ -31,10 +31,15 @@ namespace nuraft {
 
 class srv_state {
 public:
-    srv_state() : term_(0L), voted_for_(-1), election_timer_allowed_(true) {}
+    srv_state()
+        : term_(0L)
+        , voted_for_(-1)
+        , election_timer_allowed_(true) {}
 
-    srv_state(uint64_t term, int voted_for, bool et_allowed) :
-            term_(term), voted_for_(voted_for), election_timer_allowed_(et_allowed) {}
+    srv_state(uint64_t term, int voted_for, bool et_allowed)
+        : term_(term)
+        , voted_for_(voted_for)
+        , election_timer_allowed_(et_allowed) {}
 
     /**
      * Callback function type for increasing term.
@@ -42,31 +47,33 @@ public:
      * @param Current term.
      * @return New term, it should be greater than current term.
      */
-    using inc_term_func = std::function< uint64_t(uint64_t) >;
+    using inc_term_func = std::function<uint64_t(uint64_t)>;
 
     __nocopy__(srv_state);
 
 public:
-    static std::shared_ptr< srv_state > deserialize(buffer& buf) {
-        if (buf.size() > sz_uint64_t + sz_int) { return deserialize_v1p(buf); }
+    static std::shared_ptr<srv_state> deserialize(buffer& buf) {
+        if (buf.size() > sz_uint64_t + sz_int) {
+            return deserialize_v1p(buf);
+        }
         // Backward compatibility.
         return deserialize_v0(buf);
     }
 
-    static std::shared_ptr< srv_state > deserialize_v0(buffer& buf) {
+    static std::shared_ptr<srv_state> deserialize_v0(buffer& buf) {
         uint64_t term = buf.get_uint64();
         int voted_for = buf.get_int();
-        return std::make_shared< srv_state >(term, voted_for, true);
+        return std::make_shared<srv_state>(term, voted_for, true);
     }
 
-    static std::shared_ptr< srv_state > deserialize_v1p(buffer& buf) {
+    static std::shared_ptr<srv_state> deserialize_v1p(buffer& buf) {
         buffer_serializer bs(buf);
         uint8_t ver = bs.get_u8();
         (void)ver;
         uint64_t term = bs.get_u64();
         int voted_for = bs.get_i32();
         bool et_allowed = (bs.get_u8() == 1);
-        return std::make_shared< srv_state >(term, voted_for, et_allowed);
+        return std::make_shared<srv_state>(term, voted_for, et_allowed);
     }
 
     void set_inc_term_func(inc_term_func to) { inc_term_cb_ = to; }
@@ -93,24 +100,24 @@ public:
 
     void allow_election_timer(bool to) { election_timer_allowed_ = to; }
 
-    std::shared_ptr< buffer > serialize() const { return serialize_v1p(CURRENT_VERSION); }
+    std::shared_ptr<buffer> serialize() const { return serialize_v1p(CURRENT_VERSION); }
 
-    std::shared_ptr< buffer > serialize_v0() const {
-        std::shared_ptr< buffer > buf = buffer::alloc(sz_uint64_t + sz_int);
+    std::shared_ptr<buffer> serialize_v0() const {
+        std::shared_ptr<buffer> buf = buffer::alloc(sz_uint64_t + sz_int);
         buf->put(term_);
         buf->put(voted_for_);
         buf->pos(0);
         return buf;
     }
 
-    std::shared_ptr< buffer > serialize_v1p(size_t version) const {
+    std::shared_ptr<buffer> serialize_v1p(size_t version) const {
         //   << Format >>
         // version          1 byte
         // term             8 bytes
         // voted_for        4 bytes
         // election timer   1 byte
-        std::shared_ptr< buffer > buf =
-            buffer::alloc(sizeof(uint8_t) + sizeof(uint64_t) + sizeof(int32_t) + sizeof(uint8_t));
+        std::shared_ptr<buffer> buf = buffer::alloc(sizeof(uint8_t) + sizeof(uint64_t)
+                                                    + sizeof(int32_t) + sizeof(uint8_t));
         buffer_serializer bs(buf);
         bs.put_u8(version);
         bs.put_u64(term_);
@@ -125,24 +132,24 @@ private:
     /**
      * Term.
      */
-    std::atomic< uint64_t > term_;
+    std::atomic<uint64_t> term_;
 
     /**
      * Server ID that this server voted for.
      * `-1` if not voted.
      */
-    std::atomic< int > voted_for_;
+    std::atomic<int> voted_for_;
 
     /**
      * `true` if election timer is allowed.
      */
-    std::atomic< bool > election_timer_allowed_;
+    std::atomic<bool> election_timer_allowed_;
 
     /**
      * Custom callback function for increasing term.
      * If not given, term will be increased by 1.
      */
-    std::function< uint64_t(uint64_t) > inc_term_cb_;
+    std::function<uint64_t(uint64_t)> inc_term_cb_;
 };
 
 } // namespace nuraft

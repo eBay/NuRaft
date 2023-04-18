@@ -30,7 +30,7 @@ class rpc_listener {
     __interface_body__(rpc_listener);
 
 public:
-    virtual void listen(std::shared_ptr< raft_server >& handler) = 0;
+    virtual void listen(std::shared_ptr<raft_server>& handler) = 0;
     virtual void stop() = 0;
     virtual void shutdown() {}
 };

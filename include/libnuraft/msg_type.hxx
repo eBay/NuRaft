@@ -60,7 +60,9 @@ enum msg_type {
 };
 
 inline bool is_valid_msg(msg_type type) {
-    if (type >= request_vote_request && type <= other_response) { return true; }
+    if (type >= request_vote_request && type <= other_response) {
+        return true;
+    }
     return false;
 }
 
@@ -126,7 +128,7 @@ inline std::string msg_type_to_string(msg_type type) {
     case custom_notification_response:
         return "custom_notification_response";
     default:
-        return "unknown (" + std::to_string(static_cast< int >(type)) + ")";
+        return "unknown (" + std::to_string(static_cast<int>(type)) + ")";
     }
 }
 

@@ -32,9 +32,14 @@ namespace nuraft {
 
 class log_entry {
 public:
-    log_entry(uint64_t term, const std::shared_ptr< buffer >& buff, log_val_type value_type = log_val_type::app_log,
-              uint64_t log_timestamp = 0) :
-            term_(term), value_type_(value_type), buff_(buff), timestamp_us_(log_timestamp) {}
+    log_entry(uint64_t term,
+              const std::shared_ptr<buffer>& buff,
+              log_val_type value_type = log_val_type::app_log,
+              uint64_t log_timestamp = 0)
+        : term_(term)
+        , value_type_(value_type)
+        , buff_(buff)
+        , timestamp_us_(log_timestamp) {}
 
     __nocopy__(log_entry);
 
@@ -63,27 +68,28 @@ public:
         return *buff_;
     }
 
-    std::shared_ptr< buffer > get_buf_ptr() const { return buff_; }
+    std::shared_ptr<buffer> get_buf_ptr() const { return buff_; }
 
     uint64_t get_timestamp() const { return timestamp_us_; }
 
     void set_timestamp(uint64_t t) { timestamp_us_ = t; }
 
-    std::shared_ptr< buffer > serialize() {
+    std::shared_ptr<buffer> serialize() {
         buff_->pos(0);
-        std::shared_ptr< buffer > buf = buffer::alloc(sizeof(uint64_t) + sizeof(char) + buff_->size());
+        std::shared_ptr<buffer> buf =
+            buffer::alloc(sizeof(uint64_t) + sizeof(char) + buff_->size());
         buf->put(term_);
-        buf->put((static_cast< std::byte >(value_type_)));
+        buf->put((static_cast<std::byte>(value_type_)));
         buf->put(*buff_);
         buf->pos(0);
         return buf;
     }
 
-    static std::shared_ptr< log_entry > deserialize(buffer& buf) {
+    static std::shared_ptr<log_entry> deserialize(buffer& buf) {
         uint64_t term = buf.get_uint64();
-        log_val_type t = static_cast< log_val_type >(buf.get_byte());
-        std::shared_ptr< buffer > data = buffer::copy(buf);
-        return std::make_shared< log_entry >(term, data, t);
+        log_val_type t = static_cast<log_val_type>(buf.get_byte());
+        std::shared_ptr<buffer> data = buffer::copy(buf);
+        return std::make_shared<log_entry>(term, data, t);
     }
 
     static uint64_t term_in_buffer(buffer& buf) {
@@ -106,7 +112,7 @@ private:
     /**
      * Actual data that this log entry carries.
      */
-    std::shared_ptr< buffer > buff_;
+    std::shared_ptr<buffer> buff_;
 
     /**
      * The timestamp (since epoch) when this log entry was generated

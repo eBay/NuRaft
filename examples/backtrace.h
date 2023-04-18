@@ -36,12 +36,12 @@ limitations under the License.
 #include <cxxabi.h>
 #include <execinfo.h>
 #include <inttypes.h>
-#include <stdio.h>
 #include <signal.h>
+#include <stdio.h>
 
 #ifdef __APPLE__
-#include <mach-o/getsect.h>
 #include <mach-o/dyld.h>
+#include <mach-o/getsect.h>
 
 static UINT64_T_UNUSED static_base_address(void) {
     const struct segment_command_64* command = getsegbyname(SEG_TEXT /*"__TEXT"*/);
@@ -70,44 +70,61 @@ static INTPTR_UNUSED image_slide(void) {
 
     auto image_count = _dyld_image_count();
     for (decltype(image_count) i = 0; i < image_count; i++) {
-        if (strcmp(_dyld_get_image_name(i), exec_path.c_str()) == 0) { return _dyld_get_image_vmaddr_slide(i); }
+        if (strcmp(_dyld_get_image_name(i), exec_path.c_str()) == 0) {
+            return _dyld_get_image_vmaddr_slide(i);
+        }
     }
     return -1;
 }
 #endif
 
-#define _snprintf(msg, avail_len, cur_len, msg_len, ...)                                                               \
-    avail_len = (avail_len > cur_len) ? (avail_len - cur_len) : 0;                                                     \
-    msg_len = snprintf(msg + cur_len, avail_len, __VA_ARGS__);                                                         \
+#define _snprintf(msg, avail_len, cur_len, msg_len, ...)           \
+    avail_len = (avail_len > cur_len) ? (avail_len - cur_len) : 0; \
+    msg_len = snprintf(msg + cur_len, avail_len, __VA_ARGS__);     \
     cur_len += (avail_len > msg_len) ? msg_len : avail_len
 
 static SIZE_T_UNUSED _stack_backtrace(void** stack_ptr, size_t stack_ptr_capacity) {
     return backtrace(stack_ptr, stack_ptr_capacity);
 }
 
-static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr, char** stack_msg, int stack_size, char* output_buf,
+static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr,
+                                            char** stack_msg,
+                                            int stack_size,
+                                            char* output_buf,
                                             size_t output_buflen);
 
-static SIZE_T_UNUSED _stack_interpret_apple(void** stack_ptr, char** stack_msg, int stack_size, char* output_buf,
+static SIZE_T_UNUSED _stack_interpret_apple(void** stack_ptr,
+                                            char** stack_msg,
+                                            int stack_size,
+                                            char* output_buf,
                                             size_t output_buflen);
 
-static SIZE_T_UNUSED _stack_interpret_other(void** stack_ptr, char** stack_msg, int stack_size, char* output_buf,
+static SIZE_T_UNUSED _stack_interpret_other(void** stack_ptr,
+                                            char** stack_msg,
+                                            int stack_size,
+                                            char* output_buf,
                                             size_t output_buflen);
 
-static SIZE_T_UNUSED _stack_interpret(void** stack_ptr, int stack_size, char* output_buf, size_t output_buflen) {
+static SIZE_T_UNUSED _stack_interpret(void** stack_ptr,
+                                      int stack_size,
+                                      char* output_buf,
+                                      size_t output_buflen) {
     char** stack_msg = nullptr;
     stack_msg = backtrace_symbols(stack_ptr, stack_size);
 
     size_t len = 0;
 
 #if defined(__linux__)
-    len = _stack_interpret_linux(stack_ptr, stack_msg, stack_size, output_buf, output_buflen);
+    len = _stack_interpret_linux(
+        stack_ptr, stack_msg, stack_size, output_buf, output_buflen);
 
 #elif defined(__APPLE__)
-    len = _stack_interpret_apple(stack_ptr, stack_msg, stack_size, output_buf, output_buflen);
+    len = _stack_interpret_apple(
+        stack_ptr, stack_msg, stack_size, output_buf, output_buflen);
 
 #else
-    len = _stack_interpret_other(stack_ptr, stack_msg, stack_size, output_buf, output_buflen);
+    len = _stack_interpret_other(
+        stack_ptr, stack_msg, stack_size, output_buf, output_buflen);
 
 #endif
     free(stack_msg);
@@ -115,7 +132,10 @@ static SIZE_T_UNUSED _stack_interpret(void** stack_ptr, int stack_size, char* ou
     return len;
 }
 
-static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr, char** stack_msg, int stack_size, char* output_buf,
+static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr,
+                                            char** stack_msg,
+                                            int stack_size,
+                                            char* output_buf,
                                             size_t output_buflen) {
     size_t cur_len = 0;
 #ifdef __linux__
@@ -131,7 +151,8 @@ static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr, char** stack_msg, 
         //   /foo/bar/executable(+0x5996) [0x555555559996]
 
         int fname_len = 0;
-        while (stack_msg[i][fname_len] != '(' && stack_msg[i][fname_len] != ' ' && stack_msg[i][fname_len] != 0x0) {
+        while (stack_msg[i][fname_len] != '(' && stack_msg[i][fname_len] != ' '
+               && stack_msg[i][fname_len] != 0x0) {
             ++fname_len;
         }
 
@@ -143,7 +164,11 @@ static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr, char** stack_msg, 
             while (stack_msg[i][upto] != ')' && stack_msg[i][upto] != 0x0) {
                 upto++;
             }
-            snprintf(addr_str, 256, "%.*s", upto - fname_len - 2, &stack_msg[i][fname_len + 2]);
+            snprintf(addr_str,
+                     256,
+                     "%.*s",
+                     upto - fname_len - 2,
+                     &stack_msg[i][fname_len + 2]);
 
             // Convert hex string -> integer address.
             std::stringstream ss;
@@ -168,7 +193,13 @@ static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr, char** stack_msg, 
 
         size_t msg_len = 0;
         size_t avail_len = output_buflen;
-        _snprintf(output_buf, avail_len, cur_len, msg_len, "#%-2zu 0x%016" PRIxPTR " in ", frame_num++, actual_addr);
+        _snprintf(output_buf,
+                  avail_len,
+                  cur_len,
+                  msg_len,
+                  "#%-2zu 0x%016" PRIxPTR " in ",
+                  frame_num++,
+                  actual_addr);
 
         int status;
         char* cc = abi::__cxa_demangle(mangled_name, 0, 0, &status);
@@ -183,7 +214,11 @@ static SIZE_T_UNUSED _stack_interpret_linux(void** stack_ptr, char** stack_msg, 
             if (s_pos != std::string::npos && e_pos != std::string::npos) {
                 _func_name = msg_str.substr(s_pos + 1, e_pos - s_pos - 1);
             }
-            _snprintf(output_buf, avail_len, cur_len, msg_len, "%s() at ",
+            _snprintf(output_buf,
+                      avail_len,
+                      cur_len,
+                      msg_len,
+                      "%s() at ",
                       (_func_name.empty() ? mangled_name : _func_name.c_str()));
         }
 
@@ -204,7 +239,10 @@ static VOID_UNUSED skip_glyph(const std::string base_str, size_t& cursor) {
         cursor++;
 }
 
-static SIZE_T_UNUSED _stack_interpret_apple(void** stack_ptr, char** stack_msg, int stack_size, char* output_buf,
+static SIZE_T_UNUSED _stack_interpret_apple(void** stack_ptr,
+                                            char** stack_msg,
+                                            int stack_size,
+                                            char* output_buf,
                                             size_t output_buflen) {
     size_t cur_len = 0;
 #ifdef __APPLE__
@@ -259,16 +297,33 @@ static SIZE_T_UNUSED _stack_interpret_apple(void** stack_ptr, char** stack_msg, 
         size_t msg_len = 0;
         size_t avail_len = output_buflen;
 
-        _snprintf(output_buf, avail_len, cur_len, msg_len, "#%-2zu %s in ", frame_num++, address.c_str());
+        _snprintf(output_buf,
+                  avail_len,
+                  cur_len,
+                  msg_len,
+                  "#%-2zu %s in ",
+                  frame_num++,
+                  address.c_str());
 
         if (filename != exec_file) {
             // Dynamic library.
             int status;
             char* cc = abi::__cxa_demangle(func_mangled.c_str(), 0, 0, &status);
             if (cc) {
-                _snprintf(output_buf, avail_len, cur_len, msg_len, "%s at %s\n", cc, filename.c_str());
+                _snprintf(output_buf,
+                          avail_len,
+                          cur_len,
+                          msg_len,
+                          "%s at %s\n",
+                          cc,
+                          filename.c_str());
             } else {
-                _snprintf(output_buf, avail_len, cur_len, msg_len, "%s() at %s\n", func_mangled.c_str(),
+                _snprintf(output_buf,
+                          avail_len,
+                          cur_len,
+                          msg_len,
+                          "%s() at %s\n",
+                          func_mangled.c_str(),
                           filename.c_str());
             }
         } else {
@@ -295,7 +350,12 @@ static SIZE_T_UNUSED _stack_interpret_apple(void** stack_ptr, char** stack_msg, 
             std::string source_part = atos_str.substr(d_pos + 3);
             source_part = source_part.substr(0, source_part.size() - 2);
 
-            _snprintf(output_buf, avail_len, cur_len, msg_len, "%s at %s\n", function_part.c_str(),
+            _snprintf(output_buf,
+                      avail_len,
+                      cur_len,
+                      msg_len,
+                      "%s at %s\n",
+                      function_part.c_str(),
                       source_part.c_str());
         }
     }
@@ -304,7 +364,10 @@ static SIZE_T_UNUSED _stack_interpret_apple(void** stack_ptr, char** stack_msg, 
     return cur_len;
 }
 
-static SIZE_T_UNUSED _stack_interpret_other(void** stack_ptr, char** stack_msg, int stack_size, char* output_buf,
+static SIZE_T_UNUSED _stack_interpret_other(void** stack_ptr,
+                                            char** stack_msg,
+                                            int stack_size,
+                                            char* output_buf,
                                             size_t output_buflen) {
     size_t cur_len = 0;
     size_t frame_num = 0;

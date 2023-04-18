@@ -41,12 +41,15 @@ class rpc_exception;
 class snapshot;
 class snapshot_sync_ctx {
 public:
-    snapshot_sync_ctx(const std::shared_ptr< snapshot >& s, int peer_id, uint64_t timeout_ms, uint64_t offset = 0L);
+    snapshot_sync_ctx(const std::shared_ptr<snapshot>& s,
+                      int peer_id,
+                      uint64_t timeout_ms,
+                      uint64_t offset = 0L);
 
     __nocopy__(snapshot_sync_ctx);
 
 public:
-    const std::shared_ptr< snapshot >& get_snapshot() const { return snapshot_; }
+    const std::shared_ptr<snapshot>& get_snapshot() const { return snapshot_; }
     uint64_t get_offset() const { return offset_; }
     uint64_t get_obj_idx() const { return obj_idx_; }
     void*& get_user_snp_ctx() { return user_snp_ctx_; }
@@ -68,7 +71,7 @@ private:
     /**
      * Pointer to snapshot.
      */
-    std::shared_ptr< snapshot > snapshot_;
+    std::shared_ptr<snapshot> snapshot_;
 
     /**
      * Current cursor of snapshot.
@@ -107,8 +110,10 @@ public:
      * @param h Response handler.
      * @return `true` if succeeds (when there is no pending request for the same peer).
      */
-    bool push(std::shared_ptr< raft_server > r, std::shared_ptr< peer > p,
-              std::function< void(std::shared_ptr< resp_msg >&, std::shared_ptr< rpc_exception >&) >& h);
+    bool push(std::shared_ptr<raft_server> r,
+              std::shared_ptr<peer> p,
+              std::function<void(std::shared_ptr<resp_msg>&,
+                                 std::shared_ptr<rpc_exception>&)>& h);
 
     /**
      * Invoke IO thread.
@@ -145,7 +150,7 @@ private:
 
     void async_io_loop();
 
-    bool push(std::shared_ptr< io_queue_elem >& elem);
+    bool push(std::shared_ptr<io_queue_elem>& elem);
 
     /**
      * A dedicated thread for reading snapshot object.
@@ -155,17 +160,17 @@ private:
     /**
      * Event awaiter for `io_thread_`.
      */
-    std::shared_ptr< EventAwaiter > io_thread_ea_;
+    std::shared_ptr<EventAwaiter> io_thread_ea_;
 
     /**
      * `true` if we are closing this context.
      */
-    std::atomic< bool > terminating_;
+    std::atomic<bool> terminating_;
 
     /**
      * Request queue. Allow only one request per peer at a time.
      */
-    std::list< std::shared_ptr< io_queue_elem > > queue_;
+    std::list<std::shared_ptr<io_queue_elem>> queue_;
 
     /**
      * Lock for `queue_`.

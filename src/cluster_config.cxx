@@ -22,11 +22,11 @@ limitations under the License.
 
 namespace nuraft {
 
-std::shared_ptr< buffer > cluster_config::serialize() const {
+std::shared_ptr<buffer> cluster_config::serialize() const {
     size_t sz = 2 * sz_uint64_t + sz_int + sz_byte;
-    std::vector< std::shared_ptr< buffer > > srv_buffs;
+    std::vector<std::shared_ptr<buffer>> srv_buffs;
     for (auto it = servers_.cbegin(); it != servers_.cend(); ++it) {
-        std::shared_ptr< buffer > buf = (*it)->serialize();
+        std::shared_ptr<buffer> buf = (*it)->serialize();
         srv_buffs.push_back(buf);
         sz += buf->size();
     }
@@ -34,11 +34,11 @@ std::shared_ptr< buffer > cluster_config::serialize() const {
     sz += sz_int;
     sz += user_ctx_.size();
 
-    std::shared_ptr< buffer > result = buffer::alloc(sz);
+    std::shared_ptr<buffer> result = buffer::alloc(sz);
     result->put(log_idx_);
     result->put(prev_log_idx_);
     result->put(async_replication_ ? std::byte{0x01} : std::byte{0x00});
-    result->put(reinterpret_cast< std::byte const* >(user_ctx_.data()), user_ctx_.size());
+    result->put(reinterpret_cast<std::byte const*>(user_ctx_.data()), user_ctx_.size());
     result->put((int32_t)servers_.size());
     for (size_t i = 0; i < srv_buffs.size(); ++i) {
         result->put(*srv_buffs[i]);
@@ -48,23 +48,24 @@ std::shared_ptr< buffer > cluster_config::serialize() const {
     return result;
 }
 
-std::shared_ptr< cluster_config > cluster_config::deserialize(buffer& buf) {
+std::shared_ptr<cluster_config> cluster_config::deserialize(buffer& buf) {
     buffer_serializer bs(buf);
     return deserialize(bs);
 }
 
-std::shared_ptr< cluster_config > cluster_config::deserialize(buffer_serializer& bs) {
+std::shared_ptr<cluster_config> cluster_config::deserialize(buffer_serializer& bs) {
     uint64_t log_idx = bs.get_u64();
     uint64_t prev_log_idx = bs.get_u64();
 
     auto const ec = bs.get_u8() ? true : false;
 
     size_t ctx_len;
-    auto ctx_data = reinterpret_cast< std::byte const* >(bs.get_bytes(ctx_len));
+    auto ctx_data = reinterpret_cast<std::byte const*>(bs.get_bytes(ctx_len));
     std::string user_ctx = std::string((const char*)ctx_data, ctx_len);
 
     int32_t cnt = bs.get_i32();
-    std::shared_ptr< cluster_config > conf = std::make_shared< cluster_config >(log_idx, prev_log_idx, ec);
+    std::shared_ptr<cluster_config> conf =
+        std::make_shared<cluster_config>(log_idx, prev_log_idx, ec);
     while (cnt-- > 0) {
         conf->get_servers().push_back(srv_config::deserialize(bs));
     }

@@ -24,29 +24,36 @@ limitations under the License.
 namespace nuraft {
 
 struct timer_helper {
-    timer_helper(size_t duration_us = 0, bool fire_first_event = false) :
-            duration_us_(duration_us), first_event_fired_(!fire_first_event) {
+    timer_helper(size_t duration_us = 0, bool fire_first_event = false)
+        : duration_us_(duration_us)
+        , first_event_fired_(!fire_first_event) {
         reset();
     }
 
-    static void sleep_us(size_t us) { std::this_thread::sleep_for(std::chrono::microseconds(us)); }
+    static void sleep_us(size_t us) {
+        std::this_thread::sleep_for(std::chrono::microseconds(us));
+    }
 
-    static void sleep_ms(size_t ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+    static void sleep_ms(size_t ms) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    }
 
-    static void sleep_sec(size_t sec) { std::this_thread::sleep_for(std::chrono::seconds(sec)); }
+    static void sleep_sec(size_t sec) {
+        std::this_thread::sleep_for(std::chrono::seconds(sec));
+    }
 
     void reset() {
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         t_created_ = std::chrono::system_clock::now();
     }
 
     size_t get_duration_us() const {
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         return duration_us_;
     }
 
     void set_duration_us(size_t us) {
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         duration_us_ = us;
     }
 
@@ -55,51 +62,51 @@ struct timer_helper {
     void set_duration_sec(size_t sec) { set_duration_us(sec * 1000000); }
 
     uint64_t get_us() {
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         auto cur = std::chrono::system_clock::now();
-        std::chrono::duration< double > elapsed = cur - t_created_;
+        std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)(1000000 * elapsed.count());
     }
 
     uint64_t get_ms() {
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         auto cur = std::chrono::system_clock::now();
-        std::chrono::duration< double > elapsed = cur - t_created_;
+        std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)(1000 * elapsed.count());
     }
 
     uint64_t get_sec() {
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         auto cur = std::chrono::system_clock::now();
-        std::chrono::duration< double > elapsed = cur - t_created_;
+        std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)elapsed.count();
     }
 
     bool timeout() {
         auto cur = std::chrono::system_clock::now();
 
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         if (!first_event_fired_) {
             // First event, return `true` immediately.
             first_event_fired_ = true;
             return true;
         }
 
-        std::chrono::duration< double > elapsed = cur - t_created_;
+        std::chrono::duration<double> elapsed = cur - t_created_;
         return (duration_us_ < elapsed.count() * 1000000);
     }
 
     bool timeout_and_reset() {
         auto cur = std::chrono::system_clock::now();
 
-        std::lock_guard< std::mutex > l(lock_);
+        std::lock_guard<std::mutex> l(lock_);
         if (!first_event_fired_) {
             // First event, return `true` immediately.
             first_event_fired_ = true;
             return true;
         }
 
-        std::chrono::duration< double > elapsed = cur - t_created_;
+        std::chrono::duration<double> elapsed = cur - t_created_;
         if (duration_us_ < elapsed.count() * 1000000) {
             t_created_ = cur;
             return true;
@@ -110,11 +117,11 @@ struct timer_helper {
     static uint64_t get_timeofday_us() {
         namespace sc = std::chrono;
         sc::system_clock::duration const d = sc::system_clock::now().time_since_epoch();
-        uint64_t const s = sc::duration_cast< sc::microseconds >(d).count();
+        uint64_t const s = sc::duration_cast<sc::microseconds>(d).count();
         return s;
     }
 
-    std::chrono::time_point< std::chrono::system_clock > t_created_;
+    std::chrono::time_point<std::chrono::system_clock> t_created_;
     size_t duration_us_;
     mutable bool first_event_fired_;
     mutable std::mutex lock_;

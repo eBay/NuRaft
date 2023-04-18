@@ -27,7 +27,11 @@ namespace nuraft {
 
 class msg_base {
 public:
-    msg_base(uint64_t term, msg_type type, int src, int dst) : term_(term), type_(type), src_(src), dst_(dst) {}
+    msg_base(uint64_t term, msg_type type, int src, int dst)
+        : term_(term)
+        , type_(type)
+        , src_(src)
+        , dst_(dst) {}
 
     virtual ~msg_base() {}
 

@@ -31,24 +31,27 @@ public:
         request_resignation = 3,
     };
 
-    custom_notification_msg(type t = out_of_log_range_warning) : type_(t), ctx_(nullptr) {}
+    custom_notification_msg(type t = out_of_log_range_warning)
+        : type_(t)
+        , ctx_(nullptr) {}
 
-    static std::shared_ptr< custom_notification_msg > deserialize(buffer& buf);
+    static std::shared_ptr<custom_notification_msg> deserialize(buffer& buf);
 
-    std::shared_ptr< buffer > serialize() const;
+    std::shared_ptr<buffer> serialize() const;
 
     type type_;
 
-    std::shared_ptr< buffer > ctx_;
+    std::shared_ptr<buffer> ctx_;
 };
 
 class out_of_log_msg {
 public:
-    out_of_log_msg() : start_idx_of_leader_(0) {}
+    out_of_log_msg()
+        : start_idx_of_leader_(0) {}
 
-    static std::shared_ptr< out_of_log_msg > deserialize(buffer& buf);
+    static std::shared_ptr<out_of_log_msg> deserialize(buffer& buf);
 
-    std::shared_ptr< buffer > serialize() const;
+    std::shared_ptr<buffer> serialize() const;
 
     uint64_t start_idx_of_leader_;
 };
@@ -57,9 +60,9 @@ class force_vote_msg {
 public:
     force_vote_msg() {}
 
-    static std::shared_ptr< force_vote_msg > deserialize(buffer& buf);
+    static std::shared_ptr<force_vote_msg> deserialize(buffer& buf);
 
-    std::shared_ptr< buffer > serialize() const;
+    std::shared_ptr<buffer> serialize() const;
 };
 
 } // namespace nuraft

@@ -52,7 +52,7 @@ public:
      * @return If no log entry exists: a dummy constant entry with
      *         value set to null and term set to zero.
      */
-    virtual std::shared_ptr< log_entry > last_entry() const = 0;
+    virtual std::shared_ptr<log_entry> last_entry() const = 0;
 
     /**
      * Append a log entry to store.
@@ -60,7 +60,7 @@ public:
      * @param entry Log entry
      * @return Log index number.
      */
-    virtual uint64_t append(std::shared_ptr< log_entry >& entry) = 0;
+    virtual uint64_t append(std::shared_ptr<log_entry>& entry) = 0;
 
     /**
      * Overwrite a log entry at the given `index`.
@@ -71,7 +71,7 @@ public:
      * @param index Log index number to overwrite.
      * @param entry New log entry to overwrite.
      */
-    virtual void write_at(uint64_t index, std::shared_ptr< log_entry >& entry) = 0;
+    virtual void write_at(uint64_t index, std::shared_ptr<log_entry>& entry) = 0;
 
     /**
      * Invoked after a batch of logs is written as a part of
@@ -80,7 +80,8 @@ public:
      * @param start The start log index number (inclusive)
      * @param cnt The number of log entries written.
      */
-    virtual void end_of_append_batch([[maybe_unused]] uint64_t start, [[maybe_unused]] uint64_t cnt) {}
+    virtual void end_of_append_batch([[maybe_unused]] uint64_t start,
+                                     [[maybe_unused]] uint64_t cnt) {}
 
     /**
      * Get log entries with index [start, end).
@@ -92,8 +93,8 @@ public:
      * @param end The end log index number (exclusive).
      * @return The log entries between [start, end).
      */
-    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > > log_entries(uint64_t start,
-                                                                                       uint64_t end) = 0;
+    virtual std::shared_ptr<std::vector<std::shared_ptr<log_entry>>>
+    log_entries(uint64_t start, uint64_t end) = 0;
 
     /**
      * (Optional)
@@ -112,8 +113,10 @@ public:
      * @return The log entries between [start, end) and limited by the total size
      *         given by the batch_size_hint_in_bytes.
      */
-    virtual std::shared_ptr< std::vector< std::shared_ptr< log_entry > > >
-    log_entries_ext(uint64_t start, uint64_t end, [[maybe_unused]] int64_t batch_size_hint_in_bytes = 0) {
+    virtual std::shared_ptr<std::vector<std::shared_ptr<log_entry>>>
+    log_entries_ext(uint64_t start,
+                    uint64_t end,
+                    [[maybe_unused]] int64_t batch_size_hint_in_bytes = 0) {
         return log_entries(start, end);
     }
 
@@ -123,7 +126,7 @@ public:
      * @param index Should be equal to or greater than 1.
      * @return The log entry or null if index >= this->next_slot().
      */
-    virtual std::shared_ptr< log_entry > entry_at(uint64_t index) = 0;
+    virtual std::shared_ptr<log_entry> entry_at(uint64_t index) = 0;
 
     /**
      * Get the term for the log entry at the specified index.
@@ -142,7 +145,7 @@ public:
      * @param cnt The number of logs to pack.
      * @return Packed (encoded) logs.
      */
-    virtual std::shared_ptr< buffer > pack(uint64_t index, int32_t cnt) = 0;
+    virtual std::shared_ptr<buffer> pack(uint64_t index, int32_t cnt) = 0;
 
     /**
      * Apply the log pack to current log store, starting from index.

@@ -24,9 +24,9 @@ limitations under the License.
 #include <stdint.h>
 
 #include <atomic>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include <limits>
 
 using HistBin = std::atomic<uint64_t>;
@@ -34,10 +34,15 @@ using HistBin = std::atomic<uint64_t>;
 class Histogram;
 class HistItr {
 public:
-    HistItr() : idx(0), maxBins(0), owner(nullptr) { }
+    HistItr()
+        : idx(0)
+        , maxBins(0)
+        , owner(nullptr) {}
 
     HistItr(size_t _idx, size_t _max_bins, const Histogram* _owner)
-        : idx(_idx), maxBins(_max_bins), owner(_owner) {}
+        : idx(_idx)
+        , maxBins(_max_bins)
+        , owner(_owner) {}
 
     // ++A
     HistItr& operator++() {
@@ -80,14 +85,9 @@ public:
         return *this;
     }
 
+    bool operator==(const HistItr& val) const { return (idx == val.idx); }
 
-    bool operator==(const HistItr& val) const {
-        return (idx == val.idx);
-    }
-
-    bool operator!=(const HistItr& val) const {
-        return (idx != val.idx);
-    }
+    bool operator!=(const HistItr& val) const { return (idx != val.idx); }
 
     size_t getIdx() const { return idx; }
 
@@ -98,7 +98,7 @@ public:
         uint64_t ret = 1;
 
         if (idx_rev) {
-            return ret << (idx_rev-1);
+            return ret << (idx_rev - 1);
         } else {
             return 0;
         }
@@ -126,13 +126,12 @@ public:
 
     Histogram(double base = 2.0)
         : EXP_BASE(base)
-        , EXP_BASE_LOG( log(base) )
+        , EXP_BASE_LOG(log(base))
         , count(0)
         , sum(0)
-        , max(0)
-    {
+        , max(0) {
         bins = new HistBin[MAX_BINS];
-        for (size_t i=0; i<MAX_BINS; ++i) {
+        for (size_t i = 0; i < MAX_BINS; ++i) {
             bins[i] = 0;
         }
     }
@@ -143,9 +142,7 @@ public:
         *this = src;
     }
 
-    ~Histogram() {
-        delete[] bins;
-    }
+    ~Histogram() { delete[] bins; }
 
     // this = src
     Histogram& operator=(const Histogram& src) {
@@ -154,8 +151,8 @@ public:
         count = src.getTotal();
         sum = src.getSum();
         max = src.getMax();
-        for (size_t i=0; i<MAX_BINS; ++i) {
-            bins[i].store( src.bins[i].load() );
+        for (size_t i = 0; i < MAX_BINS; ++i) {
+            bins[i].store(src.bins[i].load());
         }
         return *this;
     }
@@ -168,7 +165,7 @@ public:
             max = rhs.getMax();
         }
 
-        for (size_t i=0; i<MAX_BINS; ++i) {
+        for (size_t i = 0; i < MAX_BINS; ++i) {
             bins[i] += rhs.bins[i];
         }
 
@@ -176,15 +173,14 @@ public:
     }
 
     // returning lhs + rhs
-    friend Histogram operator+(Histogram lhs,
-                               const Histogram& rhs) {
+    friend Histogram operator+(Histogram lhs, const Histogram& rhs) {
         lhs.count += rhs.getTotal();
         lhs.sum += rhs.getSum();
         if (lhs.max < rhs.getMax()) {
             lhs.max = rhs.getMax();
         }
 
-        for (size_t i=0; i<MAX_BINS; ++i) {
+        for (size_t i = 0; i < MAX_BINS; ++i) {
             lhs.bins[i] += rhs.bins[i];
         }
 
@@ -228,8 +224,7 @@ public:
         sum.fetch_add(val, std::memory_order_relaxed);
 
         size_t num_trial = 0;
-        while (num_trial++ < MAX_TRIAL &&
-               max.load(std::memory_order_relaxed) < val) {
+        while (num_trial++ < MAX_TRIAL && max.load(std::memory_order_relaxed) < val) {
             // 'max' may not be updated properly under race condition.
             max.store(val, std::memory_order_relaxed);
         }
@@ -237,7 +232,7 @@ public:
 
     uint64_t getTotal() const { return count; }
     uint64_t getSum() const { return sum; }
-    uint64_t getAverage() const { return ( (count) ? (sum / count) : 0 ); }
+    uint64_t getAverage() const { return ((count) ? (sum / count) : 0); }
     uint64_t getMax() const { return max; }
 
     iterator find(double percentile) {
@@ -249,9 +244,9 @@ public:
         size_t i;
         uint64_t sum = 0;
         uint64_t total = getTotal();
-        uint64_t threshold = (uint64_t)( (double)total * rev / 100.0 );
+        uint64_t threshold = (uint64_t)((double)total * rev / 100.0);
 
-        for (i=0; i<MAX_BINS; ++i) {
+        for (i = 0; i < MAX_BINS; ++i) {
             sum += bins[i].load(std::memory_order_relaxed);
             if (sum >= threshold) {
                 return HistItr(i, MAX_BINS, this);
@@ -269,7 +264,7 @@ public:
         size_t i;
         uint64_t sum = 0;
         uint64_t total = getTotal();
-        uint64_t threshold = (uint64_t)( (double)total * rev / 100.0 );
+        uint64_t threshold = (uint64_t)((double)total * rev / 100.0);
 
         if (!threshold) {
             // No samples between the given percentile and the max number.
@@ -277,7 +272,7 @@ public:
             return max;
         }
 
-        for (i=0; i<MAX_BINS; ++i) {
+        for (i = 0; i < MAX_BINS; ++i) {
             uint64_t n_entries = bins[i].load(std::memory_order_relaxed);
             sum += n_entries;
             if (sum < threshold) continue;
@@ -289,23 +284,20 @@ public:
                 base = (double)max / (u_bound / 2.0);
             }
 
-            return (uint64_t)
-                   ( std::pow(base, (double)gap / n_entries) * u_bound / 2 );
+            return (uint64_t)(std::pow(base, (double)gap / n_entries) * u_bound / 2);
         }
         return 0;
     }
 
     iterator begin() const {
         size_t i;
-        for (i=0; i<MAX_BINS; ++i) {
+        for (i = 0; i < MAX_BINS; ++i) {
             if (bins[i].load(std::memory_order_relaxed)) break;
         }
         return HistItr(i, MAX_BINS, this);
     }
 
-    iterator end() const {
-        return HistItr(MAX_BINS, MAX_BINS, this);
-    }
+    iterator end() const { return HistItr(MAX_BINS, MAX_BINS, this); }
 
 private:
     static const size_t MAX_BINS = 65;
@@ -319,7 +311,4 @@ private:
     std::atomic<uint64_t> max;
 };
 
-uint64_t HistItr::getCount() {
-    return owner->bins[idx];
-}
-
+uint64_t HistItr::getCount() { return owner->bins[idx]; }

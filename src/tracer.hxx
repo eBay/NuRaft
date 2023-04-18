@@ -27,7 +27,8 @@ limitations under the License.
 #ifdef _WIN32
 static inline std::string msg_if_given(_Printf_format_string_ const char* format, ...) {
 #else
-static inline std::string msg_if_given(const char* format, ...) __attribute__((format(printf, 1, 2)));
+static inline std::string msg_if_given(const char* format, ...)
+    __attribute__((format(printf, 1, 2)));
 
 static inline std::string msg_if_given(const char* format, ...) {
 #endif
@@ -58,33 +59,41 @@ static inline std::string msg_if_given(const char* format, ...) {
 #define L_ERROR (2)
 #define L_FATAL (1)
 
-#define p_lv(lv, ...)                                                                                                  \
-    if (l_ && l_->get_level() >= (lv)) l_->put_details((lv), __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_lv(lv, ...)                  \
+    if (l_ && l_->get_level() >= (lv)) \
+    l_->put_details((lv), __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
 // trace.
-#define p_tr(...)                                                                                                      \
-    if (l_ && l_->get_level() >= 6) l_->put_details(6, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_tr(...)                   \
+    if (l_ && l_->get_level() >= 6) \
+    l_->put_details(6, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
 // debug verbose.
-#define p_dv(...)                                                                                                      \
-    if (l_ && l_->get_level() >= 5) l_->put_details(5, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_dv(...)                   \
+    if (l_ && l_->get_level() >= 5) \
+    l_->put_details(5, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
 // debug.
-#define p_db(...)                                                                                                      \
-    if (l_ && l_->get_level() >= 5) l_->put_details(5, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_db(...)                   \
+    if (l_ && l_->get_level() >= 5) \
+    l_->put_details(5, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
 // info.
-#define p_in(...)                                                                                                      \
-    if (l_ && l_->get_level() >= 4) l_->put_details(4, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_in(...)                   \
+    if (l_ && l_->get_level() >= 4) \
+    l_->put_details(4, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
 // warning.
-#define p_wn(...)                                                                                                      \
-    if (l_ && l_->get_level() >= 3) l_->put_details(3, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_wn(...)                   \
+    if (l_ && l_->get_level() >= 3) \
+    l_->put_details(3, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
 // error.
-#define p_er(...)                                                                                                      \
-    if (l_ && l_->get_level() >= 2) l_->put_details(2, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_er(...)                   \
+    if (l_ && l_->get_level() >= 2) \
+    l_->put_details(2, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
 // fatal.
-#define p_ft(...)                                                                                                      \
-    if (l_ && l_->get_level() >= 1) l_->put_details(1, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+#define p_ft(...)                   \
+    if (l_ && l_->get_level() >= 1) \
+    l_->put_details(1, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))

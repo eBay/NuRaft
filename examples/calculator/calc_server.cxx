@@ -37,25 +37,27 @@ static bool ASYNC_SNAPSHOT_CREATION = false;
 
 #include "example_common.hxx"
 
-calc_state_machine* get_sm() { return static_cast< calc_state_machine* >(stuff.sm_.get()); }
+calc_state_machine* get_sm() { return static_cast<calc_state_machine*>(stuff.sm_.get()); }
 
-void handle_result(std::shared_ptr< TestSuite::Timer > timer, raft_result& result,
-                   std::shared_ptr< std::exception >& err) {
+void handle_result(std::shared_ptr<TestSuite::Timer> timer,
+                   raft_result& result,
+                   std::shared_ptr<std::exception>& err) {
     if (result.get_result_code() != cmd_result_code::OK) {
         // Something went wrong.
         // This means committing this log failed,
         // but the log itself is still in the log store.
-        std::cout << "failed: " << result.get_result_code() << ", " << TestSuite::usToString(timer->getTimeUs())
-                  << std::endl;
+        std::cout << "failed: " << result.get_result_code() << ", "
+                  << TestSuite::usToString(timer->getTimeUs()) << std::endl;
         return;
     }
-    std::shared_ptr< buffer > buf = result.get();
+    std::shared_ptr<buffer> buf = result.get();
     uint64_t ret_value = buf->get_uint64();
-    std::cout << "succeeded, " << TestSuite::usToString(timer->getTimeUs()) << ", return value: " << ret_value
+    std::cout << "succeeded, " << TestSuite::usToString(timer->getTimeUs())
+              << ", return value: " << ret_value
               << ", state machine value: " << get_sm()->get_current_value() << std::endl;
 }
 
-void append_log(const std::string& cmd, const std::vector< std::string >& tokens) {
+void append_log(const std::string& cmd, const std::vector<std::string>& tokens) {
     char cmd_char = cmd[0];
     int operand = atoi(tokens[0].substr(1).c_str());
     calc_state_machine::op_type op = calc_state_machine::ADD;
@@ -82,13 +84,13 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
     };
 
     // Serialize and generate Raft log to append.
-    std::shared_ptr< buffer > new_log = calc_state_machine::enc_log({op, operand});
+    std::shared_ptr<buffer> new_log = calc_state_machine::enc_log({op, operand});
 
     // To measure the elapsed time.
-    std::shared_ptr< TestSuite::Timer > timer = std::make_shared< TestSuite::Timer >();
+    std::shared_ptr<TestSuite::Timer> timer = std::make_shared<TestSuite::Timer>();
 
     // Do append.
-    std::shared_ptr< raft_result > ret = stuff.raft_instance_->append_entries({new_log});
+    std::shared_ptr<raft_result> ret = stuff.raft_instance_->append_entries({new_log});
 
     if (!ret->get_accepted()) {
         // Log append rejected, usually because this node is not a leader.
@@ -103,7 +105,7 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
         // Blocking mode:
         //   `append_entries` returns after getting a consensus,
         //   so that `ret` already has the result from state machine.
-        std::shared_ptr< std::exception > err(nullptr);
+        std::shared_ptr<std::exception> err(nullptr);
         handle_result(timer, *ret, err);
 
     } else if (CALL_TYPE == raft_params::async_handler) {
@@ -111,15 +113,16 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
         //   `append_entries` returns immediately.
         //   `handle_result` will be invoked asynchronously,
         //   after getting a consensus.
-        ret->when_ready(std::bind(handle_result, timer, std::placeholders::_1, std::placeholders::_2));
+        ret->when_ready(std::bind(
+            handle_result, timer, std::placeholders::_1, std::placeholders::_2));
 
     } else {
         assert(0);
     }
 }
 
-void print_status(const std::string& cmd, const std::vector< std::string >& tokens) {
-    std::shared_ptr< log_store > ls = stuff.smgr_->load_log_store();
+void print_status(const std::string& cmd, const std::vector<std::string>& tokens) {
+    std::shared_ptr<log_store> ls = stuff.smgr_->load_log_store();
 
     std::cout << "my server id: " << stuff.server_id_ << std::endl
               << "leader id: " << stuff.raft_instance_->get_leader() << std::endl
@@ -130,16 +133,23 @@ void print_status(const std::string& cmd, const std::vector< std::string >& toke
     } else {
         std::cout << ls->start_index() << " - " << (ls->next_slot() - 1) << std::endl;
     }
-    std::cout << "last committed index: " << stuff.raft_instance_->get_committed_log_idx() << std::endl
+    std::cout << "last committed index: " << stuff.raft_instance_->get_committed_log_idx()
+              << std::endl
               << "current term: " << stuff.raft_instance_->get_term() << std::endl
               << "last snapshot log index: "
-              << (stuff.sm_->last_snapshot() ? stuff.sm_->last_snapshot()->get_last_log_idx() : 0) << std::endl
+              << (stuff.sm_->last_snapshot()
+                      ? stuff.sm_->last_snapshot()->get_last_log_idx()
+                      : 0)
+              << std::endl
               << "last snapshot log term: "
-              << (stuff.sm_->last_snapshot() ? stuff.sm_->last_snapshot()->get_last_log_term() : 0) << std::endl
+              << (stuff.sm_->last_snapshot()
+                      ? stuff.sm_->last_snapshot()->get_last_log_term()
+                      : 0)
+              << std::endl
               << "state machine value: " << get_sm()->get_current_value() << std::endl;
 }
 
-void help(const std::string& cmd, const std::vector< std::string >& tokens) {
+void help(const std::string& cmd, const std::vector<std::string>& tokens) {
     std::cout << "modify value: <+|-|*|/><operand>\n"
               << "    +: add <operand> to state machine's value.\n"
               << "    -: subtract <operand> from state machine's value.\n"
@@ -156,7 +166,7 @@ void help(const std::string& cmd, const std::vector< std::string >& tokens) {
               << "\n";
 }
 
-bool do_cmd(const std::vector< std::string >& tokens) {
+bool do_cmd(const std::vector<std::string>& tokens) {
     if (!tokens.size()) return true;
 
     const std::string& cmd = tokens[0];
@@ -203,7 +213,8 @@ void calc_usage(int argc, char** argv) {
     ss << std::endl << std::endl;
     ss << "    options:" << std::endl;
     ss << "      --async-handler: use async type handler." << std::endl;
-    ss << "      --async-snapshot-creation: create snapshots asynchronously." << std::endl << std::endl;
+    ss << "      --async-snapshot-creation: create snapshots asynchronously." << std::endl
+       << std::endl;
 
     std::cout << ss.str();
     exit(0);
@@ -219,9 +230,13 @@ int main(int argc, char** argv) {
     std::cout << "                         Version 0.1.0" << std::endl;
     std::cout << "    Server ID:    " << stuff.server_id_ << std::endl;
     std::cout << "    Endpoint:     " << stuff.endpoint_ << std::endl;
-    if (CALL_TYPE == raft_params::async_handler) { std::cout << "    async handler is enabled" << std::endl; }
-    if (ASYNC_SNAPSHOT_CREATION) { std::cout << "    snapshots are created asynchronously" << std::endl; }
-    init_raft(std::make_shared< calc_state_machine >(ASYNC_SNAPSHOT_CREATION));
+    if (CALL_TYPE == raft_params::async_handler) {
+        std::cout << "    async handler is enabled" << std::endl;
+    }
+    if (ASYNC_SNAPSHOT_CREATION) {
+        std::cout << "    snapshots are created asynchronously" << std::endl;
+    }
+    init_raft(std::make_shared<calc_state_machine>(ASYNC_SNAPSHOT_CREATION));
     loop();
 
     return 0;

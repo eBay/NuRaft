@@ -31,7 +31,8 @@ namespace nuraft {
 
 class resp_msg;
 
-using rpc_result = async_result< std::shared_ptr< resp_msg >, std::shared_ptr< rpc_exception > >;
+using rpc_result =
+    async_result<std::shared_ptr<resp_msg>, std::shared_ptr<rpc_exception>>;
 
 using rpc_handler = rpc_result::handler_type;
 
@@ -39,7 +40,9 @@ class rpc_client {
     __interface_body__(rpc_client);
 
 public:
-    virtual void send(std::shared_ptr< req_msg >& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0) = 0;
+    virtual void send(std::shared_ptr<req_msg>& req,
+                      rpc_handler& when_done,
+                      uint64_t send_timeout_ms = 0) = 0;
 
     virtual uint64_t get_id() const = 0;
 

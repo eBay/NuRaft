@@ -17,8 +17,8 @@ limitations under the License.
 
 #pragma once
 
-#include "nuraft.hxx"
 #include "logger.h"
+#include "nuraft.hxx"
 
 using namespace nuraft;
 
@@ -46,9 +46,14 @@ public:
         }
     }
 
-    void put_details(int level, const char* source_file, const char* func_name, size_t line_number,
+    void put_details(int level,
+                     const char* source_file,
+                     const char* func_name,
+                     size_t line_number,
                      const std::string& msg) {
-        if (my_log_) { my_log_->put(level, source_file, func_name, line_number, "%s", msg.c_str()); }
+        if (my_log_) {
+            my_log_->put(level, source_file, func_name, line_number, "%s", msg.c_str());
+        }
     }
 
     void set_level(int l) {

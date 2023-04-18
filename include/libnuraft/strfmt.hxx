@@ -27,13 +27,12 @@ limitations under the License.
 
 namespace nuraft {
 
-template < int N >
-class strfmt {
+template <int N> class strfmt {
 public:
-    strfmt(const char* fmt) : fmt_(fmt) {}
+    strfmt(const char* fmt)
+        : fmt_(fmt) {}
 
-    template < typename... TArgs >
-    const char* fmt(TArgs... args) {
+    template <typename... TArgs> const char* fmt(TArgs... args) {
         ::snprintf(buf_, N, fmt_, args...);
         return buf_;
     }
@@ -45,8 +44,8 @@ private:
     const char* fmt_;
 };
 
-typedef strfmt< 100 > sstrfmt;
-typedef strfmt< 200 > lstrfmt;
+typedef strfmt<100> sstrfmt;
+typedef strfmt<200> lstrfmt;
 
 } // namespace nuraft
 

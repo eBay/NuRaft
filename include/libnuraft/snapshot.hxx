@@ -37,13 +37,16 @@ public:
         logical_object = 0x2,
     };
 
-    snapshot(uint64_t last_log_idx, uint64_t last_log_term, const std::shared_ptr< cluster_config >& last_config,
-             uint64_t size = 0, type _type = logical_object) :
-            last_log_idx_(last_log_idx),
-            last_log_term_(last_log_term),
-            size_(size),
-            last_config_(last_config),
-            type_(_type) {}
+    snapshot(uint64_t last_log_idx,
+             uint64_t last_log_term,
+             const std::shared_ptr<cluster_config>& last_config,
+             uint64_t size = 0,
+             type _type = logical_object)
+        : last_log_idx_(last_log_idx)
+        , last_log_term_(last_log_term)
+        , size_(size)
+        , last_config_(last_config)
+        , type_(_type) {}
 
     __nocopy__(snapshot);
 
@@ -60,19 +63,21 @@ public:
 
     void set_type(type src) { type_ = src; }
 
-    const std::shared_ptr< cluster_config >& get_last_config() const { return last_config_; }
+    const std::shared_ptr<cluster_config>& get_last_config() const {
+        return last_config_;
+    }
 
-    static std::shared_ptr< snapshot > deserialize(buffer& buf);
+    static std::shared_ptr<snapshot> deserialize(buffer& buf);
 
-    static std::shared_ptr< snapshot > deserialize(buffer_serializer& bs);
+    static std::shared_ptr<snapshot> deserialize(buffer_serializer& bs);
 
-    std::shared_ptr< buffer > serialize();
+    std::shared_ptr<buffer> serialize();
 
 private:
     uint64_t last_log_idx_;
     uint64_t last_log_term_;
     uint64_t size_;
-    std::shared_ptr< cluster_config > last_config_;
+    std::shared_ptr<cluster_config> last_config_;
     type type_;
 };
 

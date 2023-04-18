@@ -33,19 +33,23 @@ class FakeNetworkBase;
 class FakeNetwork : public raft_server_handler,
                     public rpc_client_factory,
                     public rpc_listener,
-                    public std::enable_shared_from_this< FakeNetwork > {
+                    public std::enable_shared_from_this<FakeNetwork> {
 public:
-    FakeNetwork(const std::string& _endpoint, std::shared_ptr< FakeNetworkBase >& _base);
+    FakeNetwork(const std::string& _endpoint, std::shared_ptr<FakeNetworkBase>& _base);
 
     struct ReqPkg {
-        ReqPkg(std::shared_ptr< req_msg >& _req, rpc_handler& _when_done) : req(_req), whenDone(_when_done) {}
-        std::shared_ptr< req_msg > req;
+        ReqPkg(std::shared_ptr<req_msg>& _req, rpc_handler& _when_done)
+            : req(_req)
+            , whenDone(_when_done) {}
+        std::shared_ptr<req_msg> req;
         rpc_handler whenDone;
     };
 
     struct RespPkg {
-        RespPkg(std::shared_ptr< resp_msg >& _resp, rpc_handler& _when_done) : resp(_resp), whenDone(_when_done) {}
-        std::shared_ptr< resp_msg > resp;
+        RespPkg(std::shared_ptr<resp_msg>& _resp, rpc_handler& _when_done)
+            : resp(_resp)
+            , whenDone(_when_done) {}
+        std::shared_ptr<resp_msg> resp;
         rpc_handler whenDone;
     };
 
@@ -53,15 +57,15 @@ public:
 
     std::string getEndpoint() const { return myEndpoint; }
 
-    std::shared_ptr< rpc_client > create_client(const std::string& endpoint);
+    std::shared_ptr<rpc_client> create_client(const std::string& endpoint);
 
-    void listen(std::shared_ptr< raft_server >& handler);
+    void listen(std::shared_ptr<raft_server>& handler);
 
-    std::shared_ptr< resp_msg > gotMsg(std::shared_ptr< req_msg >& msg);
+    std::shared_ptr<resp_msg> gotMsg(std::shared_ptr<req_msg>& msg);
 
     bool execReqResp(const std::string& endpoint = std::string());
 
-    std::shared_ptr< FakeClient > findClient(const std::string& endpoint);
+    std::shared_ptr<FakeClient> findClient(const std::string& endpoint);
 
     bool delieverReqTo(const std::string& endpoint, bool random_order = false);
 
@@ -91,14 +95,14 @@ public:
 
 private:
     std::string myEndpoint;
-    std::shared_ptr< FakeNetworkBase > base;
-    std::shared_ptr< raft_server > handler;
+    std::shared_ptr<FakeNetworkBase> base;
+    std::shared_ptr<raft_server> handler;
     // NOTE: We don't use `unordered_map` as the order of traversal
     //       will be different according to platforms. We should make
     //       the test deterministic.
-    std::map< std::string, std::shared_ptr< FakeClient > > clients;
+    std::map<std::string, std::shared_ptr<FakeClient>> clients;
     std::mutex clientsLock;
-    std::list< std::shared_ptr< FakeClient > > staleClients;
+    std::list<std::shared_ptr<FakeClient>> staleClients;
     bool online;
 };
 
@@ -110,7 +114,7 @@ public:
 
     void destroy();
 
-    void addNetwork(std::shared_ptr< FakeNetwork >& net);
+    void addNetwork(std::shared_ptr<FakeNetwork>& net);
 
     void removeNetwork(const std::string& endpoint);
 
@@ -120,7 +124,7 @@ public:
 
 private:
     // <endpoint, network instance>
-    std::map< std::string, std::shared_ptr< FakeNetwork > > nets;
+    std::map<std::string, std::shared_ptr<FakeNetwork>> nets;
 
     SimpleLogger* myLog;
 };
@@ -133,7 +137,9 @@ public:
 
     ~FakeClient();
 
-    void send(std::shared_ptr< req_msg >& req, rpc_handler& when_done, uint64_t send_timeout_ms = 0);
+    void send(std::shared_ptr<req_msg>& req,
+              rpc_handler& when_done,
+              uint64_t send_timeout_ms = 0);
 
     void dropPackets();
 
@@ -147,30 +153,30 @@ private:
     uint64_t myId;
     FakeNetwork* motherNet;
     FakeNetwork* dstNet;
-    std::list< FakeNetwork::ReqPkg > pendingReqs;
-    std::list< FakeNetwork::RespPkg > pendingResps;
+    std::list<FakeNetwork::ReqPkg> pendingReqs;
+    std::list<FakeNetwork::RespPkg> pendingResps;
 };
 
 class FakeTimer : public delayed_task_scheduler {
 public:
     FakeTimer(const std::string& endpoint, SimpleLogger* logger = nullptr);
 
-    void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) override;
+    void schedule(std::shared_ptr<delayed_task>& task, int32_t milliseconds) override;
 
-    void cancel(std::shared_ptr< delayed_task >& task);
+    void cancel(std::shared_ptr<delayed_task>& task);
 
     void invoke(int type);
 
     size_t getNumPendingTasks(int type = -1);
 
 private:
-    void cancel_impl(std::shared_ptr< delayed_task >& task);
+    void cancel_impl(std::shared_ptr<delayed_task>& task);
 
     std::string myEndpoint;
 
     std::mutex tasksLock;
 
-    std::list< std::shared_ptr< delayed_task > > tasks;
+    std::list<std::shared_ptr<delayed_task>> tasks;
 
     SimpleLogger* myLog;
 };

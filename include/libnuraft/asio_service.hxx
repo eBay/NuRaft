@@ -21,8 +21,8 @@ limitations under the License.
 #pragma once
 
 #include "asio_service_options.hxx"
-#include "delayed_task_scheduler.hxx"
 #include "delayed_task.hxx"
+#include "delayed_task_scheduler.hxx"
 #include "rpc_cli_factory.hxx"
 
 namespace nuraft {
@@ -39,29 +39,30 @@ public:
     using meta_cb_params = asio_service_meta_cb_params;
     using options = asio_service_options;
 
-    asio_service(const options& _opt = options(), std::shared_ptr< logger > _l = nullptr);
+    asio_service(const options& _opt = options(), std::shared_ptr<logger> _l = nullptr);
 
     ~asio_service();
 
     __nocopy__(asio_service);
 
 public:
-    void schedule(std::shared_ptr< delayed_task >& task, int32_t milliseconds) override;
+    void schedule(std::shared_ptr<delayed_task>& task, int32_t milliseconds) override;
 
-    std::shared_ptr< rpc_client > create_client(const std::string& endpoint) override;
+    std::shared_ptr<rpc_client> create_client(const std::string& endpoint) override;
 
-    std::shared_ptr< rpc_listener > create_rpc_listener(uint16_t listening_port, std::shared_ptr< logger >& l);
+    std::shared_ptr<rpc_listener> create_rpc_listener(uint16_t listening_port,
+                                                      std::shared_ptr<logger>& l);
 
     void stop();
 
     uint32_t get_active_workers();
 
 private:
-    void cancel_impl(std::shared_ptr< delayed_task >& task) override;
+    void cancel_impl(std::shared_ptr<delayed_task>& task) override;
 
     asio_service_impl* impl_;
 
-    std::shared_ptr< logger > l_;
+    std::shared_ptr<logger> l_;
 };
 
 } // namespace nuraft

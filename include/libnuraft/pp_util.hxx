@@ -23,19 +23,19 @@ limitations under the License.
 #include <cstdint>
 #include <mutex>
 
-#define __nocopy__(clazz)                                                                                              \
-private:                                                                                                               \
-    clazz(const clazz&) = delete;                                                                                      \
+#define __nocopy__(clazz)         \
+private:                          \
+    clazz(const clazz&) = delete; \
     clazz& operator=(const clazz&) = delete
 
-#define __interface_body__(clazz)                                                                                      \
-public:                                                                                                                \
-    clazz() = default;                                                                                                 \
-    virtual ~clazz() = default;                                                                                        \
+#define __interface_body__(clazz) \
+public:                           \
+    clazz() = default;            \
+    virtual ~clazz() = default;   \
     __nocopy__(clazz)
 
-using auto_lock = std::lock_guard< std::mutex >;
-using recur_lock = std::unique_lock< std::recursive_mutex >;
+using auto_lock = std::lock_guard<std::mutex>;
+using recur_lock = std::unique_lock<std::recursive_mutex>;
 
 auto constexpr sz_int = sizeof(int32_t);
 auto constexpr sz_uint64_t = sizeof(uint64_t);

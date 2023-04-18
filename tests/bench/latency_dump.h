@@ -29,17 +29,14 @@ limitations under the License.
 
 class LatencyDumpDefaultImpl : public LatencyDump {
 public:
-    std::string dump(MapWrapper* map_w,
-                     const LatencyCollectorDumpOptions& opt) {
+    std::string dump(MapWrapper* map_w, const LatencyCollectorDumpOptions& opt) {
         std::stringstream ss;
         if (!map_w->getSize()) {
             ss << "# stats: " << map_w->getSize() << std::endl;
             return ss.str();
         }
 
-        std::multimap<uint64_t,
-                      LatencyItem*,
-                      std::greater<uint64_t> > map_uint64_t;
+        std::multimap<uint64_t, LatencyItem*, std::greater<uint64_t>> map_uint64_t;
         std::map<std::string, LatencyItem*> map_string;
         size_t max_name_len = 9; // reserved for "STAT NAME" 9 chars
 
@@ -47,7 +44,7 @@ public:
 
         // Deduplication
         for (auto& entry: map) {
-            LatencyItem *item = entry.second;
+            LatencyItem* item = entry.second;
             if (!item->getNumCalls()) {
                 continue;
             }
@@ -59,7 +56,7 @@ public:
                 *item_found += *item;
             } else {
                 LatencyItem* new_item = new LatencyItem(*item);
-                map_string.insert( std::make_pair(actual_name, new_item) );
+                map_string.insert(std::make_pair(actual_name, new_item));
             }
 
             if (actual_name.size() > max_name_len) {
@@ -70,7 +67,7 @@ public:
         ss << "# stats: " << map_string.size() << std::endl;
 
         for (auto& entry: map_string) {
-            LatencyItem *item = entry.second;
+            LatencyItem* item = entry.second;
             if (!item->getNumCalls()) continue;
 
             switch (opt.sort_by) {
@@ -99,19 +96,17 @@ public:
         if (opt.sort_by == LatencyCollectorDumpOptions::NAME) {
             // Name (string)
             for (auto& entry: map_string) {
-                LatencyItem *item = entry.second;
+                LatencyItem* item = entry.second;
                 if (item->getNumCalls()) {
-                    ss << dumpItem(item, max_name_len, 0, false)
-                       << std::endl;
+                    ss << dumpItem(item, max_name_len, 0, false) << std::endl;
                 }
             }
         } else {
             // Otherwise (number)
             for (auto& entry: map_uint64_t) {
-                LatencyItem *item = entry.second;
+                LatencyItem* item = entry.second;
                 if (item->getNumCalls()) {
-                    ss << dumpItem(item, max_name_len, 0, false)
-                       << std::endl;
+                    ss << dumpItem(item, max_name_len, 0, false) << std::endl;
                 }
             }
         }
@@ -124,24 +119,23 @@ public:
         return ss.str();
     }
 
-    std::string dumpTree(MapWrapper* map_w,
-                         const LatencyCollectorDumpOptions& opt) {
+    std::string dumpTree(MapWrapper* map_w, const LatencyCollectorDumpOptions& opt) {
         std::stringstream ss;
         DumpItem root;
 
         // Sort by name first.
         std::map<std::string, LatencyItem*> by_name;
         std::unordered_map<std::string, LatencyItem*>& map = getMap(map_w);
-        for (auto& entry : map) {
-            LatencyItem *item = entry.second;
-            by_name.insert( std::make_pair(item->getName(), item) );
+        for (auto& entry: map) {
+            LatencyItem* item = entry.second;
+            by_name.insert(std::make_pair(item->getName(), item));
         }
 
         size_t max_name_len = 9;
         std::vector<DumpItem*> last_ptr(1);
         last_ptr[0] = &root;
-        for (auto& entry : by_name) {
-            LatencyItem *item = entry.second;
+        for (auto& entry: by_name) {
+            LatencyItem* item = entry.second;
             std::string item_name = item->getName();
             size_t level = getNumStacks(item_name);
             if (!level) {
@@ -149,12 +143,12 @@ public:
                 return dump(map_w, opt);
             }
 
-            DumpItem* parent = last_ptr[level-1];
+            DumpItem* parent = last_ptr[level - 1];
             assert(parent); // Must exist
 
             DumpItemP dump_item(new DumpItem(level, item, parent->itself));
             if (level >= last_ptr.size()) {
-                last_ptr.resize(level*2);
+                last_ptr.resize(level * 2);
             }
             last_ptr[level] = dump_item.get();
             parent->child.push_back(std::move(dump_item));
@@ -233,8 +227,7 @@ private:
         return ret;
     }
 
-    static std::string getActualFunction(const std::string& str,
-                                         bool add_tab = true) {
+    static std::string getActualFunction(const std::string& str, bool add_tab = true) {
         size_t level = getNumStacks(str);
         if (!level) {
             return str;
@@ -243,7 +236,7 @@ private:
         size_t pos = str.rfind(" ## ");
         std::string ret = "";
         if (level > 1 && add_tab) {
-            for (size_t i=1; i<level; ++i) {
+            for (size_t i = 1; i < level; ++i) {
                 ret += "  ";
             }
         }
@@ -254,8 +247,7 @@ private:
     static std::string dumpItem(LatencyItem* item,
                                 size_t max_filename_field = 0,
                                 uint64_t parent_total_time = 0,
-                                bool add_tab = true)
-    {
+                                bool add_tab = true) {
         if (!max_filename_field) {
             max_filename_field = 32;
         }
@@ -265,11 +257,11 @@ private:
         ss << std::right;
         ss << std::setw(8) << usToString(item->getTotalTime()) << " ";
         if (parent_total_time) {
-            ss << std::setw(7)
-               << ratioToPercent(item->getTotalTime(), parent_total_time)
+            ss << std::setw(7) << ratioToPercent(item->getTotalTime(), parent_total_time)
                << " ";
         } else {
-            ss << "    ---" << " ";
+            ss << "    ---"
+               << " ";
         }
         ss << std::setw(6) << countToString(item->getNumCalls()) << " ";
         ss << std::setw(8) << usToString(item->getAvgLatency()) << " ";
@@ -282,11 +274,14 @@ private:
     struct DumpItem {
         using UPtr = std::unique_ptr<DumpItem>;
 
-        DumpItem() : level(0), itself(nullptr), parent(nullptr) {}
+        DumpItem()
+            : level(0)
+            , itself(nullptr)
+            , parent(nullptr) {}
         DumpItem(size_t _level, LatencyItem* _item, LatencyItem* _parent)
-            : level(_level),
-              itself(_item),
-              parent(_parent) {}
+            : level(_level)
+            , itself(_item)
+            , parent(_parent) {}
 
         size_t level;
         LatencyItem* itself;
@@ -295,45 +290,47 @@ private:
     };
     using DumpItemP = DumpItem::UPtr;
 
-    static void dumpRecursive(std::stringstream& ss,
-                              DumpItem* dump_item,
-                              size_t max_name_len) {
+    static void
+    dumpRecursive(std::stringstream& ss, DumpItem* dump_item, size_t max_name_len) {
         if (dump_item->itself) {
             if (dump_item->parent) {
-                ss << dumpItem(dump_item->itself, max_name_len,
-                               dump_item->parent->getTotalTime());
+                ss << dumpItem(
+                    dump_item->itself, max_name_len, dump_item->parent->getTotalTime());
             } else {
                 ss << dumpItem(dump_item->itself, max_name_len);
             }
             ss << std::endl;
         }
-        for (auto& entry : dump_item->child) {
+        for (auto& entry: dump_item->child) {
             DumpItem* child = entry.get();
             dumpRecursive(ss, child, max_name_len);
         }
     }
 
     static void addDumpTitle(std::stringstream& ss, size_t max_name_len) {
-        ss << std::left << std::setw(max_name_len) << "STAT NAME" << ": ";
+        ss << std::left << std::setw(max_name_len) << "STAT NAME"
+           << ": ";
         ss << std::right;
-        ss << std::setw(8) << "TOTAL" << " ";
-        ss << std::setw(7) << "RATIO" << " ";
-        ss << std::setw(6) << "CALLS" << " ";
-        ss << std::setw(8) << "AVERAGE" << " ";
-        ss << std::setw(8) << "p50" << " ";
-        ss << std::setw(8) << "p99" << " ";
+        ss << std::setw(8) << "TOTAL"
+           << " ";
+        ss << std::setw(7) << "RATIO"
+           << " ";
+        ss << std::setw(6) << "CALLS"
+           << " ";
+        ss << std::setw(8) << "AVERAGE"
+           << " ";
+        ss << std::setw(8) << "p50"
+           << " ";
+        ss << std::setw(8) << "p99"
+           << " ";
         ss << std::setw(8) << "p99.9";
         ss << std::endl;
     }
 
-    static void addToUintMap(uint64_t value,
-                             std::multimap<uint64_t,
-                                           LatencyItem*,
-                                           std::greater<uint64_t> >& map,
-                        LatencyItem* item)
-    {
-        map.insert( std::make_pair(value, item) );
+    static void
+    addToUintMap(uint64_t value,
+                 std::multimap<uint64_t, LatencyItem*, std::greater<uint64_t>>& map,
+                 LatencyItem* item) {
+        map.insert(std::make_pair(value, item));
     }
 };
-
-

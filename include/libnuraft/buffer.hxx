@@ -39,7 +39,7 @@ public:
      * @param size Size of memory to allocate.
      * @return buffer instance.
      */
-    static std::shared_ptr< buffer > alloc(const size_t size);
+    static std::shared_ptr<buffer> alloc(const size_t size);
 
     /**
      * Copy the data in the given buffer starting from the current position.
@@ -50,7 +50,7 @@ public:
      * @param buf Buffer to copy.
      * @return buffer instance.
      */
-    static std::shared_ptr< buffer > copy(const buffer& buf);
+    static std::shared_ptr<buffer> copy(const buffer& buf);
 
     /**
      * Clone the given buffer, starting from the beginning.
@@ -61,7 +61,7 @@ public:
      * @param buf Buffer to copy.
      * @return buffer instance.
      */
-    static std::shared_ptr< buffer > clone(const buffer& buf);
+    static std::shared_ptr<buffer> clone(const buffer& buf);
 
     /**
      * Expand the current buffer to new size (which is expected to
@@ -75,7 +75,7 @@ public:
      * @param new_size New size of the buffer
      * @return Expanded buffer instance
      */
-    static std::shared_ptr< buffer > expand(const buffer& buf, uint32_t new_size);
+    static std::shared_ptr<buffer> expand(const buffer& buf, uint32_t new_size);
 
     /**
      * Get total size of entire buffer container, including meta section.
@@ -171,7 +171,7 @@ public:
      *
      * @param dst Buffer where the data will be stored.
      */
-    void get(std::shared_ptr< buffer >& dst);
+    void get(std::shared_ptr<buffer>& dst);
 
     /**
      * Read C-style string (null terminated).
@@ -266,7 +266,7 @@ public:
      */
     void put_raw(const std::byte* ba, size_t len);
 };
-using buffer_ptr = std::shared_ptr< buffer >;
+using buffer_ptr = std::shared_ptr<buffer>;
 
 std::ostream& operator<<(std::ostream& out, buffer& buf);
 std::istream& operator>>(std::istream& in, buffer& buf);

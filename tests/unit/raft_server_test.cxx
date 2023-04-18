@@ -28,26 +28,29 @@ limitations under the License.
 using namespace nuraft;
 using namespace raft_functional_common;
 
-using raft_result = cmd_result< std::shared_ptr< buffer > >;
+using raft_result = cmd_result<std::shared_ptr<buffer>>;
 
 namespace raft_server_test {
 
 struct ExecArgs : TestSuite::ThreadArgs {
-    ExecArgs(RaftPkg* _leader) : leader(_leader), stopSignal(false), msgToWrite(nullptr) {}
+    ExecArgs(RaftPkg* _leader)
+        : leader(_leader)
+        , stopSignal(false)
+        , msgToWrite(nullptr) {}
 
-    void setMsg(std::shared_ptr< buffer >& to) {
-        std::lock_guard< std::mutex > l(msgToWriteLock);
+    void setMsg(std::shared_ptr<buffer>& to) {
+        std::lock_guard<std::mutex> l(msgToWriteLock);
         msgToWrite = to;
     }
 
-    std::shared_ptr< buffer > getMsg() {
-        std::lock_guard< std::mutex > l(msgToWriteLock);
+    std::shared_ptr<buffer> getMsg() {
+        std::lock_guard<std::mutex> l(msgToWriteLock);
         return msgToWrite;
     }
 
     RaftPkg* leader;
-    std::atomic< bool > stopSignal;
-    std::shared_ptr< buffer > msgToWrite;
+    std::atomic<bool> stopSignal;
+    std::shared_ptr<buffer> msgToWrite;
     std::mutex msgToWriteLock;
     EventAwaiter eaExecuter;
 };
@@ -56,16 +59,16 @@ static size_t EXECUTOR_WAIT_MS = 100;
 
 // Mimic the user of Raft server, which has a separate executer thread.
 int fake_executer(TestSuite::ThreadArgs* _args) {
-    ExecArgs* args = static_cast< ExecArgs* >(_args);
+    ExecArgs* args = static_cast<ExecArgs*>(_args);
 
     while (!args->stopSignal) {
         args->eaExecuter.wait_ms(10000);
         args->eaExecuter.reset();
         if (args->stopSignal) break;
 
-        std::shared_ptr< buffer > msg = nullptr;
+        std::shared_ptr<buffer> msg = nullptr;
         {
-            std::lock_guard< std::mutex > l(args->msgToWriteLock);
+            std::lock_guard<std::mutex> l(args->msgToWriteLock);
             if (!args->msgToWrite) continue;
             msg = args->msgToWrite;
             args->msgToWrite.reset();
@@ -79,7 +82,7 @@ int fake_executer(TestSuite::ThreadArgs* _args) {
 }
 
 int fake_executer_killer(TestSuite::ThreadArgs* _args) {
-    ExecArgs* args = static_cast< ExecArgs* >(_args);
+    ExecArgs* args = static_cast<ExecArgs*>(_args);
     args->stopSignal = true;
     args->eaExecuter.invoke();
     return 0;
@@ -87,7 +90,7 @@ int fake_executer_killer(TestSuite::ThreadArgs* _args) {
 
 int make_group_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -96,15 +99,15 @@ int make_group_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
     // Now all servers should know each other.
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pkg = entry;
-        std::vector< std::shared_ptr< srv_config > > configs;
+        std::vector<std::shared_ptr<srv_config>> configs;
         pkg->raftServer->get_srv_config_all(configs);
         CHK_EQ(3, configs.size());
 
@@ -123,17 +126,17 @@ int make_group_test() {
 
     // Append a message using separate thread.
     std::string test_msg = "test";
-    std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+    std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
     msg->put(test_msg);
     {
-        std::lock_guard< std::mutex > l(exec_args.msgToWriteLock);
+        std::lock_guard<std::mutex> l(exec_args.msgToWriteLock);
         exec_args.msgToWrite = msg;
     }
     exec_args.eaExecuter.invoke();
     TestSuite::sleep_ms(EXECUTOR_WAIT_MS, "wait for synchronous executor");
 
     {
-        std::lock_guard< std::mutex > l(exec_args.msgToWriteLock);
+        std::lock_guard<std::mutex> l(exec_args.msgToWriteLock);
         CHK_NULL(exec_args.msgToWrite.get());
     }
     // Packet for pre-commit.
@@ -146,7 +149,7 @@ int make_group_test() {
     // Test message should be the same.
     uint64_t last_idx = s1.getTestSm()->last_commit_index();
     CHK_GT(last_idx, 0);
-    std::shared_ptr< buffer > buf = s1.getTestSm()->getData(last_idx);
+    std::shared_ptr<buffer> buf = s1.getTestSm()->getData(last_idx);
     CHK_NONNULL(buf.get());
     buf->pos(0);
     CHK_Z(memcmp(buf->data(), test_msg.data(), test_msg.size()));
@@ -172,7 +175,7 @@ int make_group_test() {
 
 int init_options_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -181,7 +184,7 @@ int init_options_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
@@ -212,7 +215,7 @@ int init_options_test() {
 
     // Make group should succeed as long as s1 is the current leader.
     CHK_Z(make_group(pkgs));
-    for (RaftPkg* ff : pkgs) {
+    for (RaftPkg* ff: pkgs) {
         CHK_EQ(1, ff->raftServer->get_leader());
     }
 
@@ -229,7 +232,7 @@ int init_options_test() {
 
 int update_params_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -238,12 +241,12 @@ int update_params_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         int old_value = param.election_timeout_upper_bound_;
@@ -267,7 +270,7 @@ int update_params_test() {
 
 int add_node_error_cases_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -276,34 +279,41 @@ int add_node_error_cases_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
 
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
-    std::shared_ptr< FakeNetwork > c_net = std::make_shared< FakeNetwork >("client", f_base);
+    std::shared_ptr<FakeNetwork> c_net = std::make_shared<FakeNetwork>("client", f_base);
     f_base->addNetwork(c_net);
     c_net->create_client(s1_addr);
     c_net->create_client(s2_addr);
 
-    std::atomic< bool > invoked(false);
-    rpc_handler bad_req_handler = [&invoked](std::shared_ptr< resp_msg >& resp,
-                                             std::shared_ptr< rpc_exception >& err) -> int {
+    std::atomic<bool> invoked(false);
+    rpc_handler bad_req_handler = [&invoked](std::shared_ptr<resp_msg>& resp,
+                                             std::shared_ptr<rpc_exception>& err) -> int {
         invoked.store(true);
         CHK_EQ(cmd_result_code::BAD_REQUEST, resp->get_result_code());
         return 0;
     };
 
     { // Attempt to add more than one server at once.
-        std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
+        std::shared_ptr<req_msg> req =
+            std::make_shared<req_msg>((uint64_t)0,
+                                      msg_type::add_server_request,
+                                      0,
+                                      0,
+                                      (uint64_t)0,
+                                      (uint64_t)0,
+                                      (uint64_t)0);
         for (size_t ii = 1; ii < num_srvs; ++ii) {
             RaftPkg* ff = pkgs[ii];
-            std::shared_ptr< srv_config > srv = ff->getTestMgr()->get_srv_config();
-            std::shared_ptr< buffer > buf(srv->serialize());
-            std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
+            std::shared_ptr<srv_config> srv = ff->getTestMgr()->get_srv_config();
+            std::shared_ptr<buffer> buf(srv->serialize());
+            std::shared_ptr<log_entry> log(
+                std::make_shared<log_entry>(0, buf, log_val_type::cluster_server));
             req->log_entries().push_back(log);
         }
         c_net->findClient(s1_addr)->send(req, bad_req_handler);
@@ -313,12 +323,19 @@ int add_node_error_cases_test() {
     invoked = false;
 
     { // Attempt to add server with wrong message type.
-        std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
+        std::shared_ptr<req_msg> req =
+            std::make_shared<req_msg>((uint64_t)0,
+                                      msg_type::add_server_request,
+                                      0,
+                                      0,
+                                      (uint64_t)0,
+                                      (uint64_t)0,
+                                      (uint64_t)0);
         RaftPkg* ff = pkgs[1];
-        std::shared_ptr< srv_config > srv = ff->getTestMgr()->get_srv_config();
-        std::shared_ptr< buffer > buf(srv->serialize());
-        std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::conf));
+        std::shared_ptr<srv_config> srv = ff->getTestMgr()->get_srv_config();
+        std::shared_ptr<buffer> buf(srv->serialize());
+        std::shared_ptr<log_entry> log(
+            std::make_shared<log_entry>(0, buf, log_val_type::conf));
         req->log_entries().push_back(log);
         c_net->findClient(s1_addr)->send(req, bad_req_handler);
         c_net->execReqResp();
@@ -332,7 +349,8 @@ int add_node_error_cases_test() {
         s1.raftServer->add_srv(*(s2.getTestMgr()->get_srv_config()));
 
         // Now adding S2 is in progress, add S3 to S1.
-        std::shared_ptr< raft_result > ret = s1.raftServer->add_srv(*(s3.getTestMgr()->get_srv_config()));
+        std::shared_ptr<raft_result> ret =
+            s1.raftServer->add_srv(*(s3.getTestMgr()->get_srv_config()));
 
         // Should fail.
         CHK_EQ(cmd_result_code::SERVER_IS_JOINING, ret->get_result_code());
@@ -364,34 +382,43 @@ int add_node_error_cases_test() {
         s1.fNet->execReqResp();
         CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
-        std::vector< std::shared_ptr< srv_config > > configs_out;
+        std::vector<std::shared_ptr<srv_config>> configs_out;
         s1.raftServer->get_srv_config_all(configs_out);
 
         CHK_EQ(expected_cluster_size, configs_out.size());
     }
 
     { // Attempt to add S2 again.
-        std::shared_ptr< raft_result > ret = s1.raftServer->add_srv(*(s2.getTestMgr()->get_srv_config()));
+        std::shared_ptr<raft_result> ret =
+            s1.raftServer->add_srv(*(s2.getTestMgr()->get_srv_config()));
         CHK_EQ(cmd_result_code::SERVER_ALREADY_EXISTS, ret->get_result_code());
     }
 
     { // Attempt to add S3 to S2 (non-leader).
-        std::shared_ptr< raft_result > ret = s2.raftServer->add_srv(*(s3.getTestMgr()->get_srv_config()));
+        std::shared_ptr<raft_result> ret =
+            s2.raftServer->add_srv(*(s3.getTestMgr()->get_srv_config()));
         CHK_EQ(cmd_result_code::NOT_LEADER, ret->get_result_code());
     }
 
-    rpc_handler nl_handler = [&invoked](std::shared_ptr< resp_msg >& resp,
-                                        std::shared_ptr< rpc_exception >& err) -> int {
+    rpc_handler nl_handler = [&invoked](std::shared_ptr<resp_msg>& resp,
+                                        std::shared_ptr<rpc_exception>& err) -> int {
         invoked.store(true);
         CHK_EQ(cmd_result_code::NOT_LEADER, resp->get_result_code());
         return 0;
     };
     { // Attempt to add S3 to S2 (non-leader), through RPC.
-        std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((uint64_t)0, msg_type::add_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
-        std::shared_ptr< srv_config > srv = s3.getTestMgr()->get_srv_config();
-        std::shared_ptr< buffer > buf(srv->serialize());
-        std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
+        std::shared_ptr<req_msg> req =
+            std::make_shared<req_msg>((uint64_t)0,
+                                      msg_type::add_server_request,
+                                      0,
+                                      0,
+                                      (uint64_t)0,
+                                      (uint64_t)0,
+                                      (uint64_t)0);
+        std::shared_ptr<srv_config> srv = s3.getTestMgr()->get_srv_config();
+        std::shared_ptr<buffer> buf(srv->serialize());
+        std::shared_ptr<log_entry> log(
+            std::make_shared<log_entry>(0, buf, log_val_type::cluster_server));
         req->log_entries().push_back(log);
         c_net->findClient(s2_addr)->send(req, nl_handler);
         c_net->execReqResp();
@@ -411,7 +438,7 @@ int add_node_error_cases_test() {
         s1.fNet->execReqResp();
         CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
-        std::vector< std::shared_ptr< srv_config > > configs_out;
+        std::vector<std::shared_ptr<srv_config>> configs_out;
         s1.raftServer->get_srv_config_all(configs_out);
 
         // All 3 servers should exist.
@@ -431,7 +458,7 @@ int add_node_error_cases_test() {
 
 int remove_node_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -440,13 +467,13 @@ int remove_node_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
     // Try to remove s3 from non leader, should return error.
-    std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret =
+    std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
         s2.raftServer->remove_srv(s3.getTestMgr()->get_srv_config()->get_id());
     CHK_FALSE(ret->get_accepted());
     CHK_EQ(cmd_result_code::NOT_LEADER, ret->get_result_code());
@@ -465,9 +492,9 @@ int remove_node_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // All servers should see S1 and S2 only.
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pkg = entry;
-        std::vector< std::shared_ptr< srv_config > > configs;
+        std::vector<std::shared_ptr<srv_config>> configs;
         pkg->raftServer->get_srv_config_all(configs);
 
         TestSuite::setInfo("id = %d", pkg->myId);
@@ -493,7 +520,7 @@ int remove_node_test() {
 
 int remove_node_error_cases_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -502,7 +529,7 @@ int remove_node_error_cases_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -510,27 +537,34 @@ int remove_node_error_cases_test() {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
-    std::shared_ptr< FakeNetwork > c_net = std::make_shared< FakeNetwork >("client", f_base);
+    std::shared_ptr<FakeNetwork> c_net = std::make_shared<FakeNetwork>("client", f_base);
     f_base->addNetwork(c_net);
     c_net->create_client(s1_addr);
     c_net->create_client(s2_addr);
 
-    std::atomic< bool > invoked(false);
-    rpc_handler bad_req_handler = [&invoked](std::shared_ptr< resp_msg >& resp,
-                                             std::shared_ptr< rpc_exception >& err) -> int {
+    std::atomic<bool> invoked(false);
+    rpc_handler bad_req_handler = [&invoked](std::shared_ptr<resp_msg>& resp,
+                                             std::shared_ptr<rpc_exception>& err) -> int {
         invoked.store(true);
         CHK_EQ(cmd_result_code::BAD_REQUEST, resp->get_result_code());
         return 0;
     };
 
     { // Attempt to remove more than one server at once.
-        std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((uint64_t)0, msg_type::remove_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
+        std::shared_ptr<req_msg> req =
+            std::make_shared<req_msg>((uint64_t)0,
+                                      msg_type::remove_server_request,
+                                      0,
+                                      0,
+                                      (uint64_t)0,
+                                      (uint64_t)0,
+                                      (uint64_t)0);
         for (size_t ii = 1; ii < num_srvs; ++ii) {
             RaftPkg* ff = pkgs[ii];
-            std::shared_ptr< srv_config > srv = ff->getTestMgr()->get_srv_config();
-            std::shared_ptr< buffer > buf(srv->serialize());
-            std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
+            std::shared_ptr<srv_config> srv = ff->getTestMgr()->get_srv_config();
+            std::shared_ptr<buffer> buf(srv->serialize());
+            std::shared_ptr<log_entry> log(
+                std::make_shared<log_entry>(0, buf, log_val_type::cluster_server));
             req->log_entries().push_back(log);
         }
         c_net->findClient(s1_addr)->send(req, bad_req_handler);
@@ -540,23 +574,30 @@ int remove_node_error_cases_test() {
     invoked = false;
 
     { // Attempt to remove S3 from S2 (non-leader).
-        std::shared_ptr< raft_result > ret = s2.raftServer->remove_srv(s3.myId);
+        std::shared_ptr<raft_result> ret = s2.raftServer->remove_srv(s3.myId);
         CHK_EQ(cmd_result_code::NOT_LEADER, ret->get_result_code());
     }
 
-    rpc_handler nl_handler = [&invoked](std::shared_ptr< resp_msg >& resp,
-                                        std::shared_ptr< rpc_exception >& err) -> int {
+    rpc_handler nl_handler = [&invoked](std::shared_ptr<resp_msg>& resp,
+                                        std::shared_ptr<rpc_exception>& err) -> int {
         invoked.store(true);
         CHK_EQ(cmd_result_code::NOT_LEADER, resp->get_result_code());
         return 0;
     };
     { // Attempt to remove S3 to S2 (non-leader), through RPC.
-        std::shared_ptr< req_msg > req =
-            std::make_shared< req_msg >((uint64_t)0, msg_type::remove_server_request, 0, 0, (uint64_t)0, (uint64_t)0, (uint64_t)0);
-        std::shared_ptr< buffer > buf(buffer::alloc(sz_int));
+        std::shared_ptr<req_msg> req =
+            std::make_shared<req_msg>((uint64_t)0,
+                                      msg_type::remove_server_request,
+                                      0,
+                                      0,
+                                      (uint64_t)0,
+                                      (uint64_t)0,
+                                      (uint64_t)0);
+        std::shared_ptr<buffer> buf(buffer::alloc(sz_int));
         buf->put(s3.myId);
         buf->pos(0);
-        std::shared_ptr< log_entry > log(std::make_shared< log_entry >(0, buf, log_val_type::cluster_server));
+        std::shared_ptr<log_entry> log(
+            std::make_shared<log_entry>(0, buf, log_val_type::cluster_server));
         req->log_entries().push_back(log);
         c_net->findClient(s2_addr)->send(req, nl_handler);
         c_net->execReqResp();
@@ -565,12 +606,12 @@ int remove_node_error_cases_test() {
     invoked = false;
 
     { // Attempt to remove non-existing server ID.
-        std::shared_ptr< raft_result > ret = s1.raftServer->remove_srv(9999);
+        std::shared_ptr<raft_result> ret = s1.raftServer->remove_srv(9999);
         CHK_EQ(cmd_result_code::SERVER_NOT_FOUND, ret->get_result_code());
     }
 
     { // Attempt to remove leader itself.
-        std::shared_ptr< raft_result > ret = s1.raftServer->remove_srv(s1.myId);
+        std::shared_ptr<raft_result> ret = s1.raftServer->remove_srv(s1.myId);
         CHK_EQ(cmd_result_code::CANNOT_REMOVE_LEADER, ret->get_result_code());
     }
 
@@ -583,7 +624,7 @@ int remove_node_error_cases_test() {
         s1.fNet->execReqResp();
 
         // Now config change is in progress, remove S3.
-        std::shared_ptr< raft_result > ret = s1.raftServer->remove_srv(s3.myId);
+        std::shared_ptr<raft_result> ret = s1.raftServer->remove_srv(s3.myId);
 
         // May fail (depends on commit thread wake-up timing).
         size_t expected_cluster_size = 2;
@@ -603,7 +644,7 @@ int remove_node_error_cases_test() {
         s1.fNet->execReqResp();
         CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
-        std::vector< std::shared_ptr< srv_config > > configs_out;
+        std::vector<std::shared_ptr<srv_config>> configs_out;
         s1.raftServer->get_srv_config_all(configs_out);
         CHK_EQ(expected_cluster_size, configs_out.size());
 
@@ -636,7 +677,7 @@ int remove_node_error_cases_test() {
 
 int remove_and_then_add_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -645,10 +686,10 @@ int remove_and_then_add_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -660,12 +701,13 @@ int remove_and_then_add_test() {
 
     // Append logs to create a snapshot and then compact logs.
     const size_t NUM = 10;
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -678,7 +720,7 @@ int remove_and_then_add_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // All handlers should be OK.
-    for (auto& entry : handlers) {
+    for (auto& entry: handlers) {
         CHK_TRUE(entry->has_result());
         CHK_EQ(cmd_result_code::OK, entry->get_result_code());
     }
@@ -733,7 +775,7 @@ int remove_and_then_add_test() {
 
 int multiple_config_change_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -744,7 +786,7 @@ int multiple_config_change_test() {
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
     RaftPkg s4(f_base, 4, s4_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3, &s4};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -753,7 +795,8 @@ int multiple_config_change_test() {
     s1.raftServer->remove_srv(s3.getTestMgr()->get_srv_config()->get_id());
 
     // Cannot remove multiple servers at once, should return error.
-    std::shared_ptr< raft_result > ret = s1.raftServer->remove_srv(s4.getTestMgr()->get_srv_config()->get_id());
+    std::shared_ptr<raft_result> ret =
+        s1.raftServer->remove_srv(s4.getTestMgr()->get_srv_config()->get_id());
     CHK_GT(0, ret->get_result_code());
 
     // Priority change is OK.
@@ -771,22 +814,23 @@ int multiple_config_change_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // S3 should be removed.
-    for (RaftPkg* pp : pkgs) {
+    for (RaftPkg* pp: pkgs) {
         if (pp->getTestMgr()->get_srv_config()->get_id() == 3) continue;
 
-        std::vector< std::shared_ptr< srv_config > > configs_out;
+        std::vector<std::shared_ptr<srv_config>> configs_out;
         pp->raftServer->get_srv_config_all(configs_out);
 
         // Only S1, S2, and S4 should exist.
         CHK_EQ(3, configs_out.size());
-        for (auto& entry : configs_out) {
-            std::shared_ptr< srv_config >& s_conf = entry;
-            CHK_TRUE(s_conf->get_id() == 1 || s_conf->get_id() == 2 || s_conf->get_id() == 4);
+        for (auto& entry: configs_out) {
+            std::shared_ptr<srv_config>& s_conf = entry;
+            CHK_TRUE(s_conf->get_id() == 1 || s_conf->get_id() == 2
+                     || s_conf->get_id() == 4);
         }
 
         // S4's priority should be 10.
-        std::shared_ptr< cluster_config > c_conf = pp->raftServer->get_config();
-        std::shared_ptr< srv_config > s4_conf = c_conf->get_server(4);
+        std::shared_ptr<cluster_config> c_conf = pp->raftServer->get_config();
+        std::shared_ptr<srv_config> s4_conf = c_conf->get_server(4);
         CHK_EQ(10, s4_conf->get_priority());
     }
 
@@ -804,7 +848,7 @@ int multiple_config_change_test() {
 
 int leader_election_basic_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -813,7 +857,7 @@ int leader_election_basic_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -860,7 +904,7 @@ int leader_election_basic_test() {
 
 int leader_election_priority_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -869,7 +913,7 @@ int leader_election_priority_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -947,7 +991,7 @@ int leader_election_priority_test() {
 
 int leader_election_with_aggressive_node_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -956,7 +1000,7 @@ int leader_election_with_aggressive_node_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1029,14 +1073,14 @@ int leader_election_with_aggressive_node_test() {
 }
 int leader_election_with_catching_up_server_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
 
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2};
 
     CHK_Z(launch_servers(pkgs));
 
@@ -1045,7 +1089,7 @@ int leader_election_with_catching_up_server_test() {
     s2.raftServer->set_priority(2, 100);
 
     // Append logs to S1 to trigger log compaction.
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -1053,12 +1097,13 @@ int leader_election_with_catching_up_server_test() {
         pp->raftServer->update_params(param);
     }
     const size_t NUM = 10;
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -1071,7 +1116,7 @@ int leader_election_with_catching_up_server_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // All handlers should be OK.
-    for (auto& entry : handlers) {
+    for (auto& entry: handlers) {
         CHK_TRUE(entry->has_result());
         CHK_EQ(cmd_result_code::OK, entry->get_result_code());
     }
@@ -1118,7 +1163,7 @@ int leader_election_with_catching_up_server_test() {
 
 int leadership_takeover_basic_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1127,7 +1172,7 @@ int leadership_takeover_basic_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1211,7 +1256,7 @@ int leadership_takeover_basic_test() {
 
 int leadership_takeover_designated_successor_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1220,7 +1265,7 @@ int leadership_takeover_designated_successor_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1330,7 +1375,7 @@ int leadership_takeover_designated_successor_test() {
 
 int leadership_takeover_by_request_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1339,7 +1384,7 @@ int leadership_takeover_by_request_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1404,7 +1449,7 @@ int leadership_takeover_by_request_test() {
 
 int leadership_takeover_offline_candidate_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1413,7 +1458,7 @@ int leadership_takeover_offline_candidate_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     raft_params custom_params;
     custom_params.election_timeout_lower_bound_ = 0;
@@ -1513,7 +1558,7 @@ int leadership_takeover_offline_candidate_test() {
 
 int temporary_leader_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1522,7 +1567,7 @@ int temporary_leader_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     raft_params custom_params;
     custom_params.election_timeout_lower_bound_ = 0;
@@ -1531,7 +1576,7 @@ int temporary_leader_test() {
     CHK_Z(launch_servers(pkgs, &custom_params));
     CHK_Z(make_group(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -1552,12 +1597,13 @@ int temporary_leader_test() {
     const size_t NUM = 10;
 
     // Append messages asynchronously.
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -1571,7 +1617,7 @@ int temporary_leader_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // All handlers should be OK.
-    for (auto& entry : handlers) {
+    for (auto& entry: handlers) {
         CHK_TRUE(entry->has_result());
         CHK_EQ(cmd_result_code::OK, entry->get_result_code());
     }
@@ -1638,7 +1684,7 @@ int temporary_leader_test() {
 
 int priority_broadcast_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1647,7 +1693,7 @@ int priority_broadcast_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1701,11 +1747,11 @@ int priority_broadcast_test() {
     s2.fNet->execReqResp();
 
     // Now all servers should have the same priorities.
-    std::map< int, int > baseline;
-    for (auto& entry : pkgs) {
+    std::map<int, int> baseline;
+    for (auto& entry: pkgs) {
         RaftPkg* rr = entry;
         for (int ii = 1; ii <= 3; ++ii) {
-            std::shared_ptr< srv_config > sc = rr->raftServer->get_srv_config(ii);
+            std::shared_ptr<srv_config> sc = rr->raftServer->get_srv_config(ii);
             if (rr == &s1) {
                 // The first node: add to baseline
                 baseline.insert(std::make_pair(ii, sc->get_priority()));
@@ -1729,7 +1775,7 @@ int priority_broadcast_test() {
 
 int custom_user_context_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1738,7 +1784,7 @@ int custom_user_context_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1768,7 +1814,7 @@ int custom_user_context_test() {
 
 int follower_reconnect_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1777,7 +1823,7 @@ int follower_reconnect_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1797,7 +1843,7 @@ int follower_reconnect_test() {
 
     // Append a message using separate thread.
     std::string test_msg = "test";
-    std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+    std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
     msg->put(test_msg);
     exec_args.setMsg(msg);
     exec_args.eaExecuter.invoke();
@@ -1816,7 +1862,7 @@ int follower_reconnect_test() {
     // Test message should be the same.
     uint64_t last_idx = s1.getTestSm()->last_commit_index();
     CHK_GT(last_idx, 0);
-    std::shared_ptr< buffer > buf = s1.getTestSm()->getData(last_idx);
+    std::shared_ptr<buffer> buf = s1.getTestSm()->getData(last_idx);
     CHK_NONNULL(buf.get());
     buf->pos(0);
     CHK_Z(memcmp(buf->data(), test_msg.data(), test_msg.size()));
@@ -1842,7 +1888,7 @@ int follower_reconnect_test() {
 
 int snapshot_basic_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1851,7 +1897,7 @@ int snapshot_basic_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1862,7 +1908,7 @@ int snapshot_basic_test() {
 
     for (size_t ii = 0; ii < 5; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
         exec_args.setMsg(msg);
         exec_args.eaExecuter.invoke();
@@ -1913,7 +1959,7 @@ int snapshot_basic_test() {
 
 int snapshot_manual_creation_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -1922,7 +1968,7 @@ int snapshot_manual_creation_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -1931,7 +1977,7 @@ int snapshot_manual_creation_test() {
     ExecArgs exec_args(&s1);
     TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -1942,12 +1988,13 @@ int snapshot_manual_creation_test() {
     const size_t NUM = 10;
 
     // Append messages asynchronously.
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -2010,7 +2057,7 @@ int snapshot_manual_creation_test() {
 
 int snapshot_randomized_creation_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2019,7 +2066,7 @@ int snapshot_randomized_creation_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     const size_t NUM = 50;
 
@@ -2040,7 +2087,7 @@ int snapshot_randomized_creation_test() {
     ExecArgs exec_args(&s1);
     TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -2048,12 +2095,13 @@ int snapshot_randomized_creation_test() {
     }
 
     // Append messages asynchronously.
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -2091,7 +2139,7 @@ int snapshot_randomized_creation_test() {
 
 int join_empty_node_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2100,7 +2148,7 @@ int join_empty_node_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
     CHK_Z(launch_servers(pkgs));
 
     // Organize group by using S1 and S2 only.
@@ -2112,7 +2160,7 @@ int join_empty_node_test() {
 
     for (size_t ii = 0; ii < 5; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
         exec_args.setMsg(msg);
         exec_args.eaExecuter.invoke();
@@ -2176,16 +2224,19 @@ int join_empty_node_test() {
     return 0;
 }
 
-static int async_handler(std::list< uint64_t >* idx_list,
-                         std::shared_ptr< cmd_result< std::shared_ptr< buffer > > >& cmd_result,
-                         cmd_result_code expected_code, std::shared_ptr< buffer >& result,
-                         std::shared_ptr< std::exception >& err) {
+static int async_handler(std::list<uint64_t>* idx_list,
+                         std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>& cmd_result,
+                         cmd_result_code expected_code,
+                         std::shared_ptr<buffer>& result,
+                         std::shared_ptr<std::exception>& err) {
     CHK_EQ(expected_code, cmd_result->get_result_code());
 
     if (expected_code == cmd_result_code::OK) {
         result->pos(0);
         uint64_t idx = result->get_uint64();
-        if (idx_list) { idx_list->push_back(idx); }
+        if (idx_list) {
+            idx_list->push_back(idx);
+        }
 
     } else {
         CHK_NULL(result.get());
@@ -2195,7 +2246,7 @@ static int async_handler(std::list< uint64_t >* idx_list,
 
 int async_append_handler_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2204,12 +2255,12 @@ int async_append_handler_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -2219,12 +2270,13 @@ int async_append_handler_test() {
     const size_t NUM = 10;
 
     // Append messages asynchronously.
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -2244,11 +2296,16 @@ int async_append_handler_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Now all async handlers should have result.
-    std::list< uint64_t > idx_list;
-    for (auto& entry : handlers) {
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > result = entry;
-        cmd_result< std::shared_ptr< buffer > >::handler_type my_handler = std::bind(
-            async_handler, &idx_list, result, cmd_result_code::OK, std::placeholders::_1, std::placeholders::_2);
+    std::list<uint64_t> idx_list;
+    for (auto& entry: handlers) {
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> result = entry;
+        cmd_result<std::shared_ptr<buffer>>::handler_type my_handler =
+            std::bind(async_handler,
+                      &idx_list,
+                      result,
+                      cmd_result_code::OK,
+                      std::placeholders::_1,
+                      std::placeholders::_2);
         result->when_ready(my_handler);
     }
 
@@ -2276,7 +2333,7 @@ int async_append_handler_test() {
 
 int async_append_handler_cancel_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2285,12 +2342,12 @@ int async_append_handler_cancel_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -2300,12 +2357,13 @@ int async_append_handler_cancel_test() {
     const size_t NUM = 10;
 
     // Append messages asynchronously.
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -2343,23 +2401,29 @@ int async_append_handler_cancel_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // Now all async handlers should have been cancelled.
-    std::list< uint64_t > idx_list;
-    for (auto& entry : handlers) {
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > result = entry;
-        cmd_result< std::shared_ptr< buffer > >::handler_type my_handler = std::bind(
-            async_handler, &idx_list, result, cmd_result_code::CANCELLED, std::placeholders::_1, std::placeholders::_2);
+    std::list<uint64_t> idx_list;
+    for (auto& entry: handlers) {
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> result = entry;
+        cmd_result<std::shared_ptr<buffer>>::handler_type my_handler =
+            std::bind(async_handler,
+                      &idx_list,
+                      result,
+                      cmd_result_code::CANCELLED,
+                      std::placeholders::_1,
+                      std::placeholders::_2);
         result->when_ready(my_handler);
     }
 
     // Append message to the old leader should fail immediately.
     {
         std::string test_msg = "test" + std::to_string(999);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
-        auto fail_handler = [&](cmd_result< std::shared_ptr< buffer > >& res,
-                                std::shared_ptr< std::exception >& exp) -> int {
+        auto fail_handler = [&](cmd_result<std::shared_ptr<buffer>>& res,
+                                std::shared_ptr<std::exception>& exp) -> int {
             CHK_EQ(cmd_result_code::NOT_LEADER, res.get_result_code());
             return 0;
         };
@@ -2379,7 +2443,7 @@ int async_append_handler_cancel_test() {
 
 int apply_config_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2388,7 +2452,7 @@ int apply_config_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     raft_params custom_params;
     custom_params.election_timeout_lower_bound_ = 0;
@@ -2398,7 +2462,7 @@ int apply_config_test() {
     CHK_Z(launch_servers(pkgs, &custom_params));
     CHK_Z(make_group(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -2410,12 +2474,13 @@ int apply_config_test() {
 
     // Append some logs.
     const size_t NUM = 10;
-    std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+    std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
     for (size_t ii = 0; ii < NUM; ++ii) {
         std::string test_msg = "test" + std::to_string(ii);
-        std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+        std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
         msg->put(test_msg);
-        std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+        std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+            s1.raftServer->append_entries({msg});
 
         CHK_TRUE(ret->get_accepted());
 
@@ -2435,7 +2500,7 @@ int apply_config_test() {
     CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
     // All handlers should be OK.
-    for (auto& entry : handlers) {
+    for (auto& entry: handlers) {
         CHK_TRUE(entry->has_result());
         CHK_EQ(cmd_result_code::OK, entry->get_result_code());
     }
@@ -2509,18 +2574,18 @@ int apply_config_test() {
 
     std::string err_msg;
     { // NULL argument should fail.
-        std::shared_ptr< log_entry > le;
-        std::shared_ptr< state_mgr > smgr;
+        std::shared_ptr<log_entry> le;
+        std::shared_ptr<state_mgr> smgr;
         CHK_FALSE(raft_server::apply_config_log_entry(le, smgr, err_msg));
     }
 
     size_t last_s3_commit = s3.sm->last_commit_index();
-    std::shared_ptr< log_store > s1_log_store = s1.sMgr->load_log_store();
+    std::shared_ptr<log_store> s1_log_store = s1.sMgr->load_log_store();
     size_t last_log_idx = s1_log_store->next_slot() - 1;
 
     s3.raftServer->shutdown();
     for (size_t ii = last_s3_commit + 1; ii <= last_log_idx; ++ii) {
-        std::shared_ptr< log_entry > le = s1_log_store->entry_at(ii);
+        std::shared_ptr<log_entry> le = s1_log_store->entry_at(ii);
         bool expected_ok = (le->get_val_type() == log_val_type::conf);
 
         bool ret_ok = raft_server::apply_config_log_entry(le, s3.sMgr, err_msg);
@@ -2528,12 +2593,13 @@ int apply_config_test() {
     }
 
     // S3 and S1 (leader) should have exactly the same config.
-    std::shared_ptr< cluster_config > s1_conf = s1.sMgr->load_config();
-    std::shared_ptr< cluster_config > s3_conf = s3.sMgr->load_config();
-    std::shared_ptr< buffer > s1_conf_buf = s1_conf->serialize();
-    std::shared_ptr< buffer > s3_conf_buf = s3_conf->serialize();
+    std::shared_ptr<cluster_config> s1_conf = s1.sMgr->load_config();
+    std::shared_ptr<cluster_config> s3_conf = s3.sMgr->load_config();
+    std::shared_ptr<buffer> s1_conf_buf = s1_conf->serialize();
+    std::shared_ptr<buffer> s3_conf_buf = s3_conf->serialize();
     CHK_EQ(s1_conf_buf->size(), s3_conf_buf->size());
-    CHK_Z(memcmp(s1_conf_buf->data_begin(), s3_conf_buf->data_begin(), s1_conf_buf->size()));
+    CHK_Z(memcmp(
+        s1_conf_buf->data_begin(), s3_conf_buf->data_begin(), s1_conf_buf->size()));
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
@@ -2546,7 +2612,7 @@ int apply_config_test() {
 
 int custom_term_counter_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2555,7 +2621,7 @@ int custom_term_counter_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
@@ -2564,7 +2630,7 @@ int custom_term_counter_test() {
         // Increase by 10.
         return (cur_term / 10) + 10;
     };
-    for (RaftPkg* rp : pkgs) {
+    for (RaftPkg* rp: pkgs) {
         rp->raftServer->set_inc_term_func(custom_term);
     }
 
@@ -2613,7 +2679,7 @@ int custom_term_counter_test() {
 
 int config_log_replay_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     removed_servers.clear();
 
@@ -2626,12 +2692,12 @@ int config_log_replay_test() {
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
     RaftPkg s4(f_base, 4, s4_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3, &s4};
-    std::vector< RaftPkg* > pkgs_123 = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4};
+    std::vector<RaftPkg*> pkgs_123 = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -2644,7 +2710,7 @@ int config_log_replay_test() {
 
     const size_t NUM = 10;
 
-    for (auto ss : {&s2, &s3}) {
+    for (auto ss: {&s2, &s3}) {
         // Add each server.
         s1.raftServer->add_srv(*(ss->getTestMgr()->get_srv_config()));
         for (size_t ii = 0; ii < NUM; ++ii) {
@@ -2662,12 +2728,13 @@ int config_log_replay_test() {
         CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
         // Append a few logs.
-        std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+        std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+            std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+                s1.raftServer->append_entries({msg});
 
             CHK_TRUE(ret->get_accepted());
 
@@ -2680,7 +2747,7 @@ int config_log_replay_test() {
         CHK_Z(wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC));
 
         // All handlers should be OK.
-        for (auto& entry : handlers) {
+        for (auto& entry: handlers) {
             CHK_TRUE(entry->has_result());
             CHK_EQ(cmd_result_code::OK, entry->get_result_code());
         }
@@ -2731,7 +2798,9 @@ int config_log_replay_test() {
         }
 
         uint64_t s4_idx = s4.raftServer->get_last_log_idx();
-        if (s4_idx >= last_config_index) { break; }
+        if (s4_idx >= last_config_index) {
+            break;
+        }
     }
 
     // Remove server shouldn't have happened.
@@ -2750,7 +2819,7 @@ int config_log_replay_test() {
     CHK_OK(s4.getTestSm()->isSame(*s1.getTestSm()));
 
     // S4 should have all peer info.
-    std::vector< std::shared_ptr< srv_config > > configs_out;
+    std::vector<std::shared_ptr<srv_config>> configs_out;
     s4.raftServer->get_srv_config_all(configs_out);
     CHK_EQ(pkgs.size(), configs_out.size());
 
@@ -2768,7 +2837,7 @@ int config_log_replay_test() {
 
 int full_consensus_synth_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2781,12 +2850,12 @@ int full_consensus_synth_test() {
     RaftPkg s3(f_base, 3, s3_addr);
     RaftPkg s4(f_base, 4, s4_addr);
     RaftPkg s5(f_base, 5, s5_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3, &s4, &s5};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &s4, &s5};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -2799,12 +2868,13 @@ int full_consensus_synth_test() {
 
     // Append messages asynchronously.
     auto append_msg = [&]() {
-        std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+        std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
-            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret = s1.raftServer->append_entries({msg});
+            std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
+                s1.raftServer->append_entries({msg});
 
             CHK_TRUE(ret->get_accepted());
 
@@ -2816,7 +2886,7 @@ int full_consensus_synth_test() {
 
     // Send messages to S2-4 only.
     for (size_t ii = 0; ii < NUM; ++ii) {
-        for (auto addr : {s2_addr, s3_addr, s4_addr}) {
+        for (auto addr: {s2_addr, s3_addr, s4_addr}) {
             s1.fNet->execReqResp(addr);
         }
     }
@@ -2825,10 +2895,11 @@ int full_consensus_synth_test() {
 
     // Above messages shouldn't be committed, as S5 is still considered healthy,
     // and it needs the consensus from all members.
-    CHK_GT(s1.raftServer->get_last_log_idx(), s1.raftServer->get_target_committed_log_idx());
+    CHK_GT(s1.raftServer->get_last_log_idx(),
+           s1.raftServer->get_target_committed_log_idx());
 
     // Set short heartbeat.
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.heart_beat_interval_ = 10;
@@ -2838,7 +2909,7 @@ int full_consensus_synth_test() {
     // Mimic 25 heartbeats (S2-4 only).
     for (size_t ii = 0; ii < 25; ++ii) {
         s1.fTimer->invoke(timer_task_type::heartbeat_timer);
-        for (auto addr : {s2_addr, s3_addr, s4_addr}) {
+        for (auto addr: {s2_addr, s3_addr, s4_addr}) {
             s1.fNet->execReqResp(addr);
             s1.fNet->execReqResp(addr);
         }
@@ -2846,12 +2917,13 @@ int full_consensus_synth_test() {
     }
 
     // Now above messages should be committed, as S5 is unhealthy.
-    CHK_EQ(s1.raftServer->get_last_log_idx(), s1.raftServer->get_target_committed_log_idx());
+    CHK_EQ(s1.raftServer->get_last_log_idx(),
+           s1.raftServer->get_target_committed_log_idx());
 
     // Mimic 25 heartbeats (S2 only).
     for (size_t ii = 0; ii < 25; ++ii) {
         s1.fTimer->invoke(timer_task_type::heartbeat_timer);
-        for (auto addr : {s2_addr}) {
+        for (auto addr: {s2_addr}) {
             s1.fNet->execReqResp(addr);
             s1.fNet->execReqResp(addr);
         }
@@ -2863,13 +2935,14 @@ int full_consensus_synth_test() {
 
     // Send messages to S2 only.
     for (size_t ii = 0; ii < NUM; ++ii) {
-        for (auto addr : {s2_addr}) {
+        for (auto addr: {s2_addr}) {
             s1.fNet->execReqResp(addr);
         }
     }
 
     // Commit shouldn't happen.
-    CHK_GT(s1.raftServer->get_last_log_idx(), s1.raftServer->get_target_committed_log_idx());
+    CHK_GT(s1.raftServer->get_last_log_idx(),
+           s1.raftServer->get_target_committed_log_idx());
 
     print_stats(pkgs);
 
@@ -2886,7 +2959,7 @@ int full_consensus_synth_test() {
 
 int extended_append_entries_api_test() {
     reset_log_files();
-    std::shared_ptr< FakeNetworkBase > f_base = std::make_shared< FakeNetworkBase >();
+    std::shared_ptr<FakeNetworkBase> f_base = std::make_shared<FakeNetworkBase>();
 
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
@@ -2895,12 +2968,12 @@ int extended_append_entries_api_test() {
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector< RaftPkg* > pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
 
     CHK_Z(launch_servers(pkgs));
     CHK_Z(make_group(pkgs));
 
-    for (auto& entry : pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
@@ -2912,25 +2985,29 @@ int extended_append_entries_api_test() {
 
     uint64_t cur_term = s1.raftServer->get_term();
     uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
-    void* context = static_cast< void* >(&s1);
+    void* context = static_cast<void*>(&s1);
 
     uint64_t num_cb_invoked = 0;
     uint64_t num_log_idx_mismatch = 0;
     uint64_t num_context_mismatch = 0;
     auto ext_callback = [&](const raft_server::req_ext_cb_params& params) {
-        if (last_log_idx + 1 != params.log_idx || cur_term != params.log_term) { num_log_idx_mismatch++; }
+        if (last_log_idx + 1 != params.log_idx || cur_term != params.log_term) {
+            num_log_idx_mismatch++;
+        }
 
-        if (context != params.context) { ++num_context_mismatch; }
+        if (context != params.context) {
+            ++num_context_mismatch;
+        }
 
         last_log_idx++;
         num_cb_invoked++;
     };
 
     auto append_msg = [&](uint64_t exp_term, bool exp_accepted) {
-        std::list< std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > > handlers;
+        std::list<std::shared_ptr<cmd_result<std::shared_ptr<buffer>>>> handlers;
         for (size_t ii = 0; ii < NUM; ++ii) {
             std::string test_msg = "test" + std::to_string(ii);
-            std::shared_ptr< buffer > msg = buffer::alloc(test_msg.size() + 1);
+            std::shared_ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
             msg->put(test_msg);
 
             raft_server::req_ext_params ext_params;
@@ -2938,7 +3015,7 @@ int extended_append_entries_api_test() {
             ext_params.after_precommit_ = ext_callback;
             ext_params.context_ = context;
 
-            std::shared_ptr< cmd_result< std::shared_ptr< buffer > > > ret =
+            std::shared_ptr<cmd_result<std::shared_ptr<buffer>>> ret =
                 s1.raftServer->append_entries_ext({msg}, ext_params);
 
             CHK_EQ(exp_accepted, ret->get_accepted());
@@ -3005,17 +3082,21 @@ int main(int argc, char** argv) {
 
     ts.doTest("leader election priority test", leader_election_priority_test);
 
-    ts.doTest("leader election with aggressive node test", leader_election_with_aggressive_node_test);
+    ts.doTest("leader election with aggressive node test",
+              leader_election_with_aggressive_node_test);
 
-    ts.doTest("leader election with catching-up server test", leader_election_with_catching_up_server_test);
+    ts.doTest("leader election with catching-up server test",
+              leader_election_with_catching_up_server_test);
 
     ts.doTest("leadership takeover basic test", leadership_takeover_basic_test);
 
-    ts.doTest("leadership takeover with designated successor test", leadership_takeover_designated_successor_test);
+    ts.doTest("leadership takeover with designated successor test",
+              leadership_takeover_designated_successor_test);
 
     ts.doTest("leadership takeover by request test", leadership_takeover_by_request_test);
 
-    ts.doTest("leadership takeover with offline candidate test", leadership_takeover_offline_candidate_test);
+    ts.doTest("leadership takeover with offline candidate test",
+              leadership_takeover_offline_candidate_test);
 
     ts.doTest("temporary leader test", temporary_leader_test);
 
@@ -3056,8 +3137,10 @@ int main(int argc, char** argv) {
          "amount of allocs: %zu bytes\n"
          "num active buffers: %zu\n"
          "amount of active buffers: %zu bytes\n",
-         raft_server::get_stat_counter("num_buffer_allocs"), raft_server::get_stat_counter("amount_buffer_allocs"),
-         raft_server::get_stat_counter("num_active_buffers"), raft_server::get_stat_counter("amount_active_buffers"));
+         raft_server::get_stat_counter("num_buffer_allocs"),
+         raft_server::get_stat_counter("amount_buffer_allocs"),
+         raft_server::get_stat_counter("num_active_buffers"),
+         raft_server::get_stat_counter("amount_active_buffers"));
 
     return 0;
 }

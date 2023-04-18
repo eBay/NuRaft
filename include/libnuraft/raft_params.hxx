@@ -64,38 +64,38 @@ struct raft_params {
         dual_rw_lock = 0x2,
     };
 
-    raft_params() :
-            election_timeout_upper_bound_(500u),
-            election_timeout_lower_bound_(250u),
-            heart_beat_interval_(125u),
-            rpc_failure_backoff_(50),
-            log_sync_batch_size_(1000),
-            log_sync_stop_gap_(99999),
-            snapshot_distance_(0),
-            snapshot_block_size_(0),
-            enable_randomized_snapshot_creation_(false),
-            max_append_size_(100),
-            reserved_log_items_(100000),
-            client_req_timeout_(3000),
-            fresh_log_gap_(200),
-            stale_log_gap_(2000),
-            custom_commit_quorum_size_(0u),
-            custom_election_quorum_size_(0u),
-            leadership_expiry_(0),
-            leadership_transfer_min_wait_time_(0),
-            allow_temporary_zero_priority_leader_(true),
-            auto_forwarding_(false),
-            auto_forwarding_max_connections_(10),
-            use_bg_thread_for_urgent_commit_(true),
-            exclude_snp_receiver_from_quorum_(false),
-            auto_adjust_quorum_for_small_cluster_(false),
-            locking_method_type_(dual_mutex),
-            return_method_(blocking),
-            auto_forwarding_req_timeout_(0),
-            grace_period_of_lagging_state_machine_(0),
-            use_bg_thread_for_snapshot_io_(false),
-            use_full_consensus_among_healthy_members_(false),
-            parallel_log_appending_(false) {}
+    raft_params()
+        : election_timeout_upper_bound_(500u)
+        , election_timeout_lower_bound_(250u)
+        , heart_beat_interval_(125u)
+        , rpc_failure_backoff_(50)
+        , log_sync_batch_size_(1000)
+        , log_sync_stop_gap_(99999)
+        , snapshot_distance_(0)
+        , snapshot_block_size_(0)
+        , enable_randomized_snapshot_creation_(false)
+        , max_append_size_(100)
+        , reserved_log_items_(100000)
+        , client_req_timeout_(3000)
+        , fresh_log_gap_(200)
+        , stale_log_gap_(2000)
+        , custom_commit_quorum_size_(0u)
+        , custom_election_quorum_size_(0u)
+        , leadership_expiry_(0)
+        , leadership_transfer_min_wait_time_(0)
+        , allow_temporary_zero_priority_leader_(true)
+        , auto_forwarding_(false)
+        , auto_forwarding_max_connections_(10)
+        , use_bg_thread_for_urgent_commit_(true)
+        , exclude_snp_receiver_from_quorum_(false)
+        , auto_adjust_quorum_for_small_cluster_(false)
+        , locking_method_type_(dual_mutex)
+        , return_method_(blocking)
+        , auto_forwarding_req_timeout_(0)
+        , grace_period_of_lagging_state_machine_(0)
+        , use_bg_thread_for_snapshot_io_(false)
+        , use_full_consensus_among_healthy_members_(false)
+        , parallel_log_appending_(false) {}
 
     /**
      * Election timeout upper bound in milliseconds
@@ -346,7 +346,8 @@ struct raft_params {
      * @return Heartbeat interval in millisecond.
      */
     auto max_hb_interval() const {
-        return std::max(heart_beat_interval_, election_timeout_lower_bound_ - (heart_beat_interval_ / 2u));
+        return std::max(heart_beat_interval_,
+                        election_timeout_lower_bound_ - (heart_beat_interval_ / 2u));
     }
 
 public:

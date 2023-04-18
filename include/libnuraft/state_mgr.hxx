@@ -42,7 +42,7 @@ public:
      *
      * @return Cluster config.
      */
-    virtual std::shared_ptr< cluster_config > load_config() = 0;
+    virtual std::shared_ptr<cluster_config> load_config() = 0;
 
     /**
      * Save given cluster config.
@@ -68,14 +68,14 @@ public:
      *
      * @param Server state.
      */
-    virtual std::shared_ptr< srv_state > read_state() = 0;
+    virtual std::shared_ptr<srv_state> read_state() = 0;
 
     /**
      * Get instance of user-defined Raft log store.
      *
      * @param Raft log store instance.
      */
-    virtual std::shared_ptr< log_store > load_log_store() = 0;
+    virtual std::shared_ptr<log_store> load_log_store() = 0;
 
     /**
      * Get ID of this Raft server.

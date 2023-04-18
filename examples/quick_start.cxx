@@ -28,9 +28,11 @@ using namespace nuraft;
 
 int main(int argc, char** argv) {
     // Replace with your logger, state machine, and state manager.
-    std::shared_ptr< logger > my_logger = nullptr;
-    std::shared_ptr< state_machine > my_state_machine = std::make_shared< echo_state_machine >();
-    std::shared_ptr< state_mgr > my_state_manager = std::make_shared< inmem_state_mgr >(1, "localhost:12345");
+    std::shared_ptr<logger> my_logger = nullptr;
+    std::shared_ptr<state_machine> my_state_machine =
+        std::make_shared<echo_state_machine>();
+    std::shared_ptr<state_mgr> my_state_manager =
+        std::make_shared<inmem_state_mgr>(1, "localhost:12345");
 
     asio_service::options asio_opt; // your Asio options
     raft_params params;             // your Raft parameters
@@ -39,8 +41,8 @@ int main(int argc, char** argv) {
     // It will organize a single-node Raft cluster.
     raft_launcher launcher;
     int port_number = 12345;
-    std::shared_ptr< raft_server > server =
-        launcher.init(my_state_machine, my_state_manager, my_logger, port_number, asio_opt, params);
+    std::shared_ptr<raft_server> server = launcher.init(
+        my_state_machine, my_state_manager, my_logger, port_number, asio_opt, params);
     // Need to wait for initialization.
     while (!server->is_initialized()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -48,7 +50,7 @@ int main(int argc, char** argv) {
 
     // Append a log, containing a string `hello world` and its 4-byte length.
     std::string msg = "hello world";
-    std::shared_ptr< buffer > log = buffer::alloc(sizeof(int) + msg.size());
+    std::shared_ptr<buffer> log = buffer::alloc(sizeof(int) + msg.size());
     buffer_serializer bs_log(log);
     bs_log.put_str(msg);
     server->append_entries({log});

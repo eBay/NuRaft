@@ -35,9 +35,10 @@ protected:
      * @param ext_params Extended parameters.
      * @return std::shared_ptr<resp_msg> Response.
      */
-    static std::shared_ptr< resp_msg >
-    process_req(raft_server* srv, req_msg& req,
-                const raft_server::req_ext_params& ext_params = raft_server::req_ext_params()) {
+    static std::shared_ptr<resp_msg> process_req(
+        raft_server* srv,
+        req_msg& req,
+        const raft_server::req_ext_params& ext_params = raft_server::req_ext_params()) {
         return srv->process_req(req, ext_params);
     }
 };

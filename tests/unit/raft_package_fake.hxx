@@ -27,21 +27,23 @@ static size_t COMMIT_TIMEOUT_SEC = 3;
 
 class RaftPkg {
 public:
-    RaftPkg(std::shared_ptr< FakeNetworkBase >& f_base, int srv_id, const std::string& endpoint) :
-            myId(srv_id),
-            myEndpoint(endpoint),
-            fBase(f_base),
-            fNet(nullptr),
-            fTimer(nullptr),
-            sMgr(nullptr),
-            sm(nullptr),
-            myLogWrapper(nullptr),
-            myLog(nullptr),
-            listener(nullptr),
-            rpcCliFactory(nullptr),
-            scheduler(nullptr),
-            ctx(nullptr),
-            raftServer(nullptr) {}
+    RaftPkg(std::shared_ptr<FakeNetworkBase>& f_base,
+            int srv_id,
+            const std::string& endpoint)
+        : myId(srv_id)
+        , myEndpoint(endpoint)
+        , fBase(f_base)
+        , fNet(nullptr)
+        , fTimer(nullptr)
+        , sMgr(nullptr)
+        , sm(nullptr)
+        , myLogWrapper(nullptr)
+        , myLog(nullptr)
+        , listener(nullptr)
+        , rpcCliFactory(nullptr)
+        , scheduler(nullptr)
+        , ctx(nullptr)
+        , raftServer(nullptr) {}
 
     ~RaftPkg() {
         if (myLogWrapper) myLogWrapper->destroy();
@@ -49,16 +51,17 @@ public:
     }
 
     void initServer(raft_params* given_params = nullptr,
-                    const raft_server::init_options& opt = raft_server::init_options(false, true, true)) {
-        fNet = std::make_shared< FakeNetwork >(myEndpoint, fBase);
+                    const raft_server::init_options& opt =
+                        raft_server::init_options(false, true, true)) {
+        fNet = std::make_shared<FakeNetwork>(myEndpoint, fBase);
         fBase->addNetwork(fNet);
 
-        fTimer = std::make_shared< FakeTimer >(myEndpoint, fBase->getLogger());
-        sMgr = std::make_shared< TestMgr >(myId, myEndpoint);
-        sm = std::make_shared< TestSm >(fBase->getLogger());
+        fTimer = std::make_shared<FakeTimer>(myEndpoint, fBase->getLogger());
+        sMgr = std::make_shared<TestMgr>(myId, myEndpoint);
+        sm = std::make_shared<TestSm>(fBase->getLogger());
 
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
-        myLogWrapper = std::make_shared< logger_wrapper >(log_file_name);
+        myLogWrapper = std::make_shared<logger_wrapper>(log_file_name);
         myLog = myLogWrapper;
 
         listener = fNet;
@@ -80,14 +83,15 @@ public:
         params.use_bg_thread_for_urgent_commit_ = false;
 
         ctx = new context(sMgr, sm, listener, myLog, rpcCliFactory, scheduler, params);
-        raftServer = std::make_shared< raft_server >(ctx, opt);
+        raftServer = std::make_shared<raft_server>(ctx, opt);
     }
 
     /**
      * Re-init Raft server without changing internal data including state machine.
      */
     void restartServer(raft_params* given_params = nullptr,
-                       const raft_server::init_options& opt = raft_server::init_options(false, true, true)) {
+                       const raft_server::init_options& opt =
+                           raft_server::init_options(false, true, true)) {
         if (!given_params) {
             params.with_election_timeout_lower(0);
             params.with_election_timeout_upper(10000);
@@ -103,7 +107,7 @@ public:
         params.use_bg_thread_for_urgent_commit_ = false;
 
         ctx = new context(sMgr, sm, listener, myLog, rpcCliFactory, scheduler, params);
-        raftServer = std::make_shared< raft_server >(ctx, opt);
+        raftServer = std::make_shared<raft_server>(ctx, opt);
     }
 
     void free() {
@@ -113,9 +117,9 @@ public:
         fBase->removeNetwork(myEndpoint);
     }
 
-    TestMgr* getTestMgr() const { return static_cast< TestMgr* >(sMgr.get()); }
+    TestMgr* getTestMgr() const { return static_cast<TestMgr*>(sMgr.get()); }
 
-    TestSm* getTestSm() const { return static_cast< TestSm* >(sm.get()); }
+    TestSm* getTestSm() const { return static_cast<TestSm*>(sm.get()); }
 
     void dbgLog(const std::string& msg) {
         SimpleLogger* ll = fBase->getLogger();
@@ -129,47 +133,50 @@ public:
 
     int myId;
     std::string myEndpoint;
-    std::shared_ptr< FakeNetworkBase > fBase;
-    std::shared_ptr< FakeNetwork > fNet;
-    std::shared_ptr< FakeTimer > fTimer;
-    std::shared_ptr< state_mgr > sMgr;
-    std::shared_ptr< state_machine > sm;
-    std::shared_ptr< logger_wrapper > myLogWrapper;
-    std::shared_ptr< logger > myLog;
-    std::shared_ptr< rpc_listener > listener;
-    std::shared_ptr< rpc_client_factory > rpcCliFactory;
-    std::shared_ptr< delayed_task_scheduler > scheduler;
+    std::shared_ptr<FakeNetworkBase> fBase;
+    std::shared_ptr<FakeNetwork> fNet;
+    std::shared_ptr<FakeTimer> fTimer;
+    std::shared_ptr<state_mgr> sMgr;
+    std::shared_ptr<state_machine> sm;
+    std::shared_ptr<logger_wrapper> myLogWrapper;
+    std::shared_ptr<logger> myLog;
+    std::shared_ptr<rpc_listener> listener;
+    std::shared_ptr<rpc_client_factory> rpcCliFactory;
+    std::shared_ptr<delayed_task_scheduler> scheduler;
     raft_params params;
     context* ctx;
-    std::shared_ptr< raft_server > raftServer;
+    std::shared_ptr<raft_server> raftServer;
 };
 
 // ===== Helper functions waiting for the execution of state machine ====
 // NOTE: A single thread at a time (not MT-safe).
-static std::atomic< bool > commit_done(false);
-static std::list< int > removed_servers;
-static std::vector< RaftPkg* > pkgs_to_watch;
+static std::atomic<bool> commit_done(false);
+static std::list<int> removed_servers;
+static std::vector<RaftPkg*> pkgs_to_watch;
 static std::mutex pkgs_to_watch_lock;
 static EventAwaiter ea_wait_for_commit;
 
 static bool check_pkgs() {
     // Check if all current committed logs are executed in
     // their state machines.
-    std::lock_guard< std::mutex > l(pkgs_to_watch_lock);
-    for (RaftPkg* pp : pkgs_to_watch) {
-        if (pp->raftServer->get_committed_log_idx() < pp->raftServer->get_target_committed_log_idx()) { return false; }
+    std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
+    for (RaftPkg* pp: pkgs_to_watch) {
+        if (pp->raftServer->get_committed_log_idx()
+            < pp->raftServer->get_target_committed_log_idx()) {
+            return false;
+        }
     }
     return true;
 }
 
-static int wait_for_sm_exec(const std::vector< RaftPkg* >& pkgs, size_t timeout_sec) {
+static int wait_for_sm_exec(const std::vector<RaftPkg*>& pkgs, size_t timeout_sec) {
     {
-        std::lock_guard< std::mutex > l(pkgs_to_watch_lock);
+        std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
         pkgs_to_watch = pkgs;
     }
     TestSuite::GcFunc gc_pkgs([&]() {
         // Auto clear.
-        std::lock_guard< std::mutex > l(pkgs_to_watch_lock);
+        std::lock_guard<std::mutex> l(pkgs_to_watch_lock);
         pkgs_to_watch.clear();
     });
 
@@ -181,7 +188,9 @@ static int wait_for_sm_exec(const std::vector< RaftPkg* >& pkgs, size_t timeout_
     }
     ea_wait_for_commit.wait_ms(timeout_sec * 1000);
 
-    if (commit_done) { return 0; }
+    if (commit_done) {
+        return 0;
+    }
     return -1;
 }
 
@@ -191,16 +200,21 @@ static cb_func::ReturnCode cb_default(cb_func::Type type, cb_func::Param* param)
             // Multiple commit threads may enter here at the same time,
             // but only one thread should invoke the EA.
             bool exp = false;
-            if (commit_done.compare_exchange_strong(exp, true)) { ea_wait_for_commit.invoke(); }
+            if (commit_done.compare_exchange_strong(exp, true)) {
+                ea_wait_for_commit.invoke();
+            }
         }
     } else if (type == cb_func::Type::RemovedFromCluster) {
-        if (param) { removed_servers.push_back(param->myId); }
+        if (param) {
+            removed_servers.push_back(param->myId);
+        }
     }
     return cb_func::ReturnCode::Ok;
 }
 // ==============
 
-static INT_UNUSED launch_servers(const std::vector< RaftPkg* >& pkgs, raft_params* custom_params = nullptr,
+static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
+                                 raft_params* custom_params = nullptr,
                                  bool restart = false) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
@@ -221,7 +235,7 @@ static INT_UNUSED launch_servers(const std::vector< RaftPkg* >& pkgs, raft_param
     return 0;
 }
 
-static INT_UNUSED make_group(const std::vector< RaftPkg* >& pkgs) {
+static INT_UNUSED make_group(const std::vector<RaftPkg*>& pkgs) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
@@ -265,15 +279,17 @@ static INT_UNUSED make_group(const std::vector< RaftPkg* >& pkgs) {
     return 0;
 }
 
-static VOID_UNUSED print_stats(const std::vector< RaftPkg* >& pkgs) {
-    for (auto& entry : pkgs) {
+static VOID_UNUSED print_stats(const std::vector<RaftPkg*>& pkgs) {
+    for (auto& entry: pkgs) {
         RaftPkg* pkg = entry;
         _msg("%s\n", pkg->myEndpoint.c_str());
-        for (auto& e2 : pkgs) {
+        for (auto& e2: pkgs) {
             RaftPkg* dst = e2;
             if (dst == pkg) continue;
-            _msg("  to %s: %zu reqs %zu resps remaining\n", dst->myEndpoint.c_str(),
-                 pkg->fNet->getNumPendingReqs(dst->myEndpoint), pkg->fNet->getNumPendingResps(dst->myEndpoint));
+            _msg("  to %s: %zu reqs %zu resps remaining\n",
+                 dst->myEndpoint.c_str(),
+                 pkg->fNet->getNumPendingReqs(dst->myEndpoint),
+                 pkg->fNet->getNumPendingResps(dst->myEndpoint));
         }
         _msg("  %zu remaining timer tasks\n", pkg->fTimer->getNumPendingTasks());
     }

@@ -31,16 +31,21 @@ namespace nuraft {
 class snapshot;
 class snapshot_sync_req {
 public:
-    snapshot_sync_req(const std::shared_ptr< snapshot >& s, uint64_t offset, const std::shared_ptr< buffer >& buf,
-                      bool done) :
-            snapshot_(s), offset_(offset), data_(buf), done_(done) {}
+    snapshot_sync_req(const std::shared_ptr<snapshot>& s,
+                      uint64_t offset,
+                      const std::shared_ptr<buffer>& buf,
+                      bool done)
+        : snapshot_(s)
+        , offset_(offset)
+        , data_(buf)
+        , done_(done) {}
 
     __nocopy__(snapshot_sync_req);
 
 public:
-    static std::shared_ptr< snapshot_sync_req > deserialize(buffer& buf);
+    static std::shared_ptr<snapshot_sync_req> deserialize(buffer& buf);
 
-    static std::shared_ptr< snapshot_sync_req > deserialize(buffer_serializer& bs);
+    static std::shared_ptr<snapshot_sync_req> deserialize(buffer_serializer& bs);
 
     snapshot& get_snapshot() const { return *snapshot_; }
 
@@ -51,12 +56,12 @@ public:
 
     bool is_done() const { return done_; }
 
-    std::shared_ptr< buffer > serialize();
+    std::shared_ptr<buffer> serialize();
 
 private:
-    std::shared_ptr< snapshot > snapshot_;
+    std::shared_ptr<snapshot> snapshot_;
     uint64_t offset_;
-    std::shared_ptr< buffer > data_;
+    std::shared_ptr<buffer> data_;
     bool done_;
 };
 

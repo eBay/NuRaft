@@ -37,20 +37,21 @@ static const raft_params::return_method_type CALL_TYPE = raft_params::blocking;
 
 #include "example_common.hxx"
 
-void handle_result(std::shared_ptr< TestSuite::Timer > timer, raft_result& result,
-                   std::shared_ptr< std::exception >& err) {
+void handle_result(std::shared_ptr<TestSuite::Timer> timer,
+                   raft_result& result,
+                   std::shared_ptr<std::exception>& err) {
     if (result.get_result_code() != cmd_result_code::OK) {
         // Something went wrong.
         // This means committing this log failed,
         // but the log itself is still in the log store.
-        std::cout << "failed: " << result.get_result_code() << ", " << TestSuite::usToString(timer->getTimeUs())
-                  << std::endl;
+        std::cout << "failed: " << result.get_result_code() << ", "
+                  << TestSuite::usToString(timer->getTimeUs()) << std::endl;
         return;
     }
     std::cout << "succeeded, " << TestSuite::usToString(timer->getTimeUs()) << std::endl;
 }
 
-void append_log(const std::string& cmd, const std::vector< std::string >& tokens) {
+void append_log(const std::string& cmd, const std::vector<std::string>& tokens) {
     if (tokens.size() < 2) {
         std::cout << "too few arguments" << std::endl;
         return;
@@ -63,15 +64,15 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
 
     // Create a new log which will contain
     // 4-byte length and string data.
-    std::shared_ptr< buffer > new_log = buffer::alloc(sizeof(int) + cascaded_str.size());
+    std::shared_ptr<buffer> new_log = buffer::alloc(sizeof(int) + cascaded_str.size());
     buffer_serializer bs(new_log);
     bs.put_str(cascaded_str);
 
     // To measure the elapsed time.
-    std::shared_ptr< TestSuite::Timer > timer = std::make_shared< TestSuite::Timer >();
+    std::shared_ptr<TestSuite::Timer> timer = std::make_shared<TestSuite::Timer>();
 
     // Do append.
-    std::shared_ptr< raft_result > ret = stuff.raft_instance_->append_entries({new_log});
+    std::shared_ptr<raft_result> ret = stuff.raft_instance_->append_entries({new_log});
 
     if (!ret->get_accepted()) {
         // Log append rejected, usually because this node is not a leader.
@@ -86,7 +87,7 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
         // Blocking mode:
         //   `append_entries` returns after getting a consensus,
         //   so that `ret` already has the result from state machine.
-        std::shared_ptr< std::exception > err(nullptr);
+        std::shared_ptr<std::exception> err(nullptr);
         handle_result(timer, *ret, err);
 
     } else if (CALL_TYPE == raft_params::async_handler) {
@@ -94,22 +95,25 @@ void append_log(const std::string& cmd, const std::vector< std::string >& tokens
         //   `append_entries` returns immediately.
         //   `handle_result` will be invoked asynchronously,
         //   after getting a consensus.
-        ret->when_ready(std::bind(handle_result, timer, std::placeholders::_1, std::placeholders::_2));
+        ret->when_ready(std::bind(
+            handle_result, timer, std::placeholders::_1, std::placeholders::_2));
 
     } else {
         assert(0);
     }
 }
 
-void print_status(const std::string& cmd, const std::vector< std::string >& tokens) {
-    std::shared_ptr< log_store > ls = stuff.smgr_->load_log_store();
+void print_status(const std::string& cmd, const std::vector<std::string>& tokens) {
+    std::shared_ptr<log_store> ls = stuff.smgr_->load_log_store();
     std::cout << "my server id: " << stuff.server_id_ << std::endl
               << "leader id: " << stuff.raft_instance_->get_leader() << std::endl
-              << "Raft log range: " << ls->start_index() << " - " << (ls->next_slot() - 1) << std::endl
-              << "last committed index: " << stuff.raft_instance_->get_committed_log_idx() << std::endl;
+              << "Raft log range: " << ls->start_index() << " - " << (ls->next_slot() - 1)
+              << std::endl
+              << "last committed index: " << stuff.raft_instance_->get_committed_log_idx()
+              << std::endl;
 }
 
-void help(const std::string& cmd, const std::vector< std::string >& tokens) {
+void help(const std::string& cmd, const std::vector<std::string>& tokens) {
     std::cout << "echo message: msg <operand>\n"
               << "    e.g.) msg hello world!\n"
               << "\n"
@@ -122,7 +126,7 @@ void help(const std::string& cmd, const std::vector< std::string >& tokens) {
               << "\n";
 }
 
-bool do_cmd(const std::vector< std::string >& tokens) {
+bool do_cmd(const std::vector<std::string>& tokens) {
     if (!tokens.size()) return true;
 
     const std::string& cmd = tokens[0];
@@ -163,7 +167,7 @@ int main(int argc, char** argv) {
     std::cout << "               Version 0.1.0" << std::endl;
     std::cout << "    Server ID:    " << stuff.server_id_ << std::endl;
     std::cout << "    Endpoint:     " << stuff.endpoint_ << std::endl;
-    init_raft(std::make_shared< echo_state_machine >());
+    init_raft(std::make_shared<echo_state_machine>());
     loop();
 
     return 0;

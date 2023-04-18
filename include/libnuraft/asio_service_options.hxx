@@ -21,15 +21,28 @@ limitations under the License.
 #include <string>
 #include <system_error>
 
+typedef struct ssl_ctx_st SSL_CTX;
+
 namespace nuraft {
 
 /**
  * Parameters for meta callback functions in `options`.
  */
 struct asio_service_meta_cb_params {
-    asio_service_meta_cb_params(int m = 0, int s = 0, int d = 0, uint64_t t = 0, uint64_t lt = 0, uint64_t li = 0,
-                                uint64_t ci = 0) :
-            msg_type_(m), src_id_(s), dst_id_(d), term_(t), log_term_(lt), log_idx_(li), commit_idx_(ci) {}
+    asio_service_meta_cb_params(int m = 0,
+                                int s = 0,
+                                int d = 0,
+                                uint64_t t = 0,
+                                uint64_t lt = 0,
+                                uint64_t li = 0,
+                                uint64_t ci = 0)
+        : msg_type_(m)
+        , src_id_(s)
+        , dst_id_(d)
+        , term_(t)
+        , log_term_(lt)
+        , log_idx_(li)
+        , commit_idx_(ci) {}
 
     // Type of request.
     int msg_type_;
@@ -57,27 +70,27 @@ struct asio_service_meta_cb_params {
  * Response callback function for customer resolvers.
  */
 using asio_service_custom_resolver_response =
-    std::function< void(const std::string&, const std::string&, std::error_code) >;
+    std::function<void(const std::string&, const std::string&, std::error_code)>;
 
 /**
  * Options used for initialization of Asio service.
  */
 struct asio_service_options {
-    asio_service_options() :
-            thread_pool_size_(0),
-            worker_start_(nullptr),
-            worker_stop_(nullptr),
-            enable_ssl_(false),
-            skip_verification_(false),
-            write_req_meta_(nullptr),
-            read_req_meta_(nullptr),
-            invoke_req_cb_on_empty_meta_(true),
-            write_resp_meta_(nullptr),
-            read_resp_meta_(nullptr),
-            invoke_resp_cb_on_empty_meta_(true),
-            verify_sn_(nullptr),
-            custom_resolver_(nullptr),
-            replicate_log_timestamp_(false) {}
+    asio_service_options()
+        : thread_pool_size_(0)
+        , worker_start_(nullptr)
+        , worker_stop_(nullptr)
+        , enable_ssl_(false)
+        , skip_verification_(false)
+        , write_req_meta_(nullptr)
+        , read_req_meta_(nullptr)
+        , invoke_req_cb_on_empty_meta_(true)
+        , write_resp_meta_(nullptr)
+        , read_resp_meta_(nullptr)
+        , invoke_resp_cb_on_empty_meta_(true)
+        , verify_sn_(nullptr)
+        , custom_resolver_(nullptr)
+        , replicate_log_timestamp_(false) {}
 
     /**
      * Number of ASIO worker threads.
@@ -88,12 +101,12 @@ struct asio_service_options {
     /**
      * Lifecycle callback function on worker thread start.
      */
-    std::function< void(uint32_t) > worker_start_;
+    std::function<void(uint32_t)> worker_start_;
 
     /**
      * Lifecycle callback function on worker thread stop.
      */
-    std::function< void(uint32_t) > worker_stop_;
+    std::function<void(uint32_t)> worker_stop_;
 
     /**
      * If `true`, enable SSL/TLS secure connection.
@@ -123,13 +136,14 @@ struct asio_service_options {
     /**
      * Callback function for writing Raft RPC request metadata.
      */
-    std::function< std::string(const asio_service_meta_cb_params&) > write_req_meta_;
+    std::function<std::string(const asio_service_meta_cb_params&)> write_req_meta_;
 
     /**
      * Callback function for reading and verifying Raft RPC request metadata.
      * If it returns `false`, the request will be discarded.
      */
-    std::function< bool(const asio_service_meta_cb_params&, const std::string&) > read_req_meta_;
+    std::function<bool(const asio_service_meta_cb_params&, const std::string&)>
+        read_req_meta_;
 
     /**
      * If `true`, it will invoke `read_req_meta_` even though
@@ -140,13 +154,14 @@ struct asio_service_options {
     /**
      * Callback function for writing Raft RPC response metadata.
      */
-    std::function< std::string(const asio_service_meta_cb_params&) > write_resp_meta_;
+    std::function<std::string(const asio_service_meta_cb_params&)> write_resp_meta_;
 
     /**
      * Callback function for reading and verifying Raft RPC response metadata.
      * If it returns false, the response will be ignored.
      */
-    std::function< bool(const asio_service_meta_cb_params&, const std::string&) > read_resp_meta_;
+    std::function<bool(const asio_service_meta_cb_params&, const std::string&)>
+        read_resp_meta_;
 
     /**
      * If `true`, it will invoke `read_resp_meta_` even though
@@ -158,7 +173,21 @@ struct asio_service_options {
      * Callback function for verifying certificate subject name.
      * If not given, subject name will not be verified.
      */
-    std::function< bool(const std::string&) > verify_sn_;
+    std::function<bool(const std::string&)> verify_sn_;
+
+    /**
+     * Callback function that provides pre-configured SSL_CTX.
+     * Asio takes ownership of the provided object
+     * and disposes it later with SSL_CTX_free.
+     *
+     * No configuration changes are applied to the provided context,
+     * so callback must return properly configured and operational SSL_CTX.
+     *
+     * Note that it might be unsafe to share SSL_CTX with other threads,
+     * consult with your OpenSSL library documentation/guidelines.
+     */
+    std::function<SSL_CTX*(void)> ssl_context_provider_server_;
+    std::function<SSL_CTX*(void)> ssl_context_provider_client_;
 
     /**
      * Custom IP address resolver. If given, it will be invoked
@@ -167,7 +196,8 @@ struct asio_service_options {
      * If you want to selectively bypass some hosts, just pass the given
      * host and port to the response function as they are.
      */
-    std::function< void(const std::string&, const std::string&, asio_service_custom_resolver_response) >
+    std::function<void(
+        const std::string&, const std::string&, asio_service_custom_resolver_response)>
         custom_resolver_;
 
     /**

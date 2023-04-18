@@ -23,10 +23,10 @@ limitations under the License.
 #include "context.hxx"
 #include "delayed_task_scheduler.hxx"
 #include "internal_timer.hxx"
-#include "timer_task.hxx"
 #include "rpc_cli_factory.hxx"
 #include "snapshot_sync_ctx.hxx"
 #include "srv_config.hxx"
+#include "timer_task.hxx"
 
 #include <atomic>
 
@@ -35,42 +35,46 @@ namespace nuraft {
 class snapshot;
 class peer {
 public:
-    peer(std::shared_ptr< srv_config >& config, const context& ctx, timer_task< int32_t >::executor& hb_exec,
-         std::shared_ptr< logger >& logger) :
-            config_(config),
-            scheduler_(ctx.scheduler_),
-            rpc_(ctx.rpc_cli_factory_->create_client(config->get_endpoint())),
-            current_hb_interval_(ctx.get_params()->heart_beat_interval_),
-            hb_interval_(ctx.get_params()->heart_beat_interval_),
-            rpc_backoff_(ctx.get_params()->rpc_failure_backoff_),
-            max_hb_interval_(ctx.get_params()->max_hb_interval()),
-            next_log_idx_(0),
-            last_accepted_log_idx_(0),
-            next_batch_size_hint_in_bytes_(0),
-            matched_idx_(0),
-            busy_flag_(false),
-            pending_commit_flag_(false),
-            hb_enabled_(false),
-            hb_task_(std::make_shared< timer_task< int32_t >, timer_task< int32_t >::executor&, int32_t >(
-                hb_exec, config->get_id(), timer_task_type::heartbeat_timer)),
-            snp_sync_ctx_(nullptr),
-            lock_(),
-            long_pause_warnings_(0),
-            network_recoveries_(0),
-            manual_free_(false),
-            rpc_errs_(0),
-            last_sent_idx_(0),
-            cnt_not_applied_(0),
-            leave_requested_(false),
-            hb_cnt_since_leave_(0),
-            stepping_down_(false),
-            reconn_scheduled_(false),
-            reconn_backoff_(0),
-            suppress_following_error_(false),
-            abandoned_(false),
-            rsv_msg_(nullptr),
-            rsv_msg_handler_(nullptr),
-            l_(logger) {
+    peer(std::shared_ptr<srv_config>& config,
+         const context& ctx,
+         timer_task<int32_t>::executor& hb_exec,
+         std::shared_ptr<logger>& logger)
+        : config_(config)
+        , scheduler_(ctx.scheduler_)
+        , rpc_(ctx.rpc_cli_factory_->create_client(config->get_endpoint()))
+        , current_hb_interval_(ctx.get_params()->heart_beat_interval_)
+        , hb_interval_(ctx.get_params()->heart_beat_interval_)
+        , rpc_backoff_(ctx.get_params()->rpc_failure_backoff_)
+        , max_hb_interval_(ctx.get_params()->max_hb_interval())
+        , next_log_idx_(0)
+        , last_accepted_log_idx_(0)
+        , next_batch_size_hint_in_bytes_(0)
+        , matched_idx_(0)
+        , busy_flag_(false)
+        , pending_commit_flag_(false)
+        , hb_enabled_(false)
+        , hb_task_(std::make_shared<timer_task<int32_t>,
+                                    timer_task<int32_t>::executor&,
+                                    int32_t>(
+              hb_exec, config->get_id(), timer_task_type::heartbeat_timer))
+        , snp_sync_ctx_(nullptr)
+        , lock_()
+        , long_pause_warnings_(0)
+        , network_recoveries_(0)
+        , manual_free_(false)
+        , rpc_errs_(0)
+        , last_sent_idx_(0)
+        , cnt_not_applied_(0)
+        , leave_requested_(false)
+        , hb_cnt_since_leave_(0)
+        , stepping_down_(false)
+        , reconn_scheduled_(false)
+        , reconn_backoff_(0)
+        , suppress_following_error_(false)
+        , abandoned_(false)
+        , rsv_msg_(nullptr)
+        , rsv_msg_handler_(nullptr)
+        , l_(logger) {
         reset_ls_timer();
         reset_resp_timer();
         reset_active_timer();
@@ -87,9 +91,9 @@ public:
 
     const srv_config& get_config() { return *config_; }
 
-    void set_config(std::shared_ptr< srv_config > new_config) { config_ = new_config; }
+    void set_config(std::shared_ptr<srv_config> new_config) { config_ = new_config; }
 
-    std::shared_ptr< delayed_task >& get_hb_task() { return hb_task_; }
+    std::shared_ptr<delayed_task>& get_hb_task() { return hb_task_; }
 
     std::mutex& get_lock() { return lock_; }
 
@@ -110,7 +114,9 @@ public:
         if (abandoned_) return;
 
         hb_enabled_ = enable;
-        if (!enable) { scheduler_->cancel(hb_task_); }
+        if (!enable) {
+            scheduler_->cancel(hb_task_);
+        }
     }
 
     uint64_t get_next_log_idx() const { return next_log_idx_; }
@@ -121,9 +127,13 @@ public:
 
     void set_last_accepted_log_idx(uint64_t to) { last_accepted_log_idx_ = to; }
 
-    auto get_next_batch_size_hint_in_bytes() const { return next_batch_size_hint_in_bytes_.load(); }
+    auto get_next_batch_size_hint_in_bytes() const {
+        return next_batch_size_hint_in_bytes_.load();
+    }
 
-    void set_next_batch_size_hint_in_bytes(int64_t batch_size) { next_batch_size_hint_in_bytes_ = batch_size; }
+    void set_next_batch_size_hint_in_bytes(int64_t batch_size) {
+        next_batch_size_hint_in_bytes_ = batch_size;
+    }
 
     uint64_t get_matched_idx() const { return matched_idx_; }
 
@@ -136,27 +146,33 @@ public:
         return pending_commit_flag_.compare_exchange_strong(t, false);
     }
 
-    void set_snapshot_in_sync(const std::shared_ptr< snapshot >& s, uint64_t timeout_ms = 10 * 1000) {
-        std::lock_guard< std::mutex > l(snp_sync_ctx_lock_);
+    void set_snapshot_in_sync(const std::shared_ptr<snapshot>& s,
+                              uint64_t timeout_ms = 10 * 1000) {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         if (s == nullptr) {
             snp_sync_ctx_.reset();
         } else {
-            snp_sync_ctx_ = std::make_shared< snapshot_sync_ctx >(s, get_id(), timeout_ms);
+            snp_sync_ctx_ = std::make_shared<snapshot_sync_ctx>(s, get_id(), timeout_ms);
         }
     }
 
-    std::shared_ptr< snapshot_sync_ctx > get_snapshot_sync_ctx() const {
-        std::lock_guard< std::mutex > l(snp_sync_ctx_lock_);
+    std::shared_ptr<snapshot_sync_ctx> get_snapshot_sync_ctx() const {
+        std::lock_guard<std::mutex> l(snp_sync_ctx_lock_);
         return snp_sync_ctx_;
     }
 
-    void slow_down_hb() { current_hb_interval_ = std::min(max_hb_interval_, current_hb_interval_ + rpc_backoff_); }
+    void slow_down_hb() {
+        current_hb_interval_ =
+            std::min(max_hb_interval_, current_hb_interval_ + rpc_backoff_);
+    }
 
     void resume_hb_speed() { current_hb_interval_ = hb_interval_; }
 
     void set_hb_interval(uint32_t new_interval) { hb_interval_ = new_interval; }
 
-    void send_req(std::shared_ptr< peer > myself, std::shared_ptr< req_msg >& req, rpc_handler& handler);
+    void send_req(std::shared_ptr<peer> myself,
+                  std::shared_ptr<req_msg>& req,
+                  rpc_handler& handler);
 
     void shutdown();
 
@@ -184,7 +200,7 @@ public:
     void set_manual_free() { manual_free_ = true; }
     bool is_manual_free() { return manual_free_; }
 
-    bool recreate_rpc(std::shared_ptr< srv_config >& config, context& ctx);
+    bool recreate_rpc(std::shared_ptr<srv_config>& config, context& ctx);
 
     void reset_rpc_errs() { rpc_errs_ = 0; }
     void inc_rpc_errs() { rpc_errs_.fetch_add(1); }
@@ -218,10 +234,14 @@ public:
     bool need_to_reconnect() {
         if (abandoned_) return false;
 
-        if (reconn_scheduled_ && reconn_timer_.timeout()) { return true; }
+        if (reconn_scheduled_ && reconn_timer_.timeout()) {
+            return true;
+        }
         {
-            std::lock_guard< std::mutex > l(rpc_protector_);
-            if (!rpc_.get()) { return true; }
+            std::lock_guard<std::mutex> l(rpc_protector_);
+            if (!rpc_.get()) {
+                return true;
+            }
         }
         return false;
     }
@@ -232,33 +252,36 @@ public:
         return suppress_following_error_.compare_exchange_strong(exp, desired);
     }
 
-    void set_rsv_msg(const std::shared_ptr< req_msg >& m, const rpc_handler& h) {
+    void set_rsv_msg(const std::shared_ptr<req_msg>& m, const rpc_handler& h) {
         rsv_msg_ = m;
         rsv_msg_handler_ = h;
     }
 
-    std::shared_ptr< req_msg > get_rsv_msg() const { return rsv_msg_; }
+    std::shared_ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
     rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
 
 private:
-    void handle_rpc_result(std::shared_ptr< peer > myself, std::shared_ptr< rpc_client > my_rpc_client,
-                           std::shared_ptr< req_msg >& req, std::shared_ptr< rpc_result >& pending_result,
-                           std::shared_ptr< resp_msg >& resp, std::shared_ptr< rpc_exception >& err);
+    void handle_rpc_result(std::shared_ptr<peer> myself,
+                           std::shared_ptr<rpc_client> my_rpc_client,
+                           std::shared_ptr<req_msg>& req,
+                           std::shared_ptr<rpc_result>& pending_result,
+                           std::shared_ptr<resp_msg>& resp,
+                           std::shared_ptr<rpc_exception>& err);
 
     /**
      * Information (config) of this server.
      */
-    std::shared_ptr< srv_config > config_;
+    std::shared_ptr<srv_config> config_;
 
     /**
      * Heartbeat scheduler for this server.
      */
-    std::shared_ptr< delayed_task_scheduler > scheduler_;
+    std::shared_ptr<delayed_task_scheduler> scheduler_;
 
     /**
      * RPC client to this server.
      */
-    std::shared_ptr< rpc_client > rpc_;
+    std::shared_ptr<rpc_client> rpc_;
 
     /**
      * Guard of `rpc_`.
@@ -268,7 +291,7 @@ private:
     /**
      * Current heartbeat interval after adding back-off.
      */
-    std::atomic< uint32_t > current_hb_interval_;
+    std::atomic<uint32_t> current_hb_interval_;
 
     /**
      * Original heartbeat interval.
@@ -288,17 +311,17 @@ private:
     /**
      * Next log index of this server.
      */
-    std::atomic< uint64_t > next_log_idx_;
+    std::atomic<uint64_t> next_log_idx_;
 
     /**
      * The last log index accepted by this server.
      */
-    std::atomic< uint64_t > last_accepted_log_idx_;
+    std::atomic<uint64_t> last_accepted_log_idx_;
 
     /**
      * Hint of the next log batch size in bytes.
      */
-    std::atomic< int64_t > next_batch_size_hint_in_bytes_;
+    std::atomic<int64_t> next_batch_size_hint_in_bytes_;
 
     /**
      * The last log index whose term matches up with the leader.
@@ -309,13 +332,13 @@ private:
      * `true` if we sent message to this server and waiting for
      * the response.
      */
-    std::atomic< bool > busy_flag_;
+    std::atomic<bool> busy_flag_;
 
     /**
      * `true` if we need to send follow-up request immediately
      * for commiting logs.
      */
-    std::atomic< bool > pending_commit_flag_;
+    std::atomic<bool> pending_commit_flag_;
 
     /**
      * `true` if heartbeat is enabled.
@@ -325,12 +348,12 @@ private:
     /**
      * Heartbeat task.
      */
-    std::shared_ptr< delayed_task > hb_task_;
+    std::shared_ptr<delayed_task> hb_task_;
 
     /**
      * Snapshot context if snapshot transmission is in progress.
      */
-    std::shared_ptr< snapshot_sync_ctx > snp_sync_ctx_;
+    std::shared_ptr<snapshot_sync_ctx> snp_sync_ctx_;
 
     /**
      * Lock for `snp_sync_ctx_`.
@@ -361,55 +384,55 @@ private:
     /**
      * Counter of long pause warnings.
      */
-    std::atomic< int32_t > long_pause_warnings_;
+    std::atomic<int32_t> long_pause_warnings_;
 
     /**
      * Counter of recoveries after long pause.
      */
-    std::atomic< int32_t > network_recoveries_;
+    std::atomic<int32_t> network_recoveries_;
 
     /**
      * `true` if user manually clear the `busy_flag_` before
      * getting response from this server.
      */
-    std::atomic< bool > manual_free_;
+    std::atomic<bool> manual_free_;
 
     /**
      * For tracking RPC error.
      */
-    std::atomic< int32_t > rpc_errs_;
+    std::atomic<int32_t> rpc_errs_;
 
     /**
      * Start log index of the last sent append entries request.
      */
-    std::atomic< uint64_t > last_sent_idx_;
+    std::atomic<uint64_t> last_sent_idx_;
 
     /**
      * Number of count where start log index is the same as previous.
      */
-    std::atomic< int32_t > cnt_not_applied_;
+    std::atomic<int32_t> cnt_not_applied_;
 
     /**
      * `true` if leave request has been sent to this peer.
      */
-    std::atomic< bool > leave_requested_;
+    std::atomic<bool> leave_requested_;
 
     /**
      * Number of HB timeout after leave requested.
      */
-    std::atomic< int32_t > hb_cnt_since_leave_;
+    std::atomic<int32_t> hb_cnt_since_leave_;
 
     /**
      * `true` if this peer responded to leave request so that
      * will be removed from cluster soon.
      * To avoid HB timer trying to do something with this peer.
      */
-    std::atomic< bool > stepping_down_;
+    std::atomic<bool> stepping_down_;
 
     /**
      * For re-connection.
      */
-    std::atomic< bool > reconn_scheduled_;
+    std::atomic<bool> reconn_scheduled_;
 
     /**
      * Back-off timer to avoid superfluous reconnection.
@@ -425,18 +448,18 @@ private:
      * If `true`, we will lower the log level of the RPC error
      * from this server.
      */
-    std::atomic< bool > suppress_following_error_;
+    std::atomic<bool> suppress_following_error_;
 
     /**
      * if `true`, this peer is removed and shut down.
      * All operations on this peer should be rejected.
      */
-    std::atomic< bool > abandoned_;
+    std::atomic<bool> abandoned_;
 
     /**
      * Reserved message that should be sent next time.
      */
-    std::shared_ptr< req_msg > rsv_msg_;
+    std::shared_ptr<req_msg> rsv_msg_;
 
     /**
      * Handler for reserved message.
@@ -446,7 +469,7 @@ private:
     /**
      * Logger instance.
      */
-    std::shared_ptr< logger > l_;
+    std::shared_ptr<logger> l_;
 };
 
 } // namespace nuraft

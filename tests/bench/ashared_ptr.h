@@ -26,20 +26,18 @@ limitations under the License.
 #include <atomic>
 #include <mutex>
 
-template<typename T>
-class ashared_ptr {
+template <typename T> class ashared_ptr {
 public:
-    ashared_ptr() : object(nullptr) {}
-    ashared_ptr(T* src_ptr) : object( (src_ptr)
-                                      ? new PtrWrapper<T>(src_ptr)
-                                      : nullptr ) {}
-    ashared_ptr(const ashared_ptr<T>& src) : object(nullptr) {
+    ashared_ptr()
+        : object(nullptr) {}
+    ashared_ptr(T* src_ptr)
+        : object((src_ptr) ? new PtrWrapper<T>(src_ptr) : nullptr) {}
+    ashared_ptr(const ashared_ptr<T>& src)
+        : object(nullptr) {
         operator=(src);
     }
 
-    ~ashared_ptr() {
-        reset();
-    }
+    ~ashared_ptr() { reset(); }
 
     void reset() {
         std::lock_guard<std::mutex> l(lock);
@@ -81,16 +79,14 @@ public:
 
     inline bool compare_exchange_strong(ashared_ptr<T>& expected,
                                         ashared_ptr<T> src,
-                                        std::memory_order order)
-    {
+                                        std::memory_order order) {
         (void)order;
         return compare_exchange(expected, src);
     }
 
     inline bool compare_exchange_weak(ashared_ptr<T>& expected,
                                       ashared_ptr<T> src,
-                                      std::memory_order order)
-    {
+                                      std::memory_order order) {
         (void)order;
         return compare_exchange(expected, src);
     }
@@ -117,10 +113,13 @@ public:
     }
 
 private:
-    template<typename T2>
-    struct PtrWrapper {
-        PtrWrapper() : ptr(nullptr), refCount(0) {}
-        PtrWrapper(T2* src) : ptr(src), refCount(1) {}
+    template <typename T2> struct PtrWrapper {
+        PtrWrapper()
+            : ptr(nullptr)
+            , refCount(0) {}
+        PtrWrapper(T2* src)
+            : ptr(src)
+            , refCount(1) {}
 
         std::atomic<T2*> ptr;
         std::atomic<uint64_t> refCount;

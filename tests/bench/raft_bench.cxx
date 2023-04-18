@@ -29,32 +29,42 @@ namespace raft_bench {
 
 LatencyCollector global_lat;
 
-using raft_result = cmd_result< std::shared_ptr< buffer > >;
+using raft_result = cmd_result<std::shared_ptr<buffer>>;
 
 class dummy_sm : public state_machine {
 public:
-    dummy_sm() : last_commit_idx_(0) {}
+    dummy_sm()
+        : last_commit_idx_(0) {}
     ~dummy_sm() {}
 
-    std::shared_ptr< buffer > commit(const uint64_t log_idx, buffer& data) {
-        std::shared_ptr< buffer > ret = buffer::alloc(sizeof(uint64_t));
+    std::shared_ptr<buffer> commit(const uint64_t log_idx, buffer& data) {
+        std::shared_ptr<buffer> ret = buffer::alloc(sizeof(uint64_t));
         ret->put(log_idx);
         ret->pos(0);
         last_commit_idx_ = log_idx;
         return ret;
     }
 
-    std::shared_ptr< buffer > pre_commit(const uint64_t log_idx, buffer& data) { return nullptr; }
+    std::shared_ptr<buffer> pre_commit(const uint64_t log_idx, buffer& data) {
+        return nullptr;
+    }
 
     void rollback(const uint64_t log_idx, buffer& data) {}
     void save_snapshot_data(snapshot& s, const uint64_t offset, buffer& data) {}
-    void save_logical_snp_obj(snapshot& s, uint64_t& obj_id, buffer& data, bool is_first_obj, bool is_last_obj) {
+    void save_logical_snp_obj(snapshot& s,
+                              uint64_t& obj_id,
+                              buffer& data,
+                              bool is_first_obj,
+                              bool is_last_obj) {
         obj_id++;
     }
     bool apply_snapshot(snapshot& s) { return true; }
     int read_snapshot_data(snapshot& s, const uint64_t offset, buffer& data) { return 0; }
 
-    int read_logical_snp_obj(snapshot& s, void*& user_snp_ctx, uint64_t obj_id, std::shared_ptr< buffer >& data_out,
+    int read_logical_snp_obj(snapshot& s,
+                             void*& user_snp_ctx,
+                             uint64_t obj_id,
+                             std::shared_ptr<buffer>& data_out,
                              bool& is_last_obj) {
         is_last_obj = true;
         data_out = buffer::alloc(sizeof(uint64_t));
@@ -65,40 +75,44 @@ public:
 
     void free_user_snp_ctx(void*& user_snp_ctx) {}
 
-    std::shared_ptr< snapshot > last_snapshot() {
-        std::lock_guard< std::mutex > ll(last_snapshot_lock_);
+    std::shared_ptr<snapshot> last_snapshot() {
+        std::lock_guard<std::mutex> ll(last_snapshot_lock_);
         return last_snapshot_;
     }
 
     uint64_t last_commit_index() { return last_commit_idx_; }
 
-    void create_snapshot(snapshot& s, async_result< bool >::handler_type& when_done) {
+    void create_snapshot(snapshot& s, async_result<bool>::handler_type& when_done) {
         {
-            std::lock_guard< std::mutex > ll(last_snapshot_lock_);
+            std::lock_guard<std::mutex> ll(last_snapshot_lock_);
             // NOTE: We only handle logical snapshot.
-            std::shared_ptr< buffer > snp_buf = s.serialize();
+            std::shared_ptr<buffer> snp_buf = s.serialize();
             last_snapshot_ = snapshot::deserialize(*snp_buf);
         }
-        std::shared_ptr< std::exception > except(nullptr);
+        std::shared_ptr<std::exception> except(nullptr);
         bool ret = true;
         when_done(ret, except);
     }
 
 private:
-    std::shared_ptr< snapshot > last_snapshot_;
+    std::shared_ptr<snapshot> last_snapshot_;
     std::mutex last_snapshot_lock_;
     uint64_t last_commit_idx_;
 };
 
 struct bench_config {
-    bench_config(size_t _srv_id = 1, const std::string& _my_endpoint = "tcp://localhost:25000", size_t _duration = 30,
-                 size_t _iops = 5, size_t _num_threads = 1, size_t _payload_size = 128) :
-            srv_id_(_srv_id),
-            my_endpoint_(_my_endpoint),
-            duration_(_duration),
-            iops_(_iops),
-            num_threads_(_num_threads),
-            payload_size_(_payload_size) {}
+    bench_config(size_t _srv_id = 1,
+                 const std::string& _my_endpoint = "tcp://localhost:25000",
+                 size_t _duration = 30,
+                 size_t _iops = 5,
+                 size_t _num_threads = 1,
+                 size_t _payload_size = 128)
+        : srv_id_(_srv_id)
+        , my_endpoint_(_my_endpoint)
+        , duration_(_duration)
+        , iops_(_iops)
+        , num_threads_(_num_threads)
+        , payload_size_(_payload_size) {}
 
     size_t srv_id_;
     std::string my_endpoint_;
@@ -106,13 +120,16 @@ struct bench_config {
     size_t iops_;
     size_t num_threads_;
     size_t payload_size_;
-    std::vector< std::string > endpoints_;
+    std::vector<std::string> endpoints_;
 };
 
 struct server_stuff {
-    server_stuff() : server_id_(1), addr_("localhost"), port_(25000) {}
+    server_stuff()
+        : server_id_(1)
+        , addr_("localhost")
+        , port_(25000) {}
 
-    dummy_sm* get_sm() { return static_cast< dummy_sm* >(sm_.get()); }
+    dummy_sm* get_sm() { return static_cast<dummy_sm*>(sm_.get()); }
 
     int server_id_;
     std::string addr_;
@@ -122,40 +139,41 @@ struct server_stuff {
     std::string endpoint_;
 
     // Logger.
-    std::shared_ptr< logger_wrapper > log_wrap_;
-    std::shared_ptr< logger > raft_logger_;
+    std::shared_ptr<logger_wrapper> log_wrap_;
+    std::shared_ptr<logger> raft_logger_;
 
     // State machine.
-    std::shared_ptr< state_machine > sm_;
+    std::shared_ptr<state_machine> sm_;
     // State manager.
-    std::shared_ptr< state_mgr > smgr_;
+    std::shared_ptr<state_mgr> smgr_;
 
     // ASIO things.
-    std::shared_ptr< asio_service > asio_svc_;
-    std::shared_ptr< rpc_listener > asio_listener_;
+    std::shared_ptr<asio_service> asio_svc_;
+    std::shared_ptr<rpc_listener> asio_listener_;
 
     // Raft server instance.
-    std::shared_ptr< raft_server > raft_instance_;
+    std::shared_ptr<raft_server> raft_instance_;
 };
 
 int init_raft(server_stuff& stuff) {
     // Create logger for this server.
     std::string log_file_name = "./srv" + std::to_string(stuff.server_id_) + ".log";
-    stuff.log_wrap_ = std::make_shared< logger_wrapper >(log_file_name, 4);
+    stuff.log_wrap_ = std::make_shared<logger_wrapper>(log_file_name, 4);
     stuff.raft_logger_ = stuff.log_wrap_;
 
     // Create state manager and state machine.
-    stuff.smgr_ = std::make_shared< TestMgr >(stuff.server_id_, stuff.endpoint_);
-    stuff.sm_ = std::make_shared< dummy_sm >();
+    stuff.smgr_ = std::make_shared<TestMgr>(stuff.server_id_, stuff.endpoint_);
+    stuff.sm_ = std::make_shared<dummy_sm>();
 
     // Start ASIO service.
     asio_service::options asio_opt;
     asio_opt.thread_pool_size_ = 32;
-    stuff.asio_svc_ = std::make_shared< asio_service >(asio_opt, stuff.raft_logger_);
+    stuff.asio_svc_ = std::make_shared<asio_service>(asio_opt, stuff.raft_logger_);
 
-    stuff.asio_listener_ = stuff.asio_svc_->create_rpc_listener(stuff.port_, stuff.raft_logger_);
-    std::shared_ptr< delayed_task_scheduler > scheduler = stuff.asio_svc_;
-    std::shared_ptr< rpc_client_factory > rpc_cli_factory = stuff.asio_svc_;
+    stuff.asio_listener_ =
+        stuff.asio_svc_->create_rpc_listener(stuff.port_, stuff.raft_logger_);
+    std::shared_ptr<delayed_task_scheduler> scheduler = stuff.asio_svc_;
+    std::shared_ptr<rpc_client_factory> rpc_cli_factory = stuff.asio_svc_;
 
     // Set parameters and start Raft server.
     raft_params params;
@@ -166,9 +184,14 @@ int init_raft(server_stuff& stuff) {
     params.snapshot_distance_ = 100000;
     params.client_req_timeout_ = 4000;
     params.return_method_ = raft_params::blocking;
-    context* ctx = new context(stuff.smgr_, stuff.sm_, stuff.asio_listener_, stuff.raft_logger_, rpc_cli_factory,
-                               scheduler, params);
-    stuff.raft_instance_ = std::make_shared< raft_server >(ctx);
+    context* ctx = new context(stuff.smgr_,
+                               stuff.sm_,
+                               stuff.asio_listener_,
+                               stuff.raft_logger_,
+                               rpc_cli_factory,
+                               scheduler,
+                               params);
+    stuff.raft_instance_ = std::make_shared<raft_server>(ctx);
 
     // Listen.
     stuff.asio_listener_->listen(stuff.raft_instance_);
@@ -195,8 +218,9 @@ int add_servers(server_stuff& stuff, const bench_config& config) {
         int server_id_to_add = ii + 2;
         _msg("add server %d ", server_id_to_add);
 
-        srv_config srv_conf_to_add(server_id_to_add, 1, config.endpoints_[ii], std::string(), false, 50);
-        std::shared_ptr< raft_result > ret = stuff.raft_instance_->add_srv(srv_conf_to_add);
+        srv_config srv_conf_to_add(
+            server_id_to_add, 1, config.endpoints_[ii], std::string(), false, 50);
+        std::shared_ptr<raft_result> ret = stuff.raft_instance_->add_srv(srv_conf_to_add);
         if (!ret->get_accepted()) {
             _msg(" .. failed");
             return -1;
@@ -208,7 +232,8 @@ int add_servers(server_stuff& stuff, const bench_config& config) {
             fflush(stdout);
             _msg(".");
             TestSuite::sleep_ms(250);
-            std::shared_ptr< srv_config > conf = stuff.raft_instance_->get_srv_config(server_id_to_add);
+            std::shared_ptr<srv_config> conf =
+                stuff.raft_instance_->get_srv_config(server_id_to_add);
             if (conf) {
                 _msg(" done\n");
                 break;
@@ -220,26 +245,30 @@ int add_servers(server_stuff& stuff, const bench_config& config) {
 }
 
 struct worker_params : public TestSuite::ThreadArgs {
-    worker_params(const bench_config& _config, server_stuff& _stuff) :
-            config_(_config), stuff_(_stuff), stop_signal_(false), num_ops_done_(0), wg_(config_.iops_) {}
+    worker_params(const bench_config& _config, server_stuff& _stuff)
+        : config_(_config)
+        , stuff_(_stuff)
+        , stop_signal_(false)
+        , num_ops_done_(0)
+        , wg_(config_.iops_) {}
     const bench_config& config_;
     server_stuff& stuff_;
-    std::atomic< bool > stop_signal_;
-    std::atomic< uint64_t > num_ops_done_;
+    std::atomic<bool> stop_signal_;
+    std::atomic<uint64_t> num_ops_done_;
     TestSuite::WorkloadGenerator wg_;
     std::mutex wg_lock_;
 };
 
 int worker_func(TestSuite::ThreadArgs* _args) {
-    worker_params* args = static_cast< worker_params* >(_args);
+    worker_params* args = static_cast<worker_params*>(_args);
 
-    std::shared_ptr< buffer > msg = buffer::alloc(args->config_.payload_size_);
+    std::shared_ptr<buffer> msg = buffer::alloc(args->config_.payload_size_);
     msg->put(std::byte{0x00});
 
     while (!args->stop_signal_) {
         size_t num_ops = 0;
         {
-            std::lock_guard< std::mutex > l(args->wg_lock_);
+            std::lock_guard<std::mutex> l(args->wg_lock_);
             num_ops = args->wg_.getNumOpsToDo();
         }
         if (!num_ops) {
@@ -250,14 +279,15 @@ int worker_func(TestSuite::ThreadArgs* _args) {
         TestSuite::Timer timer;
 
         msg->pos(0);
-        std::shared_ptr< raft_result > ret = args->stuff_.raft_instance_->append_entries({msg});
+        std::shared_ptr<raft_result> ret =
+            args->stuff_.raft_instance_->append_entries({msg});
         global_lat.addLatency("rep", timer.getTimeUs());
 
         CHK_TRUE(ret->get_accepted());
         CHK_NONNULL(ret->get());
 
         {
-            std::lock_guard< std::mutex > l(args->wg_lock_);
+            std::lock_guard<std::mutex> l(args->wg_lock_);
             args->wg_.addNumOpsDone(1);
         }
         args->num_ops_done_.fetch_add(1);
@@ -267,7 +297,7 @@ int worker_func(TestSuite::ThreadArgs* _args) {
 }
 
 void worker_killer_func(TestSuite::ThreadArgs* _args) {
-    worker_params* args = static_cast< worker_params* >(_args);
+    worker_params* args = static_cast<worker_params*>(_args);
     args->stop_signal_ = true;
 }
 
@@ -329,7 +359,7 @@ int bench_main(const bench_config& config) {
     _msg("-----\n");
 
     worker_params param(config, stuff);
-    std::vector< TestSuite::ThreadHolder > h_workers(config.num_threads_);
+    std::vector<TestSuite::ThreadHolder> h_workers(config.num_threads_);
     for (size_t ii = 0; ii < h_workers.size(); ++ii) {
         TestSuite::ThreadHolder& h_worker = h_workers[ii];
         h_worker.spawn(&param, worker_func, worker_killer_func);
@@ -337,7 +367,7 @@ int bench_main(const bench_config& config) {
 
     TestSuite::Displayer dd(1, 3);
     dd.init();
-    std::vector< size_t > col_width(3, 15);
+    std::vector<size_t> col_width(3, 15);
     dd.setWidth(col_width);
     TestSuite::Timer duration_timer(config.duration_ * 1000);
     while (!duration_timer.timeout()) {
@@ -360,14 +390,17 @@ int bench_main(const bench_config& config) {
     }
 
     _msg("-----\n");
-    TestSuite::_msg("%15s%10s%10s%10s%10s%10s\n", "OP", "p50", "p95", "p99", "p99.9", "p99.99");
+    TestSuite::_msg(
+        "%15s%10s%10s%10s%10s%10s\n", "OP", "p50", "p95", "p99", "p99.9", "p99.99");
 
-    TestSuite::_msg("%15s%10s%10s%10s%10s%10s\n", "replication",
-                    TestSuite::usToString(global_lat.getPercentile("rep", 50)).c_str(),
-                    TestSuite::usToString(global_lat.getPercentile("rep", 95)).c_str(),
-                    TestSuite::usToString(global_lat.getPercentile("rep", 99)).c_str(),
-                    TestSuite::usToString(global_lat.getPercentile("rep", 99.9)).c_str(),
-                    TestSuite::usToString(global_lat.getPercentile("rep", 99.99)).c_str());
+    TestSuite::_msg(
+        "%15s%10s%10s%10s%10s%10s\n",
+        "replication",
+        TestSuite::usToString(global_lat.getPercentile("rep", 50)).c_str(),
+        TestSuite::usToString(global_lat.getPercentile("rep", 95)).c_str(),
+        TestSuite::usToString(global_lat.getPercentile("rep", 99)).c_str(),
+        TestSuite::usToString(global_lat.getPercentile("rep", 99.9)).c_str(),
+        TestSuite::usToString(global_lat.getPercentile("rep", 99.99)).c_str());
     _msg("-----\n");
 
     write_latency_distribution();
@@ -405,7 +438,9 @@ bench_config parse_config(int argc, char** argv) {
     }
 
     std::string my_endpoint = argv[2];
-    if (my_endpoint.find("tcp://") == std::string::npos) { my_endpoint = "tcp://" + my_endpoint; }
+    if (my_endpoint.find("tcp://") == std::string::npos) {
+        my_endpoint = "tcp://" + my_endpoint;
+    }
 
     size_t duration = atoi(argv[3]);
     if (duration < 1) {
@@ -442,7 +477,9 @@ bench_config parse_config(int argc, char** argv) {
 
     for (int ii = 7; ii < argc; ++ii) {
         std::string cur_endpoint = argv[ii];
-        if (cur_endpoint.find("tcp://") == std::string::npos) { cur_endpoint = "tcp://" + cur_endpoint; }
+        if (cur_endpoint.find("tcp://") == std::string::npos) {
+            cur_endpoint = "tcp://" + cur_endpoint;
+        }
         ret.endpoints_.push_back(cur_endpoint);
     }
 

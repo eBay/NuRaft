@@ -38,17 +38,20 @@ class state_machine;
 class state_mgr;
 struct context {
 public:
-    context(std::shared_ptr< state_mgr >& mgr, std::shared_ptr< state_machine >& m,
-            std::shared_ptr< rpc_listener >& listener, std::shared_ptr< logger >& l,
-            std::shared_ptr< rpc_client_factory >& cli_factory, std::shared_ptr< delayed_task_scheduler >& scheduler,
-            const raft_params& params) :
-            state_mgr_(mgr),
-            state_machine_(m),
-            rpc_listener_(listener),
-            logger_(l),
-            rpc_cli_factory_(cli_factory),
-            scheduler_(scheduler),
-            params_(std::make_shared< raft_params >(params)) {}
+    context(std::shared_ptr<state_mgr>& mgr,
+            std::shared_ptr<state_machine>& m,
+            std::shared_ptr<rpc_listener>& listener,
+            std::shared_ptr<logger>& l,
+            std::shared_ptr<rpc_client_factory>& cli_factory,
+            std::shared_ptr<delayed_task_scheduler>& scheduler,
+            const raft_params& params)
+        : state_mgr_(mgr)
+        , state_machine_(m)
+        , rpc_listener_(listener)
+        , logger_(l)
+        , rpc_cli_factory_(cli_factory)
+        , scheduler_(scheduler)
+        , params_(std::make_shared<raft_params>(params)) {}
 
     /**
      * Register an event callback function.
@@ -66,8 +69,8 @@ public:
      *
      * @return Pointer to parameter instance.
      */
-    std::shared_ptr< raft_params > get_params() const {
-        std::lock_guard< std::mutex > l(ctx_lock_);
+    std::shared_ptr<raft_params> get_params() const {
+        std::lock_guard<std::mutex> l(ctx_lock_);
         return params_;
     }
 
@@ -76,8 +79,8 @@ public:
      *
      * @param to New Raft parameters to set.
      */
-    void set_params(std::shared_ptr< raft_params >& to) {
-        std::lock_guard< std::mutex > l(ctx_lock_);
+    void set_params(std::shared_ptr<raft_params>& to) {
+        std::lock_guard<std::mutex> l(ctx_lock_);
         params_ = to;
     }
 
@@ -87,37 +90,37 @@ public:
     /**
      * State manager instance.
      */
-    std::shared_ptr< state_mgr > state_mgr_;
+    std::shared_ptr<state_mgr> state_mgr_;
 
     /**
      * State machine instance.
      */
-    std::shared_ptr< state_machine > state_machine_;
+    std::shared_ptr<state_machine> state_machine_;
 
     /**
      * RPC listener instance.
      */
-    std::shared_ptr< rpc_listener > rpc_listener_;
+    std::shared_ptr<rpc_listener> rpc_listener_;
 
     /**
      * System logger instance.
      */
-    std::shared_ptr< logger > logger_;
+    std::shared_ptr<logger> logger_;
 
     /**
      * RPC client factory.
      */
-    std::shared_ptr< rpc_client_factory > rpc_cli_factory_;
+    std::shared_ptr<rpc_client_factory> rpc_cli_factory_;
 
     /**
      * Timer instance.
      */
-    std::shared_ptr< delayed_task_scheduler > scheduler_;
+    std::shared_ptr<delayed_task_scheduler> scheduler_;
 
     /**
      * Raft parameters.
      */
-    std::shared_ptr< raft_params > params_;
+    std::shared_ptr<raft_params> params_;
 
     /**
      * Callback function for hooking the operation.

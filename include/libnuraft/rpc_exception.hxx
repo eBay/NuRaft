@@ -31,17 +31,19 @@ namespace nuraft {
 class req_msg;
 class rpc_exception : public std::exception {
 public:
-    rpc_exception(const std::string& err, std::shared_ptr< req_msg > req) : req_(req), err_(err.c_str()) {}
+    rpc_exception(const std::string& err, std::shared_ptr<req_msg> req)
+        : req_(req)
+        , err_(err.c_str()) {}
 
     __nocopy__(rpc_exception);
 
 public:
-    std::shared_ptr< req_msg > req() const { return req_; }
+    std::shared_ptr<req_msg> req() const { return req_; }
 
     const char* what() const throw() override { return err_.c_str(); }
 
 private:
-    std::shared_ptr< req_msg > req_;
+    std::shared_ptr<req_msg> req_;
     std::string err_;
 };
 

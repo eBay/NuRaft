@@ -21,22 +21,29 @@ limitations under the License.
 
 namespace nuraft {
 
-raft_launcher::raft_launcher() : asio_svc_(nullptr), asio_listener_(nullptr), raft_instance_(nullptr) {}
+raft_launcher::raft_launcher()
+    : asio_svc_(nullptr)
+    , asio_listener_(nullptr)
+    , raft_instance_(nullptr) {}
 
-std::shared_ptr< raft_server > raft_launcher::init(std::shared_ptr< state_machine > sm,
-                                                   std::shared_ptr< state_mgr > smgr, std::shared_ptr< logger > lg,
-                                                   int port_number, const asio_service::options& asio_options,
-                                                   const raft_params& params_given,
-                                                   const raft_server::init_options& opt) {
-    asio_svc_ = std::make_shared< asio_service >(asio_options, lg);
+std::shared_ptr<raft_server>
+raft_launcher::init(std::shared_ptr<state_machine> sm,
+                    std::shared_ptr<state_mgr> smgr,
+                    std::shared_ptr<logger> lg,
+                    int port_number,
+                    const asio_service::options& asio_options,
+                    const raft_params& params_given,
+                    const raft_server::init_options& opt) {
+    asio_svc_ = std::make_shared<asio_service>(asio_options, lg);
     asio_listener_ = asio_svc_->create_rpc_listener(port_number, lg);
     if (!asio_listener_) return nullptr;
 
-    std::shared_ptr< delayed_task_scheduler > scheduler = asio_svc_;
-    std::shared_ptr< rpc_client_factory > rpc_cli_factory = asio_svc_;
+    std::shared_ptr<delayed_task_scheduler> scheduler = asio_svc_;
+    std::shared_ptr<rpc_client_factory> rpc_cli_factory = asio_svc_;
 
-    context* ctx = new context(smgr, sm, asio_listener_, lg, rpc_cli_factory, scheduler, params_given);
-    raft_instance_ = std::make_shared< raft_server >(ctx, opt);
+    context* ctx = new context(
+        smgr, sm, asio_listener_, lg, rpc_cli_factory, scheduler, params_given);
+    raft_instance_ = std::make_shared<raft_server>(ctx, opt);
     asio_listener_->listen(raft_instance_);
     return raft_instance_;
 }
