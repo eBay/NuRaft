@@ -38,6 +38,61 @@ limitations under the License.
 
 namespace nuraft {
 
+/**
+ * Additional information in addition to `append_entries_response`.
+ */
+struct resp_appendix {
+    enum extra_order : uint8_t {
+        NONE = 0,
+        DO_NOT_REWIND = 1,
+    };
+
+    resp_appendix() : extra_order_(NONE) {}
+
+    ptr<buffer> serialize() const {
+        const static uint8_t CUR_VERSION = 0;
+        size_t buf_len = sizeof(CUR_VERSION) + sizeof(extra_order_);
+
+        //  << Format >>
+        // Format version       1 byte
+        // Extra order          1 byte
+
+        ptr<buffer> result = buffer::alloc(buf_len);
+        buffer_serializer bs(*result);
+        bs.put_u8(CUR_VERSION);
+        bs.put_u8(extra_order_);
+
+        return result;
+    }
+
+    static ptr<resp_appendix> deserialize(buffer& buf) {
+        buffer_serializer bs(buf);
+        ptr<resp_appendix> res = cs_new<resp_appendix>();
+
+        uint8_t cur_ver = bs.get_u8();
+        if (cur_ver != 0) {
+            // Not supported version.
+            return res;
+        }
+
+        res->extra_order_ = static_cast<extra_order>(bs.get_u8());
+        return res;
+    }
+
+    static const char* extra_order_msg(extra_order v) {
+        switch (v) {
+        case NONE:
+            return "NONE";
+        case DO_NOT_REWIND:
+            return "DO_NOT_REWIND";
+        default:
+            return "UNKNOWN";
+        }
+    };
+
+    extra_order extra_order_;
+};
+
 void raft_server::append_entries_in_bg() {
     std::string thread_name = "nuraft_append";
 #ifdef __linux__
@@ -608,7 +663,28 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     cb_func::ReturnCode cb_ret =
         ctx_->cb_func_.call(cb_func::GotAppendEntryReqFromLeader, &param);
     // If callback function decided to refuse this request, return here.
-    if (cb_ret != cb_func::Ok) return resp;
+    if (cb_ret != cb_func::Ok) {
+        // If this request is declined by the application, not because of
+        // term mismatch, we should request leader not to rewind the log.
+        resp_appendix appendix;
+        appendix.extra_order_ = resp_appendix::DO_NOT_REWIND;
+        resp->set_ctx( appendix.serialize() );
+
+        // Also we should set the hint to a negative number,
+        // to slow down the leader.
+        resp->set_next_batch_size_hint_in_bytes(-1);
+
+        static timer_helper log_timer(1000 * 1000);
+        int log_lv = log_timer.timeout_and_reset() ? L_INFO : L_TRACE;
+        p_lv(log_lv, "appended extra order %s",
+             resp_appendix::extra_order_msg(appendix.extra_order_));
+
+        // Since this decline is on purpose, we should not let this server
+        // initiaite leader election.
+        restart_election_timer();
+
+        return resp;
+    }
 
     if (req.log_entries().size() > 0) {
         // Write logs to store, start from overlapped logs
@@ -938,16 +1014,29 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             // fast move for the peer to catch up
             p->set_next_log_idx(resp.get_next_idx());
         } else {
+            bool do_log_rewind = true;
+            // If not, check an extra order exists.
+            if (resp.get_ctx()) {
+                ptr<resp_appendix> appendix = resp_appendix::deserialize(*resp.get_ctx());
+                if (appendix->extra_order_ == resp_appendix::DO_NOT_REWIND) {
+                    do_log_rewind = false;
+                }
+
+                static timer_helper extra_order_timer(1000 * 1000, true);
+                int log_lv = extra_order_timer.timeout_and_reset() ? L_INFO : L_TRACE;
+                p_lv(log_lv, "received extra order: %s",
+                     resp_appendix::extra_order_msg(appendix->extra_order_));
+            }
             // if not, move one log backward.
             // WARNING: Make sure that `next_log_idx_` shouldn't be smaller than 0.
-            if (prev_next_log) {
+            if (do_log_rewind && prev_next_log) {
                 p->set_next_log_idx(prev_next_log - 1);
             }
         }
         bool suppress = p->need_to_suppress_error();
 
         // To avoid verbose logs here.
-        static timer_helper log_timer(500*1000, true);
+        static timer_helper log_timer(500 * 1000, true);
         int log_lv = suppress ? L_INFO : L_WARN;
         if (log_lv == L_WARN) {
             if (!log_timer.timeout_and_reset()) {
