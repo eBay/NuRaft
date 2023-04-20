@@ -1568,7 +1568,7 @@ private:
         if (remaining_len) {
             // It has context, read it.
             ptr<buffer> actual_ctx = buffer::alloc(remaining_len);
-            ctx_buf->get(actual_ctx);
+            bs.get_buffer(actual_ctx);
             rsp->set_ctx(actual_ctx);
         }
 
