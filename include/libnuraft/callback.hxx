@@ -156,6 +156,30 @@ public:
          * ctx: pointer to the log index.
          */
         StateMachineExecution = 19,
+
+        /**
+         * Just sent an append entries request.
+         * ctx: pointer to `req_msg` instance.
+         */
+        SentAppendEntriesReq = 20,
+
+        /**
+         * Just received an append entries request.
+         * ctx: pointer to `req_msg` instance.
+         */
+        ReceivedAppendEntriesReq = 21,
+
+        /**
+         * Just sent an append entries response.
+         * ctx: pointer to `resp_msg` instance.
+         */
+        SentAppendEntriesResp = 22,
+
+        /**
+         * Just received an append entries response.
+         * ctx: pointer to `resp_msg` instance.
+         */
+        ReceivedAppendEntriesResp = 23,
     };
 
     struct Param {

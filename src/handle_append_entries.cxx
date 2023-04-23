@@ -320,6 +320,9 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         p->send_req(p, msg, m_handler);
         p->reset_ls_timer();
 
+        cb_func::Param param(id_, leader_, p->get_id(), msg.get());
+        ctx_->cb_func_.call(cb_func::SentAppendEntriesReq, &param);
+
         if ( srv_to_leave_ &&
              srv_to_leave_->get_id() == p->get_id() &&
              msg->get_commit_idx() >= srv_to_leave_target_idx_ &&

@@ -699,7 +699,15 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
 
     ptr<resp_msg> resp;
     if (req.get_type() == msg_type::append_entries_request) {
+        {
+            cb_func::Param param(id_, leader_, req.get_src(), &req);
+            ctx_->cb_func_.call(cb_func::ReceivedAppendEntriesReq, &param);
+        }
         resp = handle_append_entries(req);
+        {
+            cb_func::Param param(id_, leader_, req.get_src(), resp.get());
+            ctx_->cb_func_.call(cb_func::SentAppendEntriesResp, &param);
+        }
 
     } else if (req.get_type() == msg_type::request_vote_request) {
         resp = handle_vote_req(req);
@@ -851,6 +859,10 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         break;
 
     case msg_type::append_entries_response:
+        {
+            cb_func::Param param(id_, leader_, resp->get_src(), resp.get());
+            ctx_->cb_func_.call(cb_func::ReceivedAppendEntriesResp, &param);
+        }
         handle_append_entries_resp(*resp);
         break;
 
