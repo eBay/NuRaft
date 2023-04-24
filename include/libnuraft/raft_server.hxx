@@ -926,6 +926,9 @@ protected:
     void on_snapshot_completed(ptr<snapshot>& s,
                                bool result,
                                ptr<std::exception>& err);
+    void on_log_compacted(ulong log_idx,
+                          bool result,
+                          ptr<std::exception>& err);
     void on_retryable_req_err(ptr<peer>& p, ptr<req_msg>& req);
     ulong term_for_log(ulong log_idx);
 
