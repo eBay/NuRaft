@@ -727,7 +727,7 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
 
     } else {
         // extended requests
-        resp = handle_ext_msg(req);
+        resp = handle_ext_msg(req, guard);
     }
 
     if (resp) {
@@ -1375,7 +1375,7 @@ bool raft_server::update_term(ulong term) {
     return false;
 }
 
-ptr<resp_msg> raft_server::handle_ext_msg(req_msg& req) {
+ptr<resp_msg> raft_server::handle_ext_msg(req_msg& req, std::unique_lock<std::recursive_mutex>& guard) {
     switch (req.get_type()) {
     case msg_type::add_server_request:
         return handle_add_srv_req(req);
@@ -1393,7 +1393,7 @@ ptr<resp_msg> raft_server::handle_ext_msg(req_msg& req) {
         return handle_leave_cluster_req(req);
 
     case msg_type::install_snapshot_request:
-        return handle_install_snapshot_req(req);
+        return handle_install_snapshot_req(req, guard);
 
     case msg_type::reconnect_request:
         return handle_reconnect_req(req);
