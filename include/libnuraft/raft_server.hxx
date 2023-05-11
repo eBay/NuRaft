@@ -34,6 +34,7 @@ limitations under the License.
 
 #include <list>
 #include <map>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -855,8 +856,8 @@ protected:
 
     void drop_all_pending_commit_elems();
 
-    ptr<resp_msg> handle_ext_msg(req_msg& req);
-    ptr<resp_msg> handle_install_snapshot_req(req_msg& req);
+    ptr<resp_msg> handle_ext_msg(req_msg& req, std::unique_lock<std::recursive_mutex>& guard);
+    ptr<resp_msg> handle_install_snapshot_req(req_msg& req, std::unique_lock<std::recursive_mutex>& guard);
     ptr<resp_msg> handle_rm_srv_req(req_msg& req);
     ptr<resp_msg> handle_add_srv_req(req_msg& req);
     ptr<resp_msg> handle_log_sync_req(req_msg& req);
@@ -870,7 +871,7 @@ protected:
     void handle_log_sync_resp(resp_msg& resp);
     void handle_leave_cluster_resp(resp_msg& resp);
 
-    bool handle_snapshot_sync_req(snapshot_sync_req& req);
+    bool handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_lock<std::recursive_mutex>& guard);
 
     bool check_cond_for_zp_election();
     void request_prevote();
