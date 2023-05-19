@@ -28,6 +28,7 @@ public:
 
 class mock_ssl_socket {
 public:
+    using executor_type = int;
     using lowest_layer_type = asio::ip::tcp::socket;
 
     mock_ssl_socket(asio::ip::tcp::socket& tcp_socket,
