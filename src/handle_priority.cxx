@@ -38,7 +38,6 @@ raft_server::set_priority(const int srv_id,
                           bool broadcast_when_leader_exists) {
     recur_lock(lock_);
 
-    // Do nothing if not a leader.
     if (id_ != leader_) {
         p_in("Got set_priority request but I'm not a leader: my ID %d, leader %d",
              id_, leader_.load());
