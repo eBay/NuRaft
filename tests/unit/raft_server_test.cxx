@@ -772,7 +772,8 @@ int multiple_config_change_test() {
     CHK_GT(0, ret->get_result_code());
 
     // Priority change is OK.
-    s1.raftServer->set_priority(s4.getTestMgr()->get_srv_config()->get_id(), 10);
+    CHK_TRUE( s1.raftServer->set_priority(s4.getTestMgr()->get_srv_config()->get_id(), 10)
+            == raft_server::priority_set_result::SET );
 
     // Leave req/resp.
     s1.fNet->execReqResp();
@@ -892,7 +893,7 @@ int leader_election_priority_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 100.
-    s1.raftServer->set_priority(2, 100);
+    CHK_TRUE( s1.raftServer->set_priority(2, 100) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -900,7 +901,7 @@ int leader_election_priority_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 85.
-    s1.raftServer->set_priority(3, 85);
+    CHK_TRUE( s1.raftServer->set_priority(3, 85) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -979,19 +980,19 @@ int leader_election_with_aggressive_node_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S1 to 100.
-    s1.raftServer->set_priority(1, 100);
+    CHK_TRUE( s1.raftServer->set_priority(1, 100) == raft_server::priority_set_result::SET );
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S2 to 50.
-    s1.raftServer->set_priority(2, 50);
+    CHK_TRUE( s1.raftServer->set_priority(2, 50) == raft_server::priority_set_result::SET );
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 1.
-    s1.raftServer->set_priority(3, 1);
+    CHK_TRUE( s1.raftServer->set_priority(3, 1) == raft_server::priority_set_result::SET );
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
@@ -1059,8 +1060,15 @@ int leader_election_with_catching_up_server_test() {
     CHK_Z( launch_servers( pkgs ) );
 
     // Set priority of S1 to 80 and S2 to 100.
-    s1.raftServer->set_priority(1, 80);
-    s2.raftServer->set_priority(2, 100);
+    auto s1_prio_ret = s1.raftServer->set_priority(1, 80);
+    auto s2_prio_ret = s2.raftServer->set_priority(2, 100);
+
+    // Leader will apply priority change, follower will ignore it.
+    CHK_TRUE(
+        (s1_prio_ret == raft_server::priority_set_result::SET
+             && s2_prio_ret == raft_server::priority_set_result::IGNORED)
+        || (s2_prio_ret == raft_server::priority_set_result::SET
+             && s1_prio_ret == raft_server::priority_set_result::IGNORED));
 
     // Append logs to S1 to trigger log compaction.
     for (auto& entry: pkgs) {
@@ -1152,7 +1160,7 @@ int leadership_takeover_basic_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    s1.raftServer->set_priority(2, 10);
+    CHK_TRUE( s1.raftServer->set_priority(2, 10) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1160,7 +1168,7 @@ int leadership_takeover_basic_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    s1.raftServer->set_priority(3, 5);
+    CHK_TRUE( s1.raftServer->set_priority(3, 5) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1245,7 +1253,7 @@ int leadership_takeover_designated_successor_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    s1.raftServer->set_priority(2, 10);
+    CHK_TRUE( s1.raftServer->set_priority(2, 10) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1253,7 +1261,7 @@ int leadership_takeover_designated_successor_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    s1.raftServer->set_priority(3, 5);
+    CHK_TRUE( s1.raftServer->set_priority(3, 5) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1364,7 +1372,7 @@ int leadership_takeover_by_request_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    s1.raftServer->set_priority(2, 10);
+    CHK_TRUE( s1.raftServer->set_priority(2, 10) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1372,7 +1380,7 @@ int leadership_takeover_by_request_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    s1.raftServer->set_priority(3, 5);
+    CHK_TRUE( s1.raftServer->set_priority(3, 5) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1442,7 +1450,7 @@ int leadership_takeover_offline_candidate_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    s1.raftServer->set_priority(2, 10);
+    CHK_TRUE( s1.raftServer->set_priority(2, 10) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1450,7 +1458,7 @@ int leadership_takeover_offline_candidate_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    s1.raftServer->set_priority(3, 5);
+    CHK_TRUE( s1.raftServer->set_priority(3, 5) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1558,7 +1566,7 @@ int temporary_leader_test() {
     }
 
     // Set the priority of S3 to 0.
-    s1.raftServer->set_priority(3, 0);
+    CHK_TRUE( s1.raftServer->set_priority(3, 0) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1672,7 +1680,7 @@ int priority_broadcast_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 100.
-    s1.raftServer->set_priority(2, 100);
+    CHK_TRUE( s1.raftServer->set_priority(2, 100) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1680,7 +1688,7 @@ int priority_broadcast_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 50.
-    s1.raftServer->set_priority(3, 50);
+    CHK_TRUE( s1.raftServer->set_priority(3, 50) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1714,12 +1722,16 @@ int priority_broadcast_test() {
     CHK_FALSE( s2.raftServer->is_leader() );
     CHK_FALSE( s3.raftServer->is_leader() );
 
-    // Set priority on non-leader node.
-    s2.raftServer->set_priority(1, 90);
+    // Setting priority on non-leader nodes should do nothing by default
+    for (int ii=1; ii<=3; ++ii) {
+        CHK_TRUE( s2.raftServer->set_priority(ii, 90) == raft_server::priority_set_result::IGNORED );
+        CHK_TRUE( s3.raftServer->set_priority(ii, 90) == raft_server::priority_set_result::IGNORED );
+    }
+
     // Send priority change reqs.
     s2.fNet->execReqResp();
 
-    // Now all servers should have the same priorities.
+    // Now each server's priority should be same on every other server.
     std::map<int, int> baseline;
     for (auto& entry: pkgs) {
         RaftPkg* rr = entry;
@@ -2509,7 +2521,7 @@ int apply_config_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 85.
-    s1.raftServer->set_priority(3, 85);
+    CHK_TRUE( s1.raftServer->set_priority(3, 85) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -2517,7 +2529,7 @@ int apply_config_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S4 to 100.
-    s1.raftServer->set_priority(4, 100);
+    CHK_TRUE( s1.raftServer->set_priority(4, 100) == raft_server::priority_set_result::SET );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.

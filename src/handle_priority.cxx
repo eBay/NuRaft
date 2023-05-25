@@ -32,8 +32,10 @@ limitations under the License.
 
 namespace nuraft {
 
-void raft_server::set_priority(const int srv_id, const int new_priority)
-{
+raft_server::priority_set_result
+raft_server::set_priority(const int srv_id,
+                          const int new_priority,
+                          bool broadcast_when_leader_exists) {
     recur_lock(lock_);
 
     // Do nothing if not a leader.
@@ -44,8 +46,13 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
         if (!is_leader_alive()) {
             p_wn("No live leader now, broadcast priority change");
             broadcast_priority_change(srv_id, new_priority);
+            return priority_set_result::BROADCAST;
+        } else if (broadcast_when_leader_exists) {
+            p_wn("Leader is present but broadcasting priority change as requested");
+            broadcast_priority_change(srv_id, new_priority);
+            return priority_set_result::BROADCAST;
         }
-        return;
+        return priority_set_result::IGNORED;
     }
 
     if (id_ == srv_id && new_priority == 0) {
@@ -55,6 +62,7 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
         // immediately yield its leadership.
         // So in this case, boradcast this change.
         broadcast_priority_change(srv_id, new_priority);
+        return priority_set_result::BROADCAST;
     }
 
     // Clone current cluster config.
@@ -97,6 +105,7 @@ void raft_server::set_priority(const int srv_id, const int new_priority)
 
     store_log_entry(entry);
     request_append_entries();
+    return priority_set_result::SET;
 }
 
 void raft_server::broadcast_priority_change(const int srv_id,
