@@ -783,8 +783,8 @@ int multiple_config_change_test() {
 
     // Priority change is OK.
     CHK_EQ(
-        s1.raftServer->set_priority(s4.getTestMgr()->get_srv_config()->get_id(), 10),
-        raft_server::priority_set_result::SET );
+        raft_server::priority_set_result::SET,
+        s1.raftServer->set_priority(s4.getTestMgr()->get_srv_config()->get_id(), 10));
 
     // Leave req/resp.
     s1.fNet->execReqResp();
@@ -904,7 +904,7 @@ int leader_election_priority_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 100.
-    CHK_EQ( s1.raftServer->set_priority(2, 100), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(2, 100) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -912,7 +912,7 @@ int leader_election_priority_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 85.
-    CHK_EQ( s1.raftServer->set_priority(3, 85), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 85) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -991,19 +991,19 @@ int leader_election_with_aggressive_node_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S1 to 100.
-    CHK_EQ( s1.raftServer->set_priority(1, 100), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(1, 100) );
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S2 to 50.
-    CHK_EQ( s1.raftServer->set_priority(2, 50), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(2, 50) );
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 1.
-    CHK_EQ( s1.raftServer->set_priority(3, 1), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 1) );
     s1.fNet->execReqResp();
     s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
@@ -1071,15 +1071,9 @@ int leader_election_with_catching_up_server_test() {
     CHK_Z( launch_servers( pkgs ) );
 
     // Set priority of S1 to 80 and S2 to 100.
-    auto s1_prio_ret = s1.raftServer->set_priority(1, 80);
-    auto s2_prio_ret = s2.raftServer->set_priority(2, 100);
-
-    // Leader will apply priority change, follower will ignore it.
-    CHK_TRUE(
-        (s1_prio_ret == raft_server::priority_set_result::SET
-             && s2_prio_ret == raft_server::priority_set_result::IGNORED)
-        || (s2_prio_ret == raft_server::priority_set_result::SET
-             && s1_prio_ret == raft_server::priority_set_result::IGNORED));
+    // Each server thinks it's a leader
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(1, 80) );
+    CHK_EQ( raft_server::priority_set_result::SET, s2.raftServer->set_priority(2, 100) );
 
     // Append logs to S1 to trigger log compaction.
     for (auto& entry: pkgs) {
@@ -1171,7 +1165,7 @@ int leadership_takeover_basic_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    CHK_EQ( s1.raftServer->set_priority(2, 10), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(2, 10) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1179,7 +1173,7 @@ int leadership_takeover_basic_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    CHK_EQ( s1.raftServer->set_priority(3, 5), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 5) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1264,7 +1258,7 @@ int leadership_takeover_designated_successor_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    CHK_EQ( s1.raftServer->set_priority(2, 10), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(2, 10) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1272,7 +1266,7 @@ int leadership_takeover_designated_successor_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    CHK_EQ( s1.raftServer->set_priority(3, 5), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 5) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1383,7 +1377,7 @@ int leadership_takeover_by_request_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    CHK_EQ( s1.raftServer->set_priority(2, 10), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(2, 10) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1391,7 +1385,7 @@ int leadership_takeover_by_request_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    CHK_EQ( s1.raftServer->set_priority(3, 5), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 5) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1461,7 +1455,7 @@ int leadership_takeover_offline_candidate_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 10.
-    CHK_EQ( s1.raftServer->set_priority(2, 10), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(2, 10) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1469,7 +1463,7 @@ int leadership_takeover_offline_candidate_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 5.
-    CHK_EQ( s1.raftServer->set_priority(3, 5), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 5) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1577,7 +1571,7 @@ int temporary_leader_test() {
     }
 
     // Set the priority of S3 to 0.
-    CHK_EQ( s1.raftServer->set_priority(3, 0), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 0) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1674,6 +1668,13 @@ int temporary_leader_test() {
     return 0;
 }
 
+int check_priorities(const std::vector<RaftPkg*>& pkgs, const std::vector<int>& priorities) {
+    for (auto& entry: pkgs)
+        for (size_t ii=1; ii<=pkgs.size(); ++ii)
+            CHK_EQ( priorities[ii - 1], entry->raftServer->get_srv_config(ii)->get_priority() );
+    return 0;
+}
+
 int priority_broadcast_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -1691,7 +1692,7 @@ int priority_broadcast_test() {
     CHK_Z( make_group( pkgs ) );
 
     // Set the priority of S2 to 100.
-    CHK_EQ( s1.raftServer->set_priority(2, 100), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(2, 100) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1699,7 +1700,7 @@ int priority_broadcast_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Set the priority of S3 to 50.
-    CHK_EQ( s1.raftServer->set_priority(3, 50), raft_server::priority_set_result::SET );
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(3, 50) );
     // Send priority change reqs.
     s1.fNet->execReqResp();
     // Send reqs again for commit.
@@ -1740,35 +1741,17 @@ int priority_broadcast_test() {
     // Follower to leader broadcast
     CHK_EQ( raft_server::priority_set_result::BROADCAST, s2.raftServer->set_priority(1, 101) );
     s2.fNet->execReqResp();
+    CHK_Z( check_priorities(pkgs, {101, 100, 50}) );
 
     // Follower to follower broadcast
     CHK_EQ( raft_server::priority_set_result::BROADCAST, s3.raftServer->set_priority(2, 102) );
     s3.fNet->execReqResp();
+    CHK_Z( check_priorities(pkgs, {101, 102, 50}) );
 
     // Follower to self broadcast
     CHK_EQ( raft_server::priority_set_result::BROADCAST, s3.raftServer->set_priority(3, 103) );
     s3.fNet->execReqResp();
-
-    // Now each server's priority should be same on every other server.
-    std::map<int, int> baseline;
-    for (auto& entry: pkgs) {
-        RaftPkg* rr = entry;
-        for (int ii=1; ii<=3; ++ii) {
-            ptr<srv_config> sc = rr->raftServer->get_srv_config(ii);
-            if (rr == &s1) {
-                // The first node: add to baseline
-                baseline.insert( std::make_pair(ii, sc->get_priority()) );
-            } else {
-                // Otherwise: priority should be the same as baseline.
-                CHK_EQ( baseline[ii], sc->get_priority() );
-            }
-        }
-    }
-
-    // Check again that priority set request from followers was applied
-    CHK_EQ( 101, baseline[1] );
-    CHK_EQ( 102, baseline[2] );
-    CHK_EQ( 103, baseline[3] );
+    CHK_Z( check_priorities(pkgs, {101, 102, 103}) );
 
     print_stats(pkgs);
 
@@ -1781,18 +1764,48 @@ int priority_broadcast_test() {
     return 0;
 }
 
-//int priority_ignore_test() {
-//
-//    print_stats(pkgs);
-//
-//    s1.raftServer->shutdown();
-//    s2.raftServer->shutdown();
-//    s3.raftServer->shutdown();
-//
-//    f_base->destroy();
-//
-//    return 0;
-//}
+int priority_broadcast_with_live_leader_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    CHK_EQ( raft_server::priority_set_result::SET, s1.raftServer->set_priority(1, 100) );
+    s1.fNet->execReqResp(); // Send priority change reqs.
+    s1.fNet->execReqResp(); // Send reqs again for commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    CHK_EQ( raft_server::priority_set_result::IGNORED, s2.raftServer->set_priority(1, 1000) );
+    CHK_EQ( raft_server::priority_set_result::IGNORED, s3.raftServer->set_priority(1, 1000) );
+
+    CHK_EQ( raft_server::priority_set_result::BROADCAST, s2.raftServer->set_priority(3, 100, true) );
+    s2.fNet->execReqResp();
+
+    CHK_EQ( raft_server::priority_set_result::BROADCAST, s3.raftServer->set_priority(2, 100, true) );
+    s3.fNet->execReqResp();
+
+    CHK_Z( check_priorities(pkgs, {100, 100, 100}) );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
 
 int custom_user_context_test() {
     reset_log_files();
@@ -3084,98 +3097,101 @@ int main(int argc, char** argv) {
     // Disable reconnection timer for deterministic test.
     debugging_options::get_instance().disable_reconn_backoff_ = true;
 
-    //ts.doTest( "make group test",
-    //           make_group_test );
+    ts.doTest( "make group test",
+               make_group_test );
 
-    //ts.doTest( "init options test",
-    //           init_options_test );
+    ts.doTest( "init options test",
+               init_options_test );
 
-    //ts.doTest( "update params test",
-    //           update_params_test );
+    ts.doTest( "update params test",
+               update_params_test );
 
-    //ts.doTest( "add node error cases test",
-    //           add_node_error_cases_test );
+    ts.doTest( "add node error cases test",
+               add_node_error_cases_test );
 
-    //ts.doTest( "remove node test",
-    //           remove_node_test );
+    ts.doTest( "remove node test",
+               remove_node_test );
 
-    //ts.doTest( "remove node error cases test",
-    //           remove_node_error_cases_test );
+    ts.doTest( "remove node error cases test",
+               remove_node_error_cases_test );
 
-    //ts.doTest( "remove and then add test",
-    //           remove_and_then_add_test );
+    ts.doTest( "remove and then add test",
+               remove_and_then_add_test );
 
-    //ts.doTest( "multiple config change test",
-    //           multiple_config_change_test );
+    ts.doTest( "multiple config change test",
+               multiple_config_change_test );
 
-    //ts.doTest( "leader election basic test",
-    //           leader_election_basic_test );
+    ts.doTest( "leader election basic test",
+               leader_election_basic_test );
 
-    //ts.doTest( "leader election priority test",
-    //           leader_election_priority_test );
+    ts.doTest( "leader election priority test",
+               leader_election_priority_test );
 
-    //ts.doTest( "leader election with aggressive node test",
-    //           leader_election_with_aggressive_node_test );
+    ts.doTest( "leader election with aggressive node test",
+               leader_election_with_aggressive_node_test );
 
-    //ts.doTest( "leader election with catching-up server test",
-    //           leader_election_with_catching_up_server_test );
+    ts.doTest( "leader election with catching-up server test",
+               leader_election_with_catching_up_server_test );
 
-    //ts.doTest( "leadership takeover basic test",
-    //           leadership_takeover_basic_test );
+    ts.doTest( "leadership takeover basic test",
+               leadership_takeover_basic_test );
 
-    //ts.doTest( "leadership takeover with designated successor test",
-    //           leadership_takeover_designated_successor_test );
+    ts.doTest( "leadership takeover with designated successor test",
+               leadership_takeover_designated_successor_test );
 
-    //ts.doTest( "leadership takeover by request test",
-    //           leadership_takeover_by_request_test );
+    ts.doTest( "leadership takeover by request test",
+               leadership_takeover_by_request_test );
 
-    //ts.doTest( "leadership takeover with offline candidate test",
-    //           leadership_takeover_offline_candidate_test );
+    ts.doTest( "leadership takeover with offline candidate test",
+               leadership_takeover_offline_candidate_test );
 
-    //ts.doTest( "temporary leader test",
-    //           temporary_leader_test );
+    ts.doTest( "temporary leader test",
+               temporary_leader_test );
 
     ts.doTest( "priority broadcast test",
                priority_broadcast_test );
 
-    //ts.doTest( "custom user context test",
-    //           custom_user_context_test );
+    ts.doTest( "priority broadcast with live leader test",
+               priority_broadcast_with_live_leader_test );
 
-    //ts.doTest( "follower reconnect test",
-    //           follower_reconnect_test );
+    ts.doTest( "custom user context test",
+               custom_user_context_test );
 
-    //ts.doTest( "snapshot basic test",
-    //           snapshot_basic_test );
+    ts.doTest( "follower reconnect test",
+               follower_reconnect_test );
 
-    //ts.doTest( "snapshot manual creation test",
-    //           snapshot_manual_creation_test );
+    ts.doTest( "snapshot basic test",
+               snapshot_basic_test );
 
-    //ts.doTest( "snapshot randomized creation test",
-    //           snapshot_randomized_creation_test );
+    ts.doTest( "snapshot manual creation test",
+               snapshot_manual_creation_test );
 
-    //ts.doTest( "join empty node test",
-    //           join_empty_node_test );
+    ts.doTest( "snapshot randomized creation test",
+               snapshot_randomized_creation_test );
 
-    //ts.doTest( "async append handler test",
-    //           async_append_handler_test );
+    ts.doTest( "join empty node test",
+               join_empty_node_test );
 
-    //ts.doTest( "async append handler cancel test",
-    //           async_append_handler_cancel_test );
+    ts.doTest( "async append handler test",
+               async_append_handler_test );
 
-    //ts.doTest( "apply config log entry test",
-    //           apply_config_test );
+    ts.doTest( "async append handler cancel test",
+               async_append_handler_cancel_test );
 
-    //ts.doTest( "custom term counter test",
-    //           custom_term_counter_test );
+    ts.doTest( "apply config log entry test",
+               apply_config_test );
 
-    //ts.doTest( "config log replay test",
-    //           config_log_replay_test );
+    ts.doTest( "custom term counter test",
+               custom_term_counter_test );
 
-    //ts.doTest( "full consensus test",
-    //           full_consensus_synth_test );
+    ts.doTest( "config log replay test",
+               config_log_replay_test );
 
-    //ts.doTest( "extended append_entries API test",
-    //           extended_append_entries_api_test );
+    ts.doTest( "full consensus test",
+               full_consensus_synth_test );
+
+    ts.doTest( "extended append_entries API test",
+               extended_append_entries_api_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

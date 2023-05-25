@@ -250,7 +250,7 @@ static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
     return 0;
 }
 
-/// pkgs[0] becomes a leader
+/// pkgs[0] becomes leader
 static INT_UNUSED make_group(const std::vector<RaftPkg*>& pkgs) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
