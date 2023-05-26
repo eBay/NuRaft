@@ -1245,11 +1245,11 @@ int leadership_transfer_test() {
     CHK_EQ(1, s3->raftServer->get_leader());
 
     // Set the priority of S2 to 10.
-    CHK_TRUE( s1->raftServer->set_priority(2, 10) == raft_server::priority_set_result::SET );
+    CHK_TRUE( s1->raftServer->set_priority(2, 10) == raft_server::PrioritySetResult::SET );
     TestSuite::sleep_ms(500, "set priority of S2");
 
     // Set the priority of S3 to 5.
-    CHK_TRUE( s1->raftServer->set_priority(3, 5) == raft_server::priority_set_result::SET );
+    CHK_TRUE( s1->raftServer->set_priority(3, 5) == raft_server::PrioritySetResult::SET );
     TestSuite::sleep_ms(500, "set priority of S3");
 
     // Yield the leadership to S2.
@@ -1287,7 +1287,7 @@ int leadership_transfer_test() {
     s1->raftServer->update_params(params);
 
     // Set S2's priority higher than S1
-    CHK_TRUE( s1->raftServer->set_priority(2, 100) == raft_server::priority_set_result::SET );
+    CHK_TRUE( s1->raftServer->set_priority(2, 100) == raft_server::PrioritySetResult::SET );
 
     // Due to S3, transfer shouldn't happen.
     TestSuite::sleep_sec(2, "shutdown S3, set priority of S2, and wait");
@@ -1532,7 +1532,7 @@ int enforced_state_machine_catchup_test() {
     TestSuite::sleep_sec(1, "wait for replication");
 
     // Adjust the priority of S2 to zero, to block it becoming a leader.
-    CHK_TRUE( s1.raftServer->set_priority(2, 0) == raft_server::priority_set_result::SET );
+    CHK_TRUE( s1.raftServer->set_priority(2, 0) == raft_server::PrioritySetResult::SET );
 
     TestSuite::sleep_sec(1, "set S2's priority to zero");
 
@@ -1620,7 +1620,7 @@ int enforced_state_machine_catchup_with_term_inc_test() {
     TestSuite::sleep_sec(1, "wait for replication");
 
     // Adjust the priority of S2 to zero, to block it becoming a leader.
-    CHK_TRUE( s1.raftServer->set_priority(2, 0) == raft_server::priority_set_result::SET );
+    CHK_TRUE( s1.raftServer->set_priority(2, 0) == raft_server::PrioritySetResult::SET );
     TestSuite::sleep_sec(1, "set S2's priority to zero");
 
     // Stop S3, delete data.
