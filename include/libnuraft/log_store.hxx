@@ -46,7 +46,7 @@ public:
     /**
      * The start index of the log store, at the very beginning, it must be 1.
      * However, after some compact actions, this could be anything equal to or
-     * greater than or equal to one
+     * greater than one
      */
     virtual ulong start_index() const = 0;
 
