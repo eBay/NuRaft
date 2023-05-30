@@ -1668,10 +1668,12 @@ int temporary_leader_test() {
     return 0;
 }
 
-int check_priorities(const std::vector<RaftPkg*>& pkgs, const std::vector<int>& priorities) {
+int check_priorities(const std::vector<RaftPkg*>& pkgs,
+                     const std::vector<int>& priorities) {
     for (auto& entry: pkgs)
         for (size_t ii=1; ii<=pkgs.size(); ++ii)
-            CHK_EQ( priorities[ii - 1], entry->raftServer->get_srv_config(ii)->get_priority() );
+            CHK_EQ( priorities[ii - 1],
+                    entry->raftServer->get_srv_config(ii)->get_priority() );
     return 0;
 }
 
@@ -1739,17 +1741,20 @@ int priority_broadcast_test() {
     CHK_FALSE( s3.raftServer->is_leader_alive() );
 
     // Follower to leader broadcast
-    CHK_EQ( raft_server::PrioritySetResult::BROADCAST, s2.raftServer->set_priority(1, 101) );
+    CHK_EQ( raft_server::PrioritySetResult::BROADCAST,
+            s2.raftServer->set_priority(1, 101) );
     s2.fNet->execReqResp();
     CHK_Z( check_priorities(pkgs, {101, 100, 50}) );
 
     // Follower to follower broadcast
-    CHK_EQ( raft_server::PrioritySetResult::BROADCAST, s3.raftServer->set_priority(2, 102) );
+    CHK_EQ( raft_server::PrioritySetResult::BROADCAST,
+            s3.raftServer->set_priority(2, 102) );
     s3.fNet->execReqResp();
     CHK_Z( check_priorities(pkgs, {101, 102, 50}) );
 
     // Follower to self broadcast
-    CHK_EQ( raft_server::PrioritySetResult::BROADCAST, s3.raftServer->set_priority(3, 103) );
+    CHK_EQ( raft_server::PrioritySetResult::BROADCAST,
+            s3.raftServer->set_priority(3, 103) );
     s3.fNet->execReqResp();
     CHK_Z( check_priorities(pkgs, {101, 102, 103}) );
 
@@ -1785,13 +1790,17 @@ int priority_broadcast_with_live_leader_test() {
     s1.fNet->execReqResp(); // Send reqs again for commit.
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
-    CHK_EQ( raft_server::PrioritySetResult::IGNORED, s2.raftServer->set_priority(1, 1000) );
-    CHK_EQ( raft_server::PrioritySetResult::IGNORED, s3.raftServer->set_priority(1, 1000) );
+    CHK_EQ( raft_server::PrioritySetResult::IGNORED,
+            s2.raftServer->set_priority(1, 1000) );
+    CHK_EQ( raft_server::PrioritySetResult::IGNORED,
+            s3.raftServer->set_priority(1, 1000) );
 
-    CHK_EQ( raft_server::PrioritySetResult::BROADCAST, s2.raftServer->set_priority(3, 100, true) );
+    CHK_EQ( raft_server::PrioritySetResult::BROADCAST,
+            s2.raftServer->set_priority(3, 100, true) );
     s2.fNet->execReqResp();
 
-    CHK_EQ( raft_server::PrioritySetResult::BROADCAST, s3.raftServer->set_priority(2, 100, true) );
+    CHK_EQ( raft_server::PrioritySetResult::BROADCAST,
+            s3.raftServer->set_priority(2, 100, true) );
     s3.fNet->execReqResp();
 
     CHK_Z( check_priorities(pkgs, {100, 100, 100}) );
