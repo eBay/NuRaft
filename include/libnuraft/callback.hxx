@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef _CALLBACK_H_
 #define _CALLBACK_H_
 
+#include <cstdint>
 #include <functional>
 #include <string>
 

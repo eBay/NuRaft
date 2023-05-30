@@ -17,6 +17,7 @@ limitations under the License.
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <system_error>
