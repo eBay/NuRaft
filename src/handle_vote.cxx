@@ -199,7 +199,8 @@ void raft_server::initiate_vote(bool force_vote) {
     if ( my_priority_ >= target_priority_ ||
          force_vote ||
          check_cond_for_zp_election() ||
-         get_quorum_for_election() == 0 ) {
+         ( get_quorum_for_election() == 0 &&
+           my_priority_ > 0 ) ) {
         // Request vote when
         //  1) my priority satisfies the target, OR
         //  2) I'm the only node in the group.
