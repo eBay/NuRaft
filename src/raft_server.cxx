@@ -1335,6 +1335,18 @@ void raft_server::become_follower() {
         pre_vote_.quorum_reject_count_ = 0;
         pre_vote_.failure_count_ = 0;
 
+        ptr<raft_params> params = ctx_->get_params();
+        if ( params->auto_adjust_quorum_for_small_cluster_ &&
+             peers_.size() == 1 &&
+             params->custom_commit_quorum_size_ == 1 ) {
+            p_wn("became 2-node cluster's follower, "
+                 "restore quorum with default value");
+            ptr<raft_params> clone = cs_new<raft_params>(*params);
+            clone->custom_commit_quorum_size_ = 0;
+            clone->custom_election_quorum_size_ = 0;
+            ctx_->set_params(clone);
+        }
+
         // Drain all pending callback functions.
         drop_all_pending_commit_elems();
     }
