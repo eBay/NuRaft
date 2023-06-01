@@ -177,10 +177,18 @@ bool raft_server::request_append_entries(ptr<peer> p) {
                 do_adjustment = true;
             }
             if (do_adjustment) {
-                ptr<raft_params> clone = cs_new<raft_params>(*params);
-                clone->custom_commit_quorum_size_ = 1;
-                clone->custom_election_quorum_size_ = 1;
-                ctx_->set_params(clone);
+                cb_func::Param cb_param(id_, leader_, p->get_id());
+                CbReturnCode rc =
+                    ctx_->cb_func_.call(cb_func::AutoAdjustQuorum, &cb_param);
+                if (rc == CbReturnCode::ReturnNull) {
+                    // Callback function rejected the adjustment.
+                    p_wn("quorum size adjustment was declined by callback");
+                } else {
+                    ptr<raft_params> clone = cs_new<raft_params>(*params);
+                    clone->custom_commit_quorum_size_ = 1;
+                    clone->custom_election_quorum_size_ = 1;
+                    ctx_->set_params(clone);
+                }
             }
 
         } else if ( num_not_responding_peers == 0 &&

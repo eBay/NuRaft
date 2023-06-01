@@ -181,6 +181,13 @@ public:
          * ctx: pointer to `resp_msg` instance.
          */
         ReceivedAppendEntriesResp = 23,
+
+        /**
+         * When cluster size is 2 and `auto_adjust_quorum_for_small_cluster_` is on,
+         * this server attempts to adjust the quorum size to 1.
+         * ctx: null
+         */
+        AutoAdjustQuorum = 24,
     };
 
     struct Param {
