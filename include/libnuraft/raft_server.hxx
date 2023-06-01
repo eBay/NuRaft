@@ -314,16 +314,31 @@ public:
         append_entries_ext(const std::vector< ptr<buffer> >& logs,
                            const req_ext_params& ext_params);
 
+    enum class PrioritySetResult { SET, BROADCAST, IGNORED };
+
     /**
      * Update the priority of given server.
-     * Only leader will accept this operation.
      *
      * @param srv_id ID of server to update priority.
      * @param new_priority
      *     Priority value, greater than or equal to 0.
      *     If priority is set to 0, this server will never be a leader.
+     * @param broadcast_when_leader_exists
+     *     If we're not a leader and a leader exists, broadcast priority change to other
+     *     peers. If false, set_priority does nothing. Please note that setting this
+     *     option to true may possibly cause cluster config to diverge.
+     * @return SET If we're a leader and we have committed priority change.
+     * @return BROADCAST
+     *     If either there's no live leader now, or we're a leader and we want to set our
+     *     priority to 0, or we're not a leader and broadcast_when_leader_exists = true.
+     *     We have sent messages to other peers about priority change but haven't
+     *     committed this change.
+     * @return IGNORED If we're not a leader and broadcast_when_leader_exists = false. We
+     *     ignored the request.
      */
-    void set_priority(const int srv_id, const int new_priority);
+    PrioritySetResult set_priority(const int srv_id,
+                                   const int new_priority,
+                                   bool broadcast_when_leader_exists = false);
 
     /**
      * Broadcast the priority change of given server to all peers.
