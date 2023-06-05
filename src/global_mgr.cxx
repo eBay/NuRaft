@@ -35,8 +35,8 @@ public:
         return instance;
     }
 
-    nuraft_global_mgr* get() {
-        return internal_.get();
+    ptr<nuraft_global_mgr> get() {
+        return internal_;
     }
 
     bool create() {
@@ -44,9 +44,7 @@ public:
             // Already created.
             return false;
         }
-        // C++11 doesn't have `make_unique`.
-        internal_ =
-            std::move( std::unique_ptr<nuraft_global_mgr>( new nuraft_global_mgr() ) );
+        internal_ = cs_new<nuraft_global_mgr>();
         return true;
     }
 
@@ -57,7 +55,7 @@ public:
 private:
     ngm_singleton() : internal_(nullptr) {}
 
-    std::unique_ptr<nuraft_global_mgr> internal_;
+    ptr<nuraft_global_mgr> internal_;
 };
 
 struct nuraft_global_mgr::worker_handle {
@@ -114,8 +112,8 @@ nuraft_global_mgr::~nuraft_global_mgr() {
     commit_workers_.clear();
 }
 
-nuraft_global_mgr* nuraft_global_mgr::init(const nuraft_global_config& config) {
-    nuraft_global_mgr* mgr = ngm_singleton::get_instance().get();
+ptr<nuraft_global_mgr> nuraft_global_mgr::init(const nuraft_global_config& config) {
+    ptr<nuraft_global_mgr> mgr = ngm_singleton::get_instance().get();
     if (!mgr) {
         bool created = ngm_singleton::get_instance().create();
         mgr = ngm_singleton::get_instance().get();
@@ -131,7 +129,7 @@ void nuraft_global_mgr::shutdown() {
     ngm_singleton::get_instance().clear();
 }
 
-nuraft_global_mgr* nuraft_global_mgr::get_instance() {
+ptr<nuraft_global_mgr> nuraft_global_mgr::get_instance() {
     return ngm_singleton::get_instance().get();
 }
 

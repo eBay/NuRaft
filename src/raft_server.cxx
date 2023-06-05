@@ -264,7 +264,10 @@ raft_server::raft_server(context* ctx, const init_options& opt)
 void raft_server::start_server(bool skip_initial_election_timeout)
 {
     ptr<raft_params> params = ctx_->get_params();
-    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    if (ctx_->global_mgr_ == nullptr) {
+        ctx_->global_mgr_ = nuraft_global_mgr::get_instance();
+    }
+    const ptr<global_mgr> & mgr = ctx_->global_mgr_;
     if (mgr) {
         p_in("global manager is detected. will use shared thread pool");
         commit_bg_stopped_ = true;
@@ -437,7 +440,7 @@ void raft_server::stop_server() {
 }
 
 void raft_server::cancel_global_requests() {
-    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    const ptr<global_mgr> & mgr = ctx_->global_mgr_;
     if (mgr) {
         mgr->close_raft_server(this);
     }

@@ -1996,7 +1996,7 @@ ptr<asio_service> nuraft_global_mgr::init_asio_service
                   ( const asio_service_options& asio_opt,
                     ptr<logger> logger_inst )
 {
-    nuraft_global_mgr* mgr = get_instance();
+    ptr<nuraft_global_mgr> mgr = get_instance();
     if (!mgr) return nullptr;
 
     std::lock_guard<std::mutex> l(mgr->asio_service_lock_);
@@ -2011,7 +2011,7 @@ ptr<asio_service> nuraft_global_mgr::get_asio_service() {
     //   Basic assumption is that this function is not called frequently,
     //   only once at the initialization time. Hence it is ok to acquire
     //   lock for a such read-only operation.
-    nuraft_global_mgr* mgr = get_instance();
+    ptr<nuraft_global_mgr> mgr = get_instance();
     if (!mgr) return nullptr;
 
     std::lock_guard<std::mutex> l(mgr->asio_service_lock_);

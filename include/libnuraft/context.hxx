@@ -37,6 +37,7 @@ class rpc_client_factory;
 class rpc_listener;
 class state_machine;
 class state_mgr;
+class global_mgr;
 struct context {
 public:
     context( ptr<state_mgr>& mgr,
@@ -130,6 +131,12 @@ public:
      * Callback function for hooking the operation.
      */
     cb_func cb_func_;
+
+    /**
+     *  User-provided global_mgr instance,
+     *  used in preference to nuraft_global_mgr::get_instance().
+     */
+    ptr<global_mgr> global_mgr_;
 
     /**
      * Lock.
