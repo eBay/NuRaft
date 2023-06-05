@@ -28,6 +28,8 @@ limitations under the License.
 
 namespace nuraft {
 
+class global_mgr;
+
 struct raft_params {
     enum return_method_type {
         /**
@@ -97,6 +99,7 @@ struct raft_params {
         , use_bg_thread_for_snapshot_io_(false)
         , use_full_consensus_among_healthy_members_(false)
         , parallel_log_appending_(false)
+        , global_mgr_(nullptr)
         {}
 
     /**
@@ -604,6 +607,9 @@ public:
      * before returning the response.
      */
     bool parallel_log_appending_;
+
+
+    global_mgr * global_mgr_;
 };
 
 }

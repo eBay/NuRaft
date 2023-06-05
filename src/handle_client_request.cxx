@@ -67,7 +67,7 @@ void raft_server::request_append_entries_for_all() {
     ptr<raft_params> params = ctx_->get_params();
     if (params->use_bg_thread_for_urgent_commit_) {
         // Let background generate request (some delay may happen).
-        nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+        global_mgr* mgr = params->global_mgr_;
         if (mgr) {
             // Global thread pool exists, request it.
             p_tr("found global thread pool");
