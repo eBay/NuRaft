@@ -699,7 +699,13 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
                 cnt < req.log_entries().size() )
         {
             ptr<log_entry> entry = req.log_entries().at(cnt);
+
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLogFollower, &param);
+            if (rc == CbReturnCode::ReturnNull) return resp;
+
             p_in("overwrite at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n",
+
                  log_idx, entry->get_term(), entry->get_timestamp());
             store_log_entry(entry, log_idx);
 
@@ -729,7 +735,13 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         // Append new log entries
         while (cnt < req.log_entries().size()) {
             ptr<log_entry> entry = req.log_entries().at( cnt++ );
+
+            param.ctx = &entry;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLogFollower, &param);
+            if (rc == CbReturnCode::ReturnNull) return resp;
+
             p_tr("append at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n",
+
                  log_store_->next_slot(), entry->get_term(), entry->get_timestamp());
             ulong idx_for_entry = store_log_entry(entry);
             if (entry->get_val_type() == log_val_type::conf) {

@@ -166,11 +166,10 @@ public:
         InitialBatchCommited = 20,
 
         /**
-         * Called before log is appended to the entries.
-         * Happens on leader only.
+         * Called before log is appended to the entries on leader node.
          * ctx: pointer to the ptr<log_entry>
          */
-        PreAppendLog = 21,
+        PreAppendLogLeader = 21,
 
         /**
          * Called when appending a log fails.
@@ -179,6 +178,11 @@ public:
          */
         AppendLogFailed = 22,
 
+        /**
+         * Called before log is appended to the entries on follower node.
+         * ctx: pointer to the ptr<log_entry>
+         */
+        PreAppendLogFollower = 23,
     };
 
     struct Param {
