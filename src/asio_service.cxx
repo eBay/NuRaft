@@ -1678,12 +1678,14 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
 
 namespace {
 
+#ifndef SSL_LIBRARY_NOT_FOUND
 ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provider_func, ssl_context::method method) {
     if (ctx_provider_func)
         return ssl_context(ctx_provider_func());
     else
         return ssl_context(method);
 }
+#endif
 
 }
 
