@@ -164,7 +164,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
         {
             cb_func::Param param(id_, leader_);
             param.ctx = &entry;
-            CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLog, &param);
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLogLeader, &param);
             if (rc == CbReturnCode::ReturnNull) return nullptr;
 
             // force the log's term to current term
