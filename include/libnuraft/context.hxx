@@ -25,6 +25,7 @@ limitations under the License.
 #include "pp_util.hxx"
 #include "ptr.hxx"
 #include "raft_params.hxx"
+#include "global_mgr.hxx"
 
 #include <memory>
 #include <mutex>
@@ -37,6 +38,7 @@ class rpc_client_factory;
 class rpc_listener;
 class state_machine;
 class state_mgr;
+class global_mgr;
 struct context {
 public:
     context( ptr<state_mgr>& mgr,
@@ -88,6 +90,13 @@ public:
         params_ = to;
     }
 
+    global_mgr * get_global_mgr() const {
+        if (custom_global_mgr_ != nullptr) {
+            return custom_global_mgr_;
+        }
+        return nuraft_global_mgr::get_instance();
+    }
+
     __nocopy__(context);
 
 public:
@@ -130,6 +139,13 @@ public:
      * Callback function for hooking the operation.
      */
     cb_func cb_func_;
+
+    /**
+     *  User-provided global_mgr pointer.
+     *  used in preference to nuraft_global_mgr::get_instance().
+     *  The lifecycle of this object must be managed by the user externally.
+     */
+    global_mgr* custom_global_mgr_{nullptr};
 
     /**
      * Lock.

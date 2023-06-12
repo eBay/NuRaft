@@ -37,6 +37,41 @@ class asio_service;
 class logger;
 class raft_server;
 
+class global_mgr {
+    __interface_body__(global_mgr);
+
+public :
+    /**
+     * This function is called by the constructor of `raft_server`.
+     *
+     * @param server Raft server instance.
+     */
+    virtual void init_raft_server(raft_server* server) = 0;
+
+    /**
+     * This function is called by the destructor of `raft_server`.
+     *
+     * @param server Raft server instance.
+     */
+    virtual void close_raft_server(raft_server* server) = 0;
+
+    /**
+     * Request `append_entries` for the given server.
+     *
+     * @param server Raft server instance to request `append_entries`.
+     */
+    virtual void request_append(ptr<raft_server> server) = 0;
+
+    /**
+     * Request background commit execution for the given server.
+     *
+     * @param server Raft server instance to execute commit.
+     */
+    virtual void request_commit(ptr<raft_server> server) = 0;
+
+};
+
+
 /**
  * Configurations for the initialization of `nuraft_global_mgr`.
  */
@@ -68,11 +103,11 @@ struct nuraft_global_config {
 
 static nuraft_global_config __DEFAULT_NURAFT_GLOBAL_CONFIG;
 
-class nuraft_global_mgr {
+class nuraft_global_mgr : public global_mgr {
 public:
     nuraft_global_mgr();
 
-    ~nuraft_global_mgr();
+    virtual ~nuraft_global_mgr();
 
     __nocopy__(nuraft_global_mgr);
 public:
@@ -125,28 +160,28 @@ public:
      *
      * @param server Raft server instance.
      */
-    void init_raft_server(raft_server* server);
+    virtual void init_raft_server(raft_server* server) __override__;
 
     /**
      * This function is called by the destructor of `raft_server`.
      *
      * @param server Raft server instance.
      */
-    void close_raft_server(raft_server* server);
+    virtual void close_raft_server(raft_server* server) __override__;
 
     /**
      * Request `append_entries` for the given server.
      *
      * @param server Raft server instance to request `append_entries`.
      */
-    void request_append(ptr<raft_server> server);
+    virtual void request_append(ptr<raft_server> server) __override__;
 
     /**
      * Request background commit execution for the given server.
      *
      * @param server Raft server instance to execute commit.
      */
-    void request_commit(ptr<raft_server> server);
+    virtual void request_commit(ptr<raft_server> server) __override__;
 
 private:
     struct worker_handle;
