@@ -65,7 +65,7 @@ void raft_server::commit(ulong target_idx) {
     if ( log_store_->next_slot() - 1 > sm_commit_index_ &&
          quick_commit_index_ > sm_commit_index_ ) {
 
-        global_mgr* mgr = ctx_->get_global_mgr();
+        global_mgr* mgr = get_global_mgr();
         if (mgr) {
             // Global thread pool exists, request it.
             p_tr("request commit to global thread pool");
@@ -902,7 +902,7 @@ void raft_server::resume_state_machine_execution() {
           sm_commit_exec_in_progress_ ? "RUNNING" : "SLEEPING" );
     sm_commit_paused_ = false;
 
-    global_mgr* mgr = ctx_->get_global_mgr();
+    global_mgr* mgr = get_global_mgr();
     if (mgr) {
         // Global mgr.
         mgr->request_commit( this->shared_from_this() );

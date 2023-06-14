@@ -46,6 +46,7 @@ using CbReturnCode = cb_func::ReturnCode;
 class cluster_config;
 class custom_notification_msg;
 class delayed_task_scheduler;
+class global_mgr;
 class EventAwaiter;
 class logger;
 class peer;
@@ -999,6 +1000,8 @@ protected:
     void request_append_entries_for_all();
 
     uint64_t get_current_leader_index();
+
+    global_mgr * get_global_mgr() const;
 
 protected:
     static const int default_snapshot_sync_block_size;

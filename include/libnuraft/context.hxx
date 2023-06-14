@@ -25,7 +25,6 @@ limitations under the License.
 #include "pp_util.hxx"
 #include "ptr.hxx"
 #include "raft_params.hxx"
-#include "global_mgr.hxx"
 
 #include <memory>
 #include <mutex>
@@ -47,15 +46,17 @@ public:
              ptr<logger>& l,
              ptr<rpc_client_factory>& cli_factory,
              ptr<delayed_task_scheduler>& scheduler,
-             const raft_params& params )
+             const raft_params& params,
+             global_mgr* custom_global_mgr = nullptr)
         : state_mgr_(mgr)
         , state_machine_(m)
         , rpc_listener_(listener)
         , logger_(l)
         , rpc_cli_factory_(cli_factory)
         , scheduler_(scheduler)
-        , params_( cs_new<raft_params>(params) )
-        {}
+        , params_(cs_new<raft_params>(params))
+        , custom_global_mgr_(custom_global_mgr)
+    {}
 
     /**
      * Register an event callback function.
@@ -88,13 +89,6 @@ public:
     void set_params(ptr<raft_params>& to) {
         std::lock_guard<std::mutex> l(ctx_lock_);
         params_ = to;
-    }
-
-    global_mgr * get_global_mgr() const {
-        if (custom_global_mgr_ != nullptr) {
-            return custom_global_mgr_;
-        }
-        return nuraft_global_mgr::get_instance();
     }
 
     __nocopy__(context);
@@ -145,7 +139,7 @@ public:
      *  used in preference to nuraft_global_mgr::get_instance().
      *  The lifecycle of this object must be managed by the user externally.
      */
-    global_mgr* custom_global_mgr_{nullptr};
+    global_mgr* custom_global_mgr_;
 
     /**
      * Lock.
