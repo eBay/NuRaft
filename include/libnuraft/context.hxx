@@ -37,6 +37,7 @@ class rpc_client_factory;
 class rpc_listener;
 class state_machine;
 class state_mgr;
+class global_mgr;
 struct context {
 public:
     context( ptr<state_mgr>& mgr,
@@ -45,15 +46,17 @@ public:
              ptr<logger>& l,
              ptr<rpc_client_factory>& cli_factory,
              ptr<delayed_task_scheduler>& scheduler,
-             const raft_params& params )
+             const raft_params& params,
+             global_mgr* custom_global_mgr = nullptr)
         : state_mgr_(mgr)
         , state_machine_(m)
         , rpc_listener_(listener)
         , logger_(l)
         , rpc_cli_factory_(cli_factory)
         , scheduler_(scheduler)
-        , params_( cs_new<raft_params>(params) )
-        {}
+        , params_(cs_new<raft_params>(params))
+        , custom_global_mgr_(custom_global_mgr)
+    {}
 
     /**
      * Register an event callback function.
@@ -130,6 +133,13 @@ public:
      * Callback function for hooking the operation.
      */
     cb_func cb_func_;
+
+    /**
+     *  User-provided global_mgr pointer.
+     *  Used in preference to nuraft_global_mgr::get_instance().
+     *  The lifecycle of this object must be managed by the user externally.
+     */
+    global_mgr* custom_global_mgr_;
 
     /**
      * Lock.

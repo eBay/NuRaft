@@ -264,7 +264,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
 void raft_server::start_server(bool skip_initial_election_timeout)
 {
     ptr<raft_params> params = ctx_->get_params();
-    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    global_mgr* mgr = get_global_mgr();
     if (mgr) {
         p_in("global manager is detected. will use shared thread pool");
         commit_bg_stopped_ = true;
@@ -437,7 +437,7 @@ void raft_server::stop_server() {
 }
 
 void raft_server::cancel_global_requests() {
-    nuraft_global_mgr* mgr = nuraft_global_mgr::get_instance();
+    global_mgr* mgr = get_global_mgr();
     if (mgr) {
         mgr->close_raft_server(this);
     }
@@ -1721,6 +1721,14 @@ void raft_server::set_raft_limits(const raft_server::limits& new_limits) {
 void raft_server::check_overall_status() {
     check_leadership_transfer();
 }
+
+global_mgr* raft_server::get_global_mgr() const {
+    if (ctx_->custom_global_mgr_ != nullptr) {
+        return ctx_->custom_global_mgr_;
+    }
+    return nuraft_global_mgr::get_instance();
+}
+
 
 } // namespace nuraft;
 
