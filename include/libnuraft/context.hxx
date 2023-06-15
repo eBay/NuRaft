@@ -136,7 +136,7 @@ public:
 
     /**
      *  User-provided global_mgr pointer.
-     *  used in preference to nuraft_global_mgr::get_instance().
+     *  Used in preference to nuraft_global_mgr::get_instance().
      *  The lifecycle of this object must be managed by the user externally.
      */
     global_mgr* custom_global_mgr_;
