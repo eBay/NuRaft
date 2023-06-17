@@ -193,7 +193,6 @@ private:
     ssl_context ssl_client_ctx_;
     asio::steady_timer asio_timer_;
     std::atomic_int continue_;
-    std::mutex logger_list_lock_;
     std::atomic<uint8_t> stopping_status_;
     std::mutex stopping_lock_;
     std::condition_variable stopping_cv_;
@@ -1683,7 +1682,6 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
 #endif
     , asio_timer_(io_svc_)
     , continue_(1)
-    , logger_list_lock_()
     , stopping_status_(0)
     , stopping_lock_()
     , stopping_cv_()
