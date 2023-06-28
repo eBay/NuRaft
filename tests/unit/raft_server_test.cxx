@@ -847,6 +847,9 @@ int leader_election_basic_test() {
     CHK_Z( launch_servers( pkgs ) );
     CHK_Z( make_group( pkgs ) );
 
+    // Keep the last log index.
+    uint64_t last_idx = s1.raftServer->get_last_log_idx();
+
     // Trigger election timer of S2.
     s2.dbgLog(" --- invoke election timer of S2 ---");
     s2.fTimer->invoke( timer_task_type::election_timer );
@@ -871,6 +874,18 @@ int leader_election_basic_test() {
     s3.fNet->execReqResp();
     // Wait for bg commit for configuration change.
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // S3's log index at becoming leader should be the next index of
+    // the last one.
+    TestSuite::Msg mm;
+    uint64_t idx_at_leader = s3.raftServer->get_log_idx_at_becoming_leader();
+    mm << "last index " << last_idx << ", log index at becoming leader "
+       << idx_at_leader << std::endl;
+    CHK_EQ( last_idx + 1, idx_at_leader );
+
+    // S1 and S2's log index should be 0.
+    CHK_Z( s1.raftServer->get_log_idx_at_becoming_leader() );
+    CHK_Z( s2.raftServer->get_log_idx_at_becoming_leader() );
 
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );

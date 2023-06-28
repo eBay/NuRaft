@@ -166,6 +166,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     p_in("got join cluster req from leader %d", req.get_src());
     catching_up_ = true;
     role_ = srv_role::follower;
+    index_at_becoming_leader_ = 0;
     leader_ = req.get_src();
 
     if (reset_commit_idx) {

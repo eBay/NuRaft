@@ -125,6 +125,7 @@ void raft_server::request_prevote() {
     hb_alive_ = false;
     leader_ = -1;
     role_ = srv_role::candidate;
+    index_at_becoming_leader_ = 0;
     pre_vote_.reset(state_->get_term());
     // Count for myself.
     pre_vote_.dead_++;
@@ -216,6 +217,7 @@ void raft_server::initiate_vote(bool force_vote) {
         state_->inc_term();
         state_->set_voted_for(-1);
         role_ = srv_role::candidate;
+        index_at_becoming_leader_ = 0;
         votes_granted_ = 0;
         votes_responded_ = 0;
         election_completed_ = false;

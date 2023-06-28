@@ -58,6 +58,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , leader_commit_index_(0)
     , quick_commit_index_(ctx->state_machine_->last_commit_index())
     , sm_commit_index_(ctx->state_machine_->last_commit_index())
+    , index_at_becoming_leader_(0)
     , initial_commit_index_(ctx->state_machine_->last_commit_index())
     , hb_alive_(false)
     , election_completed_(true)
@@ -1041,8 +1042,9 @@ void raft_server::become_leader() {
                 conf_buf,
                 log_val_type::conf,
                 timer_helper::get_timeofday_us() ) );
-        p_in("[BECOME LEADER] appended new config at %" PRIu64, log_store_->next_slot());
-        store_log_entry(entry);
+        index_at_becoming_leader_ = store_log_entry(entry);
+        p_in("[BECOME LEADER] appended new config at %" PRIu64,
+             index_at_becoming_leader_.load());
         config_changing_ = true;
     }
 
@@ -1322,6 +1324,7 @@ void raft_server::become_follower() {
 
         srv_to_join_.reset();
         role_ = srv_role::follower;
+        index_at_becoming_leader_ = 0;
 
         cb_func::Param param(id_, leader_);
         uint64_t my_term = state_->get_term();
