@@ -28,7 +28,6 @@ public:
 
 class mock_ssl_socket {
 public:
-    using executor_type = int;
     using lowest_layer_type = asio::ip::tcp::socket;
     using handle_type = asio::posix::stream_descriptor;
     using executor_type = handle_type::executor_type;
