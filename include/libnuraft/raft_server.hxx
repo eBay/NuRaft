@@ -475,6 +475,20 @@ public:
     { return is_leader() ? get_committed_log_idx() : leader_commit_index_.load(); }
 
     /**
+     * Get the log index of the first config when this server became a leader.
+     * This API can be used for checking if the state machine is fully caught up
+     * with the latest log after a leader election, so that the new leader can
+     * guarantee strong consistency.
+     *
+     * It will return 0 if this server is not a leader.
+     *
+     * @return The log index of the first config when this server became a leader.
+     */
+    uint64_t get_log_idx_at_becoming_leader() const {
+        return index_at_becoming_leader_;
+    }
+
+    /**
      * Calculate the log index to be committed
      * from current peers' matched indexes.
      *
@@ -1102,6 +1116,13 @@ protected:
      * index is less than this number.
      */
     std::atomic<ulong> lagging_sm_target_index_;
+
+    /**
+     * If this server is the current leader, this will indicate
+     * the log index of the first config it appended as a leader.
+     * Otherwise (if non-leader), the value will be 0.
+     */
+    std::atomic<uint64_t> index_at_becoming_leader_;
 
     /**
      * (Read-only)
