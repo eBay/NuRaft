@@ -32,6 +32,16 @@ using namespace raft_functional_common;
 
 static bool flag_bg_snapshot_io = false;
 
+std::ostream& operator<<(std::ostream& os, raft_server::PrioritySetResult res) {
+    if (res == raft_server::PrioritySetResult::SET)
+        os << "SET";
+    else if (res == raft_server::PrioritySetResult::IGNORED)
+        os << "IGNORED";
+    else
+        os << "BROADCAST";
+    return os;
+}
+
 namespace asio_service_test {
 
 int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
@@ -1245,11 +1255,11 @@ int leadership_transfer_test() {
     CHK_EQ(1, s3->raftServer->get_leader());
 
     // Set the priority of S2 to 10.
-    s1->raftServer->set_priority(2, 10);
+    CHK_EQ( raft_server::PrioritySetResult::SET, s1->raftServer->set_priority(2, 10) );
     TestSuite::sleep_ms(500, "set priority of S2");
 
     // Set the priority of S3 to 5.
-    s1->raftServer->set_priority(3, 5);
+    CHK_EQ( raft_server::PrioritySetResult::SET, s1->raftServer->set_priority(3, 5) );
     TestSuite::sleep_ms(500, "set priority of S3");
 
     // Yield the leadership to S2.
@@ -1287,7 +1297,7 @@ int leadership_transfer_test() {
     s1->raftServer->update_params(params);
 
     // Set S2's priority higher than S1
-    s1->raftServer->set_priority(2, 100);
+    CHK_EQ( raft_server::PrioritySetResult::SET, s1->raftServer->set_priority(2, 100) );
 
     // Due to S3, transfer shouldn't happen.
     TestSuite::sleep_sec(2, "shutdown S3, set priority of S2, and wait");
@@ -1532,7 +1542,8 @@ int enforced_state_machine_catchup_test() {
     TestSuite::sleep_sec(1, "wait for replication");
 
     // Adjust the priority of S2 to zero, to block it becoming a leader.
-    s1.raftServer->set_priority(2, 0);
+    CHK_EQ( raft_server::PrioritySetResult::SET, s1.raftServer->set_priority(2, 0) );
+
     TestSuite::sleep_sec(1, "set S2's priority to zero");
 
     // Stop S3, delete data.
@@ -1619,7 +1630,7 @@ int enforced_state_machine_catchup_with_term_inc_test() {
     TestSuite::sleep_sec(1, "wait for replication");
 
     // Adjust the priority of S2 to zero, to block it becoming a leader.
-    s1.raftServer->set_priority(2, 0);
+    CHK_EQ( raft_server::PrioritySetResult::SET, s1.raftServer->set_priority(2, 0) );
     TestSuite::sleep_sec(1, "set S2's priority to zero");
 
     // Stop S3, delete data.
