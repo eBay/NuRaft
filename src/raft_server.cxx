@@ -324,7 +324,7 @@ raft_server::~raft_server() {
     std::unique_lock<std::mutex> lock(ready_to_stop_cv_lock_);
     commit_lock.unlock();
     commit_lock.release();
-    ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10));
+    ready_to_stop_cv_.wait_for(lock, std::chrono::milliseconds(10), [this](){return commit_bg_stopped_.load();});
     cancel_schedulers();
     delete bg_append_ea_;
     delete ea_sm_commit_exec_in_progress_;
