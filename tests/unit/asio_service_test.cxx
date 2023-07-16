@@ -279,6 +279,14 @@ std::string test_write_req_meta( std::atomic<size_t>* count,
         _msg("%10s %s %20s\n", "write req", key, value.c_str());
     }
 
+    // `req_` should be given, while `resp_` should be null.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return std::string();
+
     if (count) (*count)++;
     return value;
 }
@@ -299,6 +307,14 @@ bool test_read_req_meta( std::atomic<size_t>* count,
     if (dbg_print_ctx) {
         _msg("%10s %s %20s\n", "read req", key, meta.c_str());
     }
+
+    // `req_` should be given, while `resp_` should be null.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return false;
 
     std::string META;
     {   std::lock_guard<std::mutex> l(req_map_lock);
@@ -332,6 +348,14 @@ std::string test_write_resp_meta( std::atomic<size_t>* count,
         _msg("%10s %s %20s\n", "write resp", key, value.c_str());
     }
 
+    // `req_` and `resp_` should be given.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NONNULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return std::string();
+
     if (count) (*count)++;
     return value;
 }
@@ -351,6 +375,14 @@ bool test_read_resp_meta( std::atomic<size_t>* count,
     if (dbg_print_ctx) {
         _msg("%10s %s %20s\n", "read resp", key, meta.c_str());
     }
+
+    // `req_` and `resp_` should be given.
+    auto chk_req_resp = [&]() {
+        CHK_NONNULL(params.req_);
+        CHK_NONNULL(params.resp_);
+        return 0;
+    };
+    if (chk_req_resp() != 0) return false;
 
     std::string META;
     {   std::lock_guard<std::mutex> l(resp_map_lock);

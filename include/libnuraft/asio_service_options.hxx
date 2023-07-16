@@ -27,6 +27,9 @@ typedef struct ssl_ctx_st SSL_CTX;
 
 namespace nuraft {
 
+class req_msg;
+class resp_msg;
+
 /**
  * Parameters for meta callback functions in `options`.
  */
@@ -37,31 +40,59 @@ struct asio_service_meta_cb_params {
                                 uint64_t t = 0,
                                 uint64_t lt = 0,
                                 uint64_t li = 0,
-                                uint64_t ci = 0)
+                                uint64_t ci = 0,
+                                req_msg* req = nullptr,
+                                resp_msg* resp = nullptr)
         : msg_type_(m), src_id_(s), dst_id_(d)
         , term_(t), log_term_(lt), log_idx_(li), commit_idx_(ci)
+        , req_(req), resp_(resp)
         {}
 
-    // Type of request.
+    /**
+     * Type of request.
+     */
     int msg_type_;
 
-    // Source server ID that sends request.
+    /**
+     * Source server ID that sends request.
+     */
     int src_id_;
 
-    // Destination server ID that sends response.
+    /**
+     * Destination server ID that sends response.
+     */
     int dst_id_;
 
-    // Term of source server.
+    /**
+     * Term of source server.
+     */
     uint64_t term_;
 
-    // Term of the corresponding log.
+    /**
+     * Term of the corresponding log.
+     */
     uint64_t log_term_;
 
-    // Log index number.
+    /**
+     * Log index number.
+     */
     uint64_t log_idx_;
 
-    // Last committed index number.
+    /**
+     * Last committed index number.
+     */
     uint64_t commit_idx_;
+
+    /**
+     * Pointer to request instance.
+     */
+    req_msg* req_;
+
+    /**
+     * Pointer to response instance.
+     * Will be given for `read_resp_meta_` and `write_resp_meta_` only.
+     */
+    resp_msg* resp_;
 };
 
 /**
