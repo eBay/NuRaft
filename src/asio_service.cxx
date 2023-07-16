@@ -129,7 +129,7 @@ static const size_t SSL_GRACE_PERIOD_MS = 500;
 static const size_t SEND_RETRY_MS       = 500;
 static const size_t SEND_RETRY_MAX      = 6;
 
-asio_service::meta_cb_params req_to_params(ptr<req_msg>& req) {
+asio_service::meta_cb_params req_to_params(req_msg* req, resp_msg* resp) {
     return asio_service::meta_cb_params
            ( (int)req->get_type(),
              req->get_src(),
@@ -137,7 +137,9 @@ asio_service::meta_cb_params req_to_params(ptr<req_msg>& req) {
              req->get_term(),
              req->get_last_log_term(),
              req->get_last_log_idx(),
-             req->get_commit_idx() );
+             req->get_commit_idx(),
+             req,
+             resp );
 }
 
 // === ASIO Abstraction ===
@@ -567,7 +569,7 @@ private:
              ( !meta_str.empty() ||
                impl_->get_options().invoke_req_cb_on_empty_meta_ ) ) {
             if ( !impl_->get_options().read_req_meta_
-                  ( req_to_params(req), meta_str ) ) {
+                  ( req_to_params(req.get(), nullptr), meta_str ) ) {
                 this->stop();
                 return;
             }
@@ -629,7 +631,7 @@ private:
         std::string resp_meta_str;
         if (impl_->get_options().write_resp_meta_) {
             resp_meta_str = impl_->get_options().write_resp_meta_
-                            ( req_to_params(req) );
+                            ( req_to_params(req.get(), resp.get()) );
             if (!resp_meta_str.empty()) {
                 // Meta callback for response is given, set the flag.
                 flags |= INCLUDE_META;
@@ -1150,7 +1152,8 @@ public:
         size_t meta_size = 0;
         std::string meta_str;
         if (impl_->get_options().write_req_meta_) {
-            meta_str = impl_->get_options().write_req_meta_( req_to_params(req) );
+            meta_str = impl_->get_options().write_req_meta_
+                       ( req_to_params(req.get(), nullptr) );
             if (!meta_str.empty()) {
                 // If callback for meta is given, set flag.
                 flags |= INCLUDE_META;
@@ -1583,7 +1586,7 @@ private:
                                  const std::string& meta_str)
     {
         bool meta_ok = impl_->get_options().read_resp_meta_
-                       ( req_to_params(req), meta_str );
+                       ( req_to_params(req.get(), rsp.get()), meta_str );
 
         if (!meta_ok) {
             // Callback function returns false, should return failure.
