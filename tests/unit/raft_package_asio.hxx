@@ -54,6 +54,7 @@ public:
         , alwaysInvokeCb(true)
         , useCustomResolver(false)
         , useLogTimestamp(false)
+        , useCrcOnEntireMessage(false)
         , myLogWrapper(nullptr)
         , myLog(nullptr)
         {}
@@ -72,6 +73,10 @@ public:
         readRespMeta = read_resp_meta;
         writeRespMeta = write_resp_meta;
         alwaysInvokeCb = always_invoke_cb;
+    }
+
+    void setCrcOnEntireMessage(bool to) {
+        useCrcOnEntireMessage = to;
     }
 
     static bool verifySn(const std::string& sn) {
@@ -115,6 +120,15 @@ public:
                     } else {
                         when_done("127.0.0.1", "20030", std::error_code());
                     }
+                };
+        }
+
+        if (useCrcOnEntireMessage) {
+            asio_opt.crc_on_entire_message_ = true;
+            asio_opt.corrupted_msg_handler_ =
+                [&](ptr<buffer> header, ptr<buffer> ctx){
+                    abort();
+                    return;
                 };
         }
 
@@ -256,6 +270,8 @@ public:
     bool useCustomResolver;
 
     bool useLogTimestamp;
+
+    bool useCrcOnEntireMessage;
 
     ptr<logger_wrapper> myLogWrapper;
     ptr<logger> myLog;

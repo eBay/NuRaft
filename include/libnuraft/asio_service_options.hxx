@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <system_error>
 
@@ -27,6 +28,7 @@ typedef struct ssl_ctx_st SSL_CTX;
 
 namespace nuraft {
 
+class buffer;
 class req_msg;
 class resp_msg;
 
@@ -120,6 +122,8 @@ struct asio_service_options {
         , verify_sn_(nullptr)
         , custom_resolver_(nullptr)
         , replicate_log_timestamp_(false)
+        , crc_on_entire_message_(false)
+        , corrupted_msg_handler_(nullptr)
         {}
 
     /**
@@ -243,6 +247,21 @@ struct asio_service_options {
      * this flag.
      */
     bool replicate_log_timestamp_;
+
+    /**
+     * If `true`, NuRaft will validate the entire message with CRC.
+     * Otherwise, it validates the header part only.
+     */
+    bool crc_on_entire_message_;
+
+    /**
+     * Callback function that will be invoked when the received message is corrupted.
+     * The first `buffer` contains the raw binary of message header,
+     * and the second `buffer` contains the user payload including metadata,
+     * if it is not null.
+     */
+    std::function< void( std::shared_ptr<buffer>,
+                         std::shared_ptr<buffer> ) > corrupted_msg_handler_;
 };
 
 }

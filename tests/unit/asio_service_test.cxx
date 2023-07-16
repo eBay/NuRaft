@@ -147,7 +147,7 @@ int make_group_test() {
     return 0;
 }
 
-int leader_election_test() {
+int leader_election_test(bool crc_on_entire_message) {
     reset_log_files();
 
     std::string s1_addr = "tcp://localhost:20010";
@@ -158,6 +158,9 @@ int leader_election_test() {
     RaftAsioPkg* s2 = new RaftAsioPkg(2, s2_addr);
     RaftAsioPkg* s3 = new RaftAsioPkg(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {s1, s2, s3};
+    for (auto& pp: pkgs) {
+        pp->setCrcOnEntireMessage(crc_on_entire_message);
+    }
 
     _msg("launching asio-raft servers\n");
     CHK_Z( launch_servers(pkgs, false) );
@@ -396,7 +399,7 @@ bool test_read_resp_meta( std::atomic<size_t>* count,
     return true;
 }
 
-int message_meta_test() {
+int message_meta_test(bool crc_on_entire_message) {
     reset_log_files();
 
     std::string s1_addr = "127.0.0.1:20010";
@@ -431,6 +434,8 @@ int message_meta_test() {
                          &write_resp_cb_count,
                          std::placeholders::_1 ),
               true );
+
+        rr->setCrcOnEntireMessage(crc_on_entire_message);
     }
     CHK_Z( launch_servers(pkgs, false) );
 
@@ -2746,7 +2751,8 @@ int main(int argc, char** argv) {
                make_group_test );
 
     ts.doTest( "leader election test",
-               leader_election_test );
+               leader_election_test,
+               TestRange<bool>( {false, true} ) );
 
 #if !SSL_LIBRARY_NOT_FOUND && (defined(__linux__) || defined(__APPLE__))
     ts.doTest( "ssl test",
@@ -2754,7 +2760,8 @@ int main(int argc, char** argv) {
 #endif
 
     ts.doTest( "message meta test",
-               message_meta_test );
+               message_meta_test,
+               TestRange<bool>( {false, true} ) );
 
     ts.doTest( "empty meta test",
                empty_meta_test,
