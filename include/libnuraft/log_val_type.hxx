@@ -21,6 +21,7 @@ limitations under the License.
 #ifndef _LOG_VALUE_TYPE_HXX_
 #define _LOG_VALUE_TYPE_HXX_
 
+#include "basic_types.hxx"
 namespace nuraft {
 
 enum log_val_type : byte {

@@ -137,11 +137,12 @@ void raft_server::broadcast_priority_change(const int srv_id,
 
         // ID + priority
         ptr<buffer> buf = buffer::alloc(sz_int * 2);
-        buf->pos(0);
-        buf->put((int32)srv_id);
-        buf->put((int32)new_priority);
-        buf->pos(0);
-        ptr<log_entry> le = cs_new<log_entry>(state_->get_term(), buf);
+        buffer_serializer ss(buf);
+        ss.put_i32(srv_id);
+        ss.put_i32(new_priority);
+        ptr<log_entry> le = cs_new<log_entry>( state_->get_term(),
+                                               buf,
+                                               log_val_type::custom );
 
         std::vector< ptr<log_entry> >& v = req->log_entries();
         v.push_back(le);
