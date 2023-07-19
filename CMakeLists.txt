@@ -114,9 +114,10 @@ if (NOT DISABLE_SSL)
     if (OPENSSL_LIBRARY_PATH AND OPENSSL_INCLUDE_PATH)
         message(STATUS "Pre-defined SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
         message(STATUS "Pre-defined SSL include path: ${OPENSSL_INCLUDE_PATH}")
-        set(OPENSSL_SSL_LIBRARY ${OPENSSL_LIBRARY_PATH}/libssl.a)
-        set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
-        set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_PATH})
+        set(OPENSSL_SSL_LIBRARY ${OPENSSL_LIBRARY_PATH}/libssl.a CACHE PATH "")
+        set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_LIBRARY_PATH}/libcrypto.a CACHE PATH "")
+        set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_PATH} CACHE PATH "")
+        mark_as_advanced(OPENSSL_SSL_LIBRARY OPENSSL_CRYPTO_LIBRARY OPENSSL_INCLUDE_DIR)
     endif()
 
     # FindOpenSSL does not detect OpenSSL installed by homebrew.
