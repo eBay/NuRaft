@@ -324,8 +324,25 @@ endif()
 
 
 # === Install Targets ===
-install(TARGETS static_lib ARCHIVE DESTINATION lib)
-install(TARGETS shared_lib LIBRARY DESTINATION lib)
+install(TARGETS shared_lib static_lib
+    EXPORT nuraft-targets
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/include/libnuraft DESTINATION include)
 
+install(EXPORT nuraft-targets
+    FILE NuRaftTargets.cmake
+    NAMESPACE NuRaft::
+    DESTINATION lib/cmake/NuRaft
+)
 
+include(CMakePackageConfigHelpers)
+configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/NuRaftConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/NuRaftConfig.cmake"
+    INSTALL_DESTINATION lib/cmake/NuRaft
+)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/NuRaftConfig.cmake"
+    DESTINATION lib/cmake/NuRaft
+)
