@@ -128,6 +128,7 @@ if (NOT DISABLE_SSL)
 
     # This needs to be mantained for backwards compatibility.
     set(OPENSSL_ROOT_DIR ${DEPS_PREFIX})
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
 
     find_package(OpenSSL QUIET)
 
@@ -148,7 +149,7 @@ if (NOT DISABLE_SSL)
     endif ()
 
     if (OPENSSL_INCLUDE_PATH)
-        message(STATUS "Open SSL include path: ${OPENSSL_INCLUDE_PATH}")
+        message(STATUS "OpenSSL include path: ${OPENSSL_INCLUDE_PATH}")
     endif ()
 
     include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
