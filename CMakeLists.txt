@@ -103,68 +103,60 @@ else ()
 endif ()
 
 # === Disable SSL ===
-if (DISABLE_SSL GREATER 0)
+if (DISABLE_SSL)
     add_definitions(-DSSL_LIBRARY_NOT_FOUND=1)
     message(STATUS "---- DISABLED SSL ----")
 endif ()
 
-# === OpenSSL libraries ===
-if (NOT (DISABLE_SSL GREATER 0))
-    if (OPENSSL_LIBRARY_PATH AND OPENSSL_INCLUDE_PATH)
-        message(STATUS "Pre-defined SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
-        message(STATUS "Pre-defined SSL include path: ${OPENSSL_INCLUDE_PATH}")
-        include_directories(BEFORE ${OPENSSL_INCLUDE_PATH})
-        set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
-        set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
-    else ()
-        set(LIB_PATH_HINT
-            ~/Library/Frameworks
-            /Library/Frameworks
-            $ENV{HOME}/local/lib64
-            $ENV{HOME}/local/lib
-            /usr/lib
-            /usr/lib/x86_64-linux-gnu
-            /usr/lib64
-            /usr/local/lib
-            /usr/local/lib64
-            /opt/local/lib
-            /opt/local/lib64
-            /opt/homebrew/opt/openssl/lib
-            /opt/csw
-            /opt)
-        find_path(OPENSSL_LIBRARY_PATH
-                  NAMES libssl.a
-                  PATHS ${PROJECT_SOURCE_DIR}
-                        ${DEPS_PREFIX}/lib
-                        ${DEPS_PREFIX}/lib64
-                        /usr/local/opt/openssl/lib
-                        ${LIB_PATH_HINT})
+# Use OPENSSL_LIBRARY_PATH and OPENSSL_INCLUDE_PATH for OpenSSL.
+macro(NURAFT_USE_PREDEFINED_OPENSSL)
+    message(STATUS "Pre-defined SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
+    message(STATUS "Pre-defined SSL include path: ${OPENSSL_INCLUDE_PATH}")
 
-        find_path(OPENSSL_INCLUDE_PATH
-                  NAMES openssl/ssl.h
-                  PATHS ${PROJECT_SOURCE_DIR}
-                        ${DEPS_PREFIX}/include
-                        /usr/include
-                        /usr/local/include
-                        /usr/local/opt/openssl/include
-                        /opt/local/include
-                        /opt/homebrew/opt/openssl/include)
+    set(OPENSSL_SSL_LIBRARY ${OPENSSL_LIBRARY_PATH}/libssl.a CACHE PATH "")
+    set(OPENSSL_CRYPTO_LIBRARY ${OPENSSL_LIBRARY_PATH}/libcrypto.a CACHE PATH "")
+    set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_PATH} CACHE PATH "")
+    mark_as_advanced(OPENSSL_SSL_LIBRARY OPENSSL_CRYPTO_LIBRARY OPENSSL_INCLUDE_DIR)
 
-        if (NOT OPENSSL_LIBRARY_PATH)
-            message(STATUS "Use system's side OpenSSL library")
-            set(LIBSSL ssl)
-            set(LIBCRYPTO crypto)
-        else ()
-            message(STATUS "Open SSL library path: ${OPENSSL_LIBRARY_PATH}/libssl.a")
-            set(LIBSSL ${OPENSSL_LIBRARY_PATH}/libssl.a)
-            set(LIBCRYPTO ${OPENSSL_LIBRARY_PATH}/libcrypto.a)
-        endif ()
+    set(LIBSSL ${OPENSSL_SSL_LIBRARY})
+    set(LIBCRYPTO ${OPENSSL_CRYPTO_LIBRARY})
+endmacro()
 
-        if (OPENSSL_INCLUDE_PATH)
-            message(STATUS "Open SSL include path: ${OPENSSL_INCLUDE_PATH}")
-            include_directories(BEFORE ${OPENSSL_INCLUDE_PATH})
-        endif ()
+# Search for static OpenSSL. If provided, DEPS_PREFIX is used as the root.
+macro(NURAFT_USE_SYSTEM_OPENSSL)
+    # FindOpenSSL does not detect OpenSSL installed by homebrew.
+    if (APPLE)
+        list(APPEND CMAKE_LIBRARY_PATH /opt/homebrew/opt/openssl@1.1)
+        list(APPEND CMAKE_INCLUDE_PATH /opt/homebrew/opt/openssl@1.1)
     endif ()
+
+    # This needs to be mantained for backwards compatibility.
+    set(OPENSSL_ROOT_DIR ${DEPS_PREFIX})
+    set(OPENSSL_USE_STATIC_LIBS TRUE)
+
+    find_package(OpenSSL QUIET)
+
+    if (OpenSSL_FOUND)
+        message(STATUS "OpenSSL library path: ${OPENSSL_SSL_LIBRARY}")
+        message(STATUS "OpenSSL include path: ${OPENSSL_INCLUDE_DIR}")
+
+        set(LIBSSL OpenSSL::SSL)
+        set(LIBCRYPTO OpenSSL::Crypto)
+    else ()
+        message(STATUS "OpenSSL not found")
+    endif()
+endmacro()
+
+# === OpenSSL libraries ===
+if (NOT DISABLE_SSL)
+    # Predefined options need to be maintained for backwards compatability.
+    if (OPENSSL_LIBRARY_PATH AND OPENSSL_INCLUDE_PATH)
+        nuraft_use_predefined_openssl()
+    else ()
+        nuraft_use_system_openssl()
+    endif ()
+
+    include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
 endif()
 
 # === Compiler options ===
