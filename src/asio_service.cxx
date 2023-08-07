@@ -639,7 +639,7 @@ private:
                 ptr<buffer> buf( buffer::alloc(val_size) );
                 ss.get_buffer(buf);
                 ptr<log_entry> entry(
-                    cs_new<log_entry>(term, buf, val_type, timestamp, crc32) );
+                    cs_new<log_entry>(term, buf, val_type, timestamp, crc32, false) );
 
                 if ((flags_ & CRC_ON_PAYLOAD) && crc32 != 0) {
                     // Verify CRC.

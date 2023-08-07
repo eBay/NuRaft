@@ -41,14 +41,15 @@ public:
               const ptr<buffer>& buff,
               log_val_type value_type = log_val_type::app_log,
               uint64_t log_timestamp = 0,
-              uint32_t crc32 = 0)
+              uint32_t crc32 = 0,
+              bool compute_crc = true)
         : term_(term)
         , value_type_(value_type)
         , buff_(buff)
         , timestamp_us_(log_timestamp)
         , crc32_(crc32)
         {
-            if (!buff_ && crc32 == 0) {
+            if (!buff_ && crc32 == 0 && compute_crc) {
                 crc32_ = crc32_8( buff->data_begin(),
                                   buff->size(),
                                   0 );
