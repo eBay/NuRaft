@@ -23,8 +23,10 @@ limitations under the License.
 
 #include "basic_types.hxx"
 #include "buffer.hxx"
+#include "crc32.hxx"
 #include "log_val_type.hxx"
 #include "ptr.hxx"
+#include <cstdint>
 
 #ifdef _NO_EXCEPTION
 #include <cassert>
@@ -38,12 +40,20 @@ public:
     log_entry(ulong term,
               const ptr<buffer>& buff,
               log_val_type value_type = log_val_type::app_log,
-              uint64_t log_timestamp = 0)
+              uint64_t log_timestamp = 0,
+              uint32_t crc32 = 0)
         : term_(term)
         , value_type_(value_type)
         , buff_(buff)
         , timestamp_us_(log_timestamp)
-        {}
+        , crc32_(crc32)
+        {
+            if (!buff_ && crc32 == 0) {
+                crc32_ = crc32_8( buff->data_begin(),
+                                  buff->size(),
+                                  0 );
+            }
+        }
 
     __nocopy__(log_entry);
 
@@ -92,6 +102,14 @@ public:
         timestamp_us_ = t;
     }
 
+    uint32_t get_crc32() const {
+        return crc32_;
+    }
+
+    void set_crc32(uint32_t crc) {
+        crc32_ = crc;
+    }
+
     ptr<buffer> serialize() {
         buff_->pos(0);
         ptr<buffer> buf = buffer::alloc( sizeof(ulong) +
@@ -135,10 +153,16 @@ private:
 
     /**
      * The timestamp (since epoch) when this log entry was generated
-     * in microseconds. Used only when `log_entry_timestamp_` in
+     * in microseconds. Used only when `replicate_log_timestamp_` in
      * `asio_service_options` is set.
      */
     uint64_t timestamp_us_;
+
+    /**
+     * CRC32 checksum of this log entry.
+     * Used only when `crc_on_payload` in `asio_service_options` is set.
+     */
+    uint32_t crc32_;
 };
 
 }

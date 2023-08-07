@@ -125,6 +125,7 @@ public:
 
         if (useCrcOnEntireMessage) {
             asio_opt.crc_on_entire_message_ = true;
+            asio_opt.crc_on_payload_ = true;
             asio_opt.corrupted_msg_handler_ =
                 [&](ptr<buffer> header, ptr<buffer> ctx){
                     abort();

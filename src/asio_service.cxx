@@ -124,6 +124,9 @@ limitations under the License.
 // If set, CRC number represents the entire message.
 #define CRC_ON_ENTIRE_MESSAGE (0x8)
 
+// If set, each log entry will contain a CRC on the payload.
+#define CRC_ON_PAYLOAD (0x10)
+
 // =======================
 
 namespace nuraft {
@@ -596,6 +599,9 @@ private:
             if (flags_ & INCLUDE_LOG_TIMESTAMP) {
                 LOG_ENTRY_SIZE += 8;
             }
+            if (flags_ & CRC_ON_PAYLOAD) {
+                LOG_ENTRY_SIZE += 4;
+            }
 
             while (log_ctx_size > ss.pos()) {
                 if (log_ctx_size - ss.pos() < LOG_ENTRY_SIZE) {
@@ -613,6 +619,7 @@ private:
                 ulong term = ss.get_u64();
                 log_val_type val_type = (log_val_type)ss.get_u8();
                 uint64_t timestamp = (flags_ & INCLUDE_LOG_TIMESTAMP) ? ss.get_u64() : 0;
+                uint32_t crc32 = (flags_ & CRC_ON_PAYLOAD) ? ss.get_u32() : 0;
 
                 size_t val_size = ss.get_i32();
                 if (log_ctx_size - ss.pos() < val_size) {
@@ -632,7 +639,26 @@ private:
                 ptr<buffer> buf( buffer::alloc(val_size) );
                 ss.get_buffer(buf);
                 ptr<log_entry> entry(
-                    cs_new<log_entry>(term, buf, val_type, timestamp) );
+                    cs_new<log_entry>(term, buf, val_type, timestamp, crc32) );
+
+                if ((flags_ & CRC_ON_PAYLOAD) && crc32 != 0) {
+                    // Verify CRC.
+                    uint32_t crc_payload = crc32_8( buf->data_begin(),
+                                               buf->size(),
+                                        0 );
+                    if (crc_payload != crc32) {
+                        p_er("log entry CRC mismatch: local calculation %x, "
+                             "from message %x", crc_payload, crc32);
+
+                        if (impl_->get_options().corrupted_msg_handler_) {
+                            impl_->get_options().corrupted_msg_handler_(header_, log_ctx);
+                        }
+
+                        this->stop();
+                        return;
+                    }
+                }
+
                 req->log_entries().push_back(entry);
             }
         }
@@ -1207,6 +1233,10 @@ public:
             LOG_ENTRY_SIZE += 8;
             flags |= INCLUDE_LOG_TIMESTAMP;
         }
+        if (impl_->get_options().crc_on_payload_) {
+            LOG_ENTRY_SIZE += 4;
+            flags |= CRC_ON_PAYLOAD;
+        }
 
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
@@ -1225,6 +1255,9 @@ public:
             ss.put_u8( le->get_val_type() );
             if (impl_->get_options().replicate_log_timestamp_) {
                 ss.put_u64( le->get_timestamp() );
+            }
+            if (impl_->get_options().crc_on_payload_) {
+                ss.put_u32(le->get_crc32());
             }
             ss.put_i32( le->get_buf().size() );
             ss.put_raw( le->get_buf().data_begin(), le->get_buf().size() );

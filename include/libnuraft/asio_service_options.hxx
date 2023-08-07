@@ -255,6 +255,19 @@ struct asio_service_options {
     bool crc_on_entire_message_;
 
     /**
+     * If `true`, each log entry will contain a CRC checksum of the entry's
+     * payload.
+     * 
+     * To support this feature, the log store implementation should be able to
+     * store and retrieve the CRC checksum when it reads log entries.
+     *
+     * This feature is not backward compatible. To enable this feature, there
+     * should not be any member running with the old version before supporting
+     * this flag.
+     */
+    bool crc_on_payload_;
+
+    /**
      * Callback function that will be invoked when the received message is corrupted.
      * The first `buffer` contains the raw binary of message header,
      * and the second `buffer` contains the user payload including metadata,
