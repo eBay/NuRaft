@@ -123,6 +123,7 @@ struct asio_service_options {
         , custom_resolver_(nullptr)
         , replicate_log_timestamp_(false)
         , crc_on_entire_message_(false)
+        , crc_on_payload_(false)
         , corrupted_msg_handler_(nullptr)
         {}
 
@@ -243,7 +244,7 @@ struct asio_service_options {
      * restore the timestamp when it reads log entries.
      *
      * This feature is not backward compatible. To enable this feature, there
-     * should not be any member running with old version before supprting
+     * should not be any member running with old version before supporting
      * this flag.
      */
     bool replicate_log_timestamp_;
@@ -257,7 +258,7 @@ struct asio_service_options {
     /**
      * If `true`, each log entry will contain a CRC checksum of the entry's
      * payload.
-     * 
+     *
      * To support this feature, the log store implementation should be able to
      * store and retrieve the CRC checksum when it reads log entries.
      *
