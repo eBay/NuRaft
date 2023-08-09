@@ -600,7 +600,7 @@ private:
                 LOG_ENTRY_SIZE += 8;
             }
             if (flags_ & CRC_ON_PAYLOAD) {
-                LOG_ENTRY_SIZE += 4;
+                LOG_ENTRY_SIZE += 5;
             }
 
             while (log_ctx_size > ss.pos()) {
@@ -619,6 +619,7 @@ private:
                 ulong term = ss.get_u64();
                 log_val_type val_type = (log_val_type)ss.get_u8();
                 uint64_t timestamp = (flags_ & INCLUDE_LOG_TIMESTAMP) ? ss.get_u64() : 0;
+                bool has_crc32 = (flags_ & CRC_ON_PAYLOAD) ? (ss.get_u8() != 0) : false;
                 uint32_t crc32 = (flags_ & CRC_ON_PAYLOAD) ? ss.get_u32() : 0;
 
                 size_t val_size = ss.get_i32();
@@ -639,13 +640,13 @@ private:
                 ptr<buffer> buf( buffer::alloc(val_size) );
                 ss.get_buffer(buf);
                 ptr<log_entry> entry(
-                    cs_new<log_entry>(term, buf, val_type, timestamp, crc32, false) );
+                    cs_new<log_entry>(term, buf, val_type, timestamp, has_crc32, crc32, false) );
 
-                if ((flags_ & CRC_ON_PAYLOAD) && crc32 != 0) {
+                if ((flags_ & CRC_ON_PAYLOAD) && has_crc32) {
                     // Verify CRC.
                     uint32_t crc_payload = crc32_8( buf->data_begin(),
-                                               buf->size(),
-                                        0 );
+                                                    buf->size(),
+                                                    0 );
                     if (crc_payload != crc32) {
                         p_er("log entry CRC mismatch: local calculation %x, "
                              "from message %x", crc_payload, crc32);
@@ -1234,7 +1235,7 @@ public:
             flags |= INCLUDE_LOG_TIMESTAMP;
         }
         if (impl_->get_options().crc_on_payload_) {
-            LOG_ENTRY_SIZE += 4;
+            LOG_ENTRY_SIZE += 5;
             flags |= CRC_ON_PAYLOAD;
         }
 
@@ -1257,6 +1258,7 @@ public:
                 ss.put_u64( le->get_timestamp() );
             }
             if (impl_->get_options().crc_on_payload_) {
+                ss.put_u8(le->has_crc32() ? 1 : 0);
                 ss.put_u32(le->get_crc32());
             }
             ss.put_i32( le->get_buf().size() );

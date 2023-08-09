@@ -55,7 +55,9 @@ ptr<log_entry> inmem_log_store::make_clone(const ptr<log_entry>& entry) {
                              buffer::clone( entry->get_buf() ),
                              entry->get_val_type(),
                              entry->get_timestamp(),
-                             entry->get_crc32() );
+                             entry->has_crc32(),
+                             entry->get_crc32(),
+                             false );
     return clone;
 }
 
