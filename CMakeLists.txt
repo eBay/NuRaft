@@ -254,6 +254,7 @@ set(RAFT_CORE
     ${ROOT_SRC}/handle_user_cmd.cxx
     ${ROOT_SRC}/handle_vote.cxx
     ${ROOT_SRC}/launcher.cxx
+    ${ROOT_SRC}/log_entry.cxx
     ${ROOT_SRC}/peer.cxx
     ${ROOT_SRC}/raft_server.cxx
     ${ROOT_SRC}/snapshot.cxx
