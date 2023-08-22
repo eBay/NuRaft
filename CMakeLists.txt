@@ -272,9 +272,11 @@ set(STATIC_LIB_SRC
 set(LIBRARY_NAME "nuraft")
 
 add_library(static_lib ${STATIC_LIB_SRC})
+add_library(NuRaft::static_lib ALIAS static_lib)
 set_target_properties(static_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
 
 add_library(shared_lib SHARED ${STATIC_LIB_SRC})
+add_library(NuRaft::shared_lib ALIAS shared_lib)
 set_target_properties(shared_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
 if (APPLE)
     target_link_libraries(shared_lib ${LIBRARIES})
