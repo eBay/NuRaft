@@ -278,6 +278,20 @@ set_target_properties(static_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DI
 add_library(shared_lib SHARED ${STATIC_LIB_SRC})
 add_library(NuRaft::shared_lib ALIAS shared_lib)
 set_target_properties(shared_lib PROPERTIES OUTPUT_NAME ${LIBRARY_NAME} CLEAN_DIRECT_OUTPUT 1)
+
+# Include directories are necessary for dependents to use the targets.
+target_include_directories(static_lib
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
+)
+
+target_include_directories(static_lib
+    PUBLIC
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
+)
+
 if (APPLE)
     target_link_libraries(shared_lib ${LIBRARIES})
 endif ()
