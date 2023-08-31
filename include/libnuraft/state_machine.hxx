@@ -124,6 +124,18 @@ public:
 
     /**
      * (Optional)
+     * Handler on the rollback of a configuration change.
+     * The configuration can be either committed or uncommitted one,
+     * and that can be checked by the given `log_idx`, comparing it with
+     * the current `cluster_config`'s log index.
+     *
+     * @param log_idx Raft log number of the configuration change.
+     * @param new_conf The cluster configuration to be rolled back.
+     */
+    virtual void rollback_config(const ulong log_idx, ptr<cluster_config>& new_conf) { }
+
+    /**
+     * (Optional)
      * Extended version of `rollback`, for users want to keep
      * the data without any extra memory copy.
      */
