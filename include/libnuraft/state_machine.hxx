@@ -130,9 +130,9 @@ public:
      * the current `cluster_config`'s log index.
      *
      * @param log_idx Raft log number of the configuration change.
-     * @param new_conf The cluster configuration to be rolled back.
+     * @param conf The cluster configuration to be rolled back.
      */
-    virtual void rollback_config(const ulong log_idx, ptr<cluster_config>& new_conf) { }
+    virtual void rollback_config(const ulong log_idx, ptr<cluster_config>& conf) { }
 
     /**
      * (Optional)
