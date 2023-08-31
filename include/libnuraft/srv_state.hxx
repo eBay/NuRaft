@@ -130,7 +130,7 @@ public:
         return buf;
     }
 
-    ptr<buffer> serialize_v1p(size_t version) const {
+    ptr<buffer> serialize_v1p(uint8_t version) const {
         //   << Format >>
         // version          1 byte
         // term             8 bytes
