@@ -596,6 +596,9 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
               p->get_id() );
         config_changing_ = false;
         reset_srv_to_join();
+
+        cb_func::Param param(id_, leader_, p->get_id());
+        invoke_callback(cb_func::ServerJoinFailed, &param);
     }
 }
 

@@ -188,6 +188,12 @@ public:
          * ctx: null
          */
         AutoAdjustQuorum = 24,
+
+        /**
+         * Adding a server failed due to RPC errors and timeout expiry.
+         * ctx: null
+         */
+        ServerJoinFailed = 25
     };
 
     struct Param {
