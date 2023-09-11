@@ -283,13 +283,30 @@ int add_node_error_cases_test() {
     std::string s1_addr = "S1";
     std::string s2_addr = "S2";
     std::string s3_addr = "S3";
+    // Hard to make a server really non-existent as to fail an rpc req with a FakeNetwork
+    // you need to actually have a recipient. So we simulate a nonexistent server with an 
+    // offline one
+    std::string nonexistent_addr = "nonexistent";
 
     RaftPkg s1(f_base, 1, s1_addr);
     RaftPkg s2(f_base, 2, s2_addr);
     RaftPkg s3(f_base, 3, s3_addr);
-    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    RaftPkg nonexistent(f_base, 4, nonexistent_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3, &nonexistent};
 
-    CHK_Z( launch_servers( pkgs ) );
+    bool join_error_callback_fired = false;
+    int join_error_srv_id = -1;
+    auto join_error_callback = [&](cb_func::Type type, cb_func::Param* param) {
+        if (type == cb_func::Type::ServerJoinFailed) {
+            join_error_callback_fired = true;
+            join_error_srv_id = param->peerId;
+            return cb_func::ReturnCode::Ok;
+        }
+        return cb_default(type, param);
+    };
+
+    CHK_Z( launch_servers( pkgs, nullptr, false, join_error_callback) );
+    nonexistent.fNet->goesOffline();
 
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
@@ -436,6 +453,15 @@ int add_node_error_cases_test() {
 
         // All 3 servers should exist.
         CHK_EQ(3, configs_out.size());
+    }
+
+    {   // Add a non-existent server to S1, check that a callback is fired on timers expiry.
+        s1.raftServer->add_srv({nonexistent.myId, nonexistent_addr});
+        s1.fNet->execReqResp(nonexistent_addr);
+        s1.fNet->execReqResp(nonexistent_addr);
+
+        CHK_TRUE(join_error_callback_fired);
+        CHK_EQ(nonexistent.myId, join_error_srv_id);
     }
 
     print_stats(pkgs);
