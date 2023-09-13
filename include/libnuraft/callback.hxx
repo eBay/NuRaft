@@ -183,6 +183,13 @@ public:
          * ctx: pointer to the ptr<log_entry>
          */
         PreAppendLogFollower = 23,
+
+        /**
+         * Adding a server failed due to RPC errors and timeout expiry.
+         * TODO: @myrrc: 25 in upstream NuRaft
+         * ctx: null
+         */
+        ServerJoinFailed = 24
     };
 
     struct Param {
