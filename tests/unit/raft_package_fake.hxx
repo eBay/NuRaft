@@ -230,12 +230,13 @@ static cb_func::ReturnCode ATTR_UNUSED cb_default(
 
 static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
                                  raft_params* custom_params = nullptr,
-                                 bool restart = false) {
+                                 bool restart = false,
+                                 cb_func::func_type callback = cb_default) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
     raft_server::init_options opt(false, true, true);
-    opt.raft_callback_ = cb_default;
+    opt.raft_callback_ = callback;
 
     for (size_t ii = 0; ii < num_srvs; ++ii) {
         RaftPkg* ff = pkgs[ii];
