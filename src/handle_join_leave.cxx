@@ -95,6 +95,10 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         // Otherwise: activity timeout, reset the server.
         p_wn("activity timeout (last activity %" PRIu64 " ms ago), start over",
              last_active_ms);
+
+        cb_func::Param param(id_, leader_, srv_to_join_->get_id());
+        invoke_callback(cb_func::ServerJoinFailed, &param);
+
         reset_srv_to_join();
     }
 
