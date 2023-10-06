@@ -148,6 +148,7 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
             if (p->is_hb_enabled()) {
                 // Schedule another heartbeat if heartbeat is still enabled
                 schedule_task(p->get_hb_task(), p->get_current_hb_interval());
+                p_tr("reschedule heartbeat for peer %d", p->get_id());
             } else {
                 p_db("heartbeat is disabled for peer %d", p->get_id());
             }

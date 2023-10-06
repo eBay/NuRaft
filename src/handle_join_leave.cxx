@@ -564,9 +564,7 @@ void raft_server::handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p) {
         if (peers_.size() == 1) {
             peer_itor pit = peers_.find(p->get_id());
             if (pit != peers_.end()) {
-                pit->second->enable_hb(false);
-                peers_.erase(pit);
-                p_in("server %d is removed from cluster", p->get_id());
+                remove_peer_from_peers(pit->second);
             } else {
                 p_in("peer %d cannot be found, no action for removing",
                      p->get_id());
