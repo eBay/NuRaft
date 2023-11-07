@@ -328,6 +328,12 @@ public:
     virtual bool allow_leadership_transfer() { return true; }
 
     /**
+     * Reset the state machine clearing all data and related state,
+     * should be invoked before follower apply snapshot from leader.
+     */
+    virtual void reset(){};
+
+    /**
      * Parameters for `adjust_commit_index` API.
      */
     struct adjust_commit_index_params {

@@ -110,6 +110,8 @@ public:
             ptr<buffer> snp_buf = s.serialize();
             last_snapshot_ = snapshot::deserialize(*snp_buf);
         }
+        // Now the last committed_idx is the snapshot's last log index.
+        last_committed_idx_ = s.get_last_log_idx();
         return true;
     }
 
@@ -138,6 +140,10 @@ public:
         ptr<std::exception> except(nullptr);
         bool ret = true;
         when_done(ret, except);
+    }
+
+    void reset() override {
+        // echo state machine has no state to reset.
     }
 
 private:

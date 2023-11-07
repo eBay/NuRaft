@@ -179,6 +179,8 @@ public:
 
         ptr<snapshot_ctx> ctx = entry->second;
         cur_value_ = ctx->value_;
+        // Now the last committed_idx is the snapshot's last log index.
+        last_committed_idx_ = s.get_last_log_idx();
         return true;
     }
 
@@ -211,6 +213,10 @@ public:
             // Create a snapshot in an asynchronous way (in a different thread).
             create_snapshot_async(s, when_done);
         }
+    }
+
+    void reset() override {
+        cur_value_ = 0;
     }
 
     int64_t get_current_value() const { return cur_value_; }

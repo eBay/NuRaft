@@ -559,6 +559,8 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
             stop_election_timer();
             p_in("successfully compact the log store, will now ask the "
                  "statemachine to apply the snapshot");
+            p_in("firstly reset the statemachine");
+            state_machine_->reset();
             if (!state_machine_->apply_snapshot(req.get_snapshot())) {
                 // LCOV_EXCL_START
                 p_er("failed to apply the snapshot after log compacted, "
