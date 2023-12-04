@@ -193,7 +193,13 @@ public:
          * Adding a server failed due to RPC errors and timeout expiry.
          * ctx: null
          */
-        ServerJoinFailed = 25
+        ServerJoinFailed = 25,
+
+        /**
+         * Snapshot creation begins.
+         * ctx: pointer to `uint64_t` (committed_idx).
+         */
+        SnapshotCreationBegin = 26
     };
 
     struct Param {

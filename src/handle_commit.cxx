@@ -512,13 +512,39 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
  try {
     bool f = false;
     ptr<snapshot> local_snp = get_last_snapshot();
+
+    cb_func::Param param(id_, leader_, -1, &committed_idx);
+    CbReturnCode rc = invoke_callback(cb_func::SnapshotCreationBegin, &param);
+    if (rc != CbReturnCode::Ok) {
+        p_wn("creating a snapshot %" PRIu64 " is rejected by user callback",
+             committed_idx);
+        return false;
+    }
+
     if ( ( forced_creation ||
            !local_snp ||
-           ( committed_idx - local_snp->get_last_log_idx() ) >= snapshot_distance ) &&
+           committed_idx >= snapshot_distance + local_snp->get_last_log_idx() ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
     {
         snapshot_in_action = true;
         p_in("creating a snapshot for index %" PRIu64 "", committed_idx);
+
+        // NOTE:
+        //   Due to the public API `raft_server::create_snapshot()`,
+        //   there can be a race between user thread and commit thread,
+        //   which results in snapshot index inversion.
+        //
+        //   To avoid such a case, while `snp_in_progress_` is true,
+        //   we re-check the latest snapshot index here.
+        local_snp = get_last_snapshot();
+        if (local_snp && local_snp->get_last_log_idx() >= committed_idx) {
+            p_wn("snapshot index inversion detected, "
+                 "skip snapshot creation for index %" PRIu64 ", "
+                 "latest snapshot index %" PRIu64 "",
+                 committed_idx, local_snp->get_last_log_idx());
+            snp_in_progress_ = false;
+            return false;
+        }
 
         while ( conf->get_log_idx() > committed_idx &&
                 conf->get_prev_log_idx() >= log_store_->start_index() ) {
