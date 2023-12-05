@@ -46,6 +46,7 @@ public:
         , lastCommittedConfigIdx(0)
         , targetSnpReadFailures(0)
         , snpDelayMs(0)
+        , numSnapshotCreations(0)
         , myLog(logger)
     {
         (void)myLog;
@@ -241,6 +242,7 @@ public:
             // NOTE: We only handle logical snapshot.
             ptr<buffer> snp_buf = s.serialize();
             lastSnapshot = snapshot::deserialize(*snp_buf);
+            numSnapshotCreations++;
         }
         ptr<std::exception> except(nullptr);
         bool ret = true;
@@ -372,6 +374,10 @@ public:
         serversForCommit = src;
     }
 
+    uint64_t getNumSnapshotCreations() const {
+        return numSnapshotCreations;
+    }
+
 private:
     std::map<uint64_t, ptr<buffer>> preCommits;
     std::map<uint64_t, ptr<buffer>> commits;
@@ -397,6 +403,8 @@ private:
      */
     std::list<int> serversForCommit;
     mutable std::mutex serversForCommitLock;
+
+    std::atomic<uint64_t> numSnapshotCreations;
 
     SimpleLogger* myLog;
 };
