@@ -68,6 +68,11 @@ static inline std::string msg_if_given
     if (l_ && l_->get_level() >= (lv)) \
         l_->put_details((lv), __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
 
+// test.
+#define p_ts(...) \
+    if (l_ && l_->get_level() >= 7) \
+        l_->put_details(7, __FILE__, __func__, __LINE__, msg_if_given(__VA_ARGS__))
+
 // trace.
 #define p_tr(...) \
     if (l_ && l_->get_level() >= 6) \

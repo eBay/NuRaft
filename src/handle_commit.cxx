@@ -42,6 +42,12 @@ void raft_server::commit(ulong target_idx) {
     if (target_idx > quick_commit_index_) {
         quick_commit_index_ = target_idx;
         lagging_sm_target_index_ = target_idx;
+
+        p_tr( "local log idx %" PRIu64 ", target_commit_idx %" PRIu64 ", "
+            "quick_commit_index_ %" PRIu64 ", state_->get_commit_idx() %" PRIu64 "",
+            log_store_->next_slot() - 1, target_idx,
+            quick_commit_index_.load(), sm_commit_index_.load() );
+
         p_db( "trigger commit upto %" PRIu64 "", quick_commit_index_.load() );
 
         // if this is a leader notify peers to commit as well
@@ -56,11 +62,6 @@ void raft_server::commit(ulong target_idx) {
             }
         }
     }
-
-    p_tr( "local log idx %" PRIu64 ", target_commit_idx %" PRIu64 ", "
-          "quick_commit_index_ %" PRIu64 ", state_->get_commit_idx() %" PRIu64 "",
-          log_store_->next_slot() - 1, target_idx,
-          quick_commit_index_.load(), sm_commit_index_.load() );
 
     if ( log_store_->next_slot() - 1 > sm_commit_index_ &&
          quick_commit_index_ > sm_commit_index_ ) {
@@ -126,7 +127,7 @@ void raft_server::commit_in_bg() {
                 return ( log_store_->next_slot() - 1 > sm_commit_index_ &&
                          quick_commit_index_ > sm_commit_index_ );
             };
-            p_tr("commit_cv_ sleep\n");
+            p_ts("commit_cv_ sleep\n");
             commit_cv_.wait(lock, wait_check);
 
             p_tr("commit_cv_ wake up\n");

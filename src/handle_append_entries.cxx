@@ -205,7 +205,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     }
 
     if (p->make_busy()) {
-        p_tr("send request to %d\n", (int)p->get_id());
+        p_ts("send request to %d\n", (int)p->get_id());
 
         // If reserved message exists, process it first.
         ptr<req_msg> msg = p->get_rsv_msg();
@@ -281,7 +281,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
                  msg->get_commit_idx());
         }
 
-        p_tr("sent\n");
+        p_ts("sent\n");
         return true;
     }
 
@@ -461,11 +461,11 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
           ( log_entries ? log_entries->size() : 0 ), commit_idx, term,
           peer_last_sent_idx );
     if (last_log_idx+1 == adjusted_end_idx) {
-        p_tr( "EMPTY PAYLOAD" );
+        p_ts( "EMPTY PAYLOAD" );
     } else if (last_log_idx+1 + 1 == adjusted_end_idx) {
-        p_db( "idx: %" PRIu64, last_log_idx+1 );
+        p_ts( "idx: %" PRIu64, last_log_idx+1 );
     } else {
-        p_db( "idx range: %" PRIu64 "-%" PRIu64, last_log_idx+1, adjusted_end_idx-1 );
+        p_ts( "idx range: %" PRIu64 "-%" PRIu64, last_log_idx+1, adjusted_end_idx-1 );
     }
 
     ptr<req_msg> req
@@ -740,9 +740,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
             CbReturnCode rc = ctx_->cb_func_.call(cb_func::PreAppendLogFollower, &param);
             if (rc == CbReturnCode::ReturnNull) return resp;
 
-            p_tr("append at %" PRIu64 ", term %" PRIu64 ", timestamp %" PRIu64 "\n",
-
-                 log_store_->next_slot(), entry->get_term(), entry->get_timestamp());
+            p_tr("append at %" PRIu64 ", term %" PRIu64 "\n",
+                 log_store_->next_slot(), entry->get_term());
             ulong idx_for_entry = store_log_entry(entry);
             if (entry->get_val_type() == log_val_type::conf) {
                 p_in( "receive a config change from leader at %" PRIu64,
@@ -856,7 +855,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
     int64 bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
-    p_tr("batch size hint: %" PRId64 " bytes", bs_hint);
+    p_ts("batch size hint: %" PRId64 " bytes", bs_hint);
 
     out_of_log_range_ = false;
 
@@ -913,11 +912,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     bool need_to_catchup = true;
 
     ptr<peer> p = it->second;
-    p_tr("handle append entries resp (from %d), resp.get_next_idx(): %" PRIu64,
+    p_ts("handle append entries resp (from %d), resp.get_next_idx(): %" PRIu64,
          (int)p->get_id(), resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
-    p_tr("peer %d batch size hint: %" PRId64 " bytes", p->get_id(), bs_hint);
+    p_ts("peer %d batch size hint: %" PRId64 " bytes", p->get_id(), bs_hint);
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {
@@ -928,8 +927,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_next_log_idx(resp.get_next_idx());
             prev_matched_idx = p->get_matched_idx();
             new_matched_idx = resp.get_next_idx() - 1;
-            p_tr("peer %d, prev matched idx: %" PRIu64 ", new matched idx: %" PRIu64,
-                 p->get_id(), prev_matched_idx, new_matched_idx);
+
+            if (prev_matched_idx != new_matched_idx)
+                p_tr("peer %d, prev matched idx: %" PRIu64 ", new matched idx: %" PRIu64,
+                    p->get_id(), prev_matched_idx, new_matched_idx);
+
             p->set_matched_idx(new_matched_idx);
             p->set_last_accepted_log_idx(new_matched_idx);
         }
