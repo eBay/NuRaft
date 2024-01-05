@@ -187,7 +187,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader
                  leader_id, cur_pkg.get());
         } else {
             cur_pkg = entry->second;
-            p_tr("auto forwarding pkg for leader %d exists %p",
+            p_ts("auto forwarding pkg for leader %d exists %p",
                  leader_id, cur_pkg.get());
         }
     }
@@ -248,7 +248,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader
             }
             cur_pkg->rpc_client_idle_.pop_front();
             cur_pkg->rpc_client_in_use_.insert(rpc_cli);
-            p_tr("idle connection %p", rpc_cli.get());
+            p_ts("idle connection %p", rpc_cli.get());
         }
         break;
     } while(true);
@@ -287,7 +287,7 @@ void raft_server::auto_fwd_release_rpc_cli( ptr<auto_fwd_pkg> cur_pkg,
     auto put_back_to_idle_list = [&cur_pkg, &rpc_cli, max_conns, this]() {
         cur_pkg->rpc_client_in_use_.erase(rpc_cli);
         cur_pkg->rpc_client_idle_.push_front(rpc_cli);
-        p_tr( "release connection %p, idle %zu, in-use %zu, max %zu",
+        p_ts( "release connection %p, idle %zu, in-use %zu, max %zu",
               rpc_cli.get(),
               cur_pkg->rpc_client_idle_.size(),
               cur_pkg->rpc_client_in_use_.size(),

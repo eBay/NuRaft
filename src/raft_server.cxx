@@ -817,7 +817,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
           resp->get_term(),
           resp->get_next_idx() );
 
-    p_tr("src: %d, dst: %d, resp->get_term(): %d\n",
+    p_ts("src: %d, dst: %d, resp->get_term(): %d\n",
          (int)resp->get_src(), (int)resp->get_dst(), (int)resp->get_term());
 
     if (resp->get_accepted()) {

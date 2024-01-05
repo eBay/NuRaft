@@ -962,11 +962,11 @@ public:
                                      std::placeholders::_2 ) );
 #endif
         }
-        p_tr("asio client created: %p", this);
+        p_ts("asio client created: %p", this);
     }
 
     virtual ~asio_rpc_client() {
-        p_tr("asio client destroyed: %p", this);
+        p_ts("asio client destroyed: %p", this);
         close_socket();
     }
 
