@@ -55,7 +55,6 @@ limitations under the License.
 #include <thread>
 #include <string>
 #include <sstream>
-#include <regex>
 
 #ifdef USE_BOOST_ASIO
     using namespace boost;
@@ -378,7 +377,7 @@ public:
 
             header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
             int32 data_size = header_->get_int();
-            
+
             if (data_size < 0) {
                 p_er("bad log data size in the header %d, stop "
                      "this session to protect further corruption",
@@ -1939,16 +1938,6 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
     // NOTE:
     //   Abandoned regular expression due to bug in GCC < 4.9.
     //   And also support `endpoint` which doesn't start with `tcp://`.
-#if 0
-    // the endpoint is expecting to be protocol://host:port,
-    // and we only support tcp for this factory
-    // which is endpoint must be tcp://hostname:port
-    static std::regex reg("^tcp://(([a-zA-Z0-9\\-]+\\.)*([a-zA-Z0-9]+)):([0-9]+)$");
-    std::smatch mresults;
-    if (!std::regex_match(endpoint, mresults, reg) || mresults.size() != 5) {
-        return ptr<rpc_client>();
-    }
-#endif
     bool valid_address = false;
     std::string hostname;
     std::string port;
