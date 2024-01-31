@@ -63,6 +63,8 @@ public:
 
     bool compact(ulong last_log_index);
 
+    bool is_conf(ulong index);
+
     bool flush();
 
     void close();

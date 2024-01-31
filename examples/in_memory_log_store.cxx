@@ -146,6 +146,12 @@ ptr< std::vector< ptr<log_entry> > >
     return ret;
 }
 
+bool inmem_log_store::is_conf(ulong index)
+{
+    auto entry = entry_at(index);
+    return entry && entry->get_val_type() == nuraft::conf;
+}
+
 ptr<std::vector<ptr<log_entry>>>
     inmem_log_store::log_entries_ext(ulong start,
                                      ulong end,

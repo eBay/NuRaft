@@ -43,12 +43,12 @@ void raft_server::commit(ulong target_idx) {
         quick_commit_index_ = target_idx;
         lagging_sm_target_index_ = target_idx;
 
-        p_tr( "local log idx %" PRIu64 ", target_commit_idx %" PRIu64 ", "
+        p_ts( "local log idx %" PRIu64 ", target_commit_idx %" PRIu64 ", "
             "quick_commit_index_ %" PRIu64 ", state_->get_commit_idx() %" PRIu64 "",
             log_store_->next_slot() - 1, target_idx,
             quick_commit_index_.load(), sm_commit_index_.load() );
 
-        p_db( "trigger commit upto %" PRIu64 "", quick_commit_index_.load() );
+        p_ts( "trigger commit upto %" PRIu64 "", quick_commit_index_.load() );
 
         // if this is a leader notify peers to commit as well
         // for peers that are free, send the request, otherwise,
@@ -72,7 +72,7 @@ void raft_server::commit(ulong target_idx) {
             p_tr("request commit to global thread pool");
             mgr->request_commit( this->shared_from_this() );
         } else {
-            p_tr("commit_cv_ notify (local thread)");
+            p_ts("commit_cv_ notify (local thread)");
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
             commit_cv_.notify_one();
         }
@@ -130,7 +130,7 @@ void raft_server::commit_in_bg() {
             p_ts("commit_cv_ sleep\n");
             commit_cv_.wait(lock, wait_check);
 
-            p_tr("commit_cv_ wake up\n");
+            p_ts("commit_cv_ wake up\n");
             if (stopping_) {
                 lock.unlock();
                 lock.release();
@@ -360,7 +360,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
                 elem->result_code_ = cmd_result_code::OK;
                 elem->ret_value_ = ret_value;
                 need_to_check_commit_ret = false;
-                p_dv("notify cb %" PRIu64 " %p", sm_idx, &elem->awaiter_);
+                p_ts("notify cb %" PRIu64 " %p", sm_idx, &elem->awaiter_);
 
                 switch (ctx_->get_params()->return_method_) {
                 case raft_params::blocking:
