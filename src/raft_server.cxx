@@ -1202,6 +1202,17 @@ void raft_server::yield_leadership(bool immediate_yield,
         return;
     }
 
+    // Callback if necessary.
+    cb_func::Param param(id_, leader_, successor_id, nullptr);
+    cb_func::ReturnCode cb_ret =
+        ctx_->cb_func_.call(cb_func::ResignationFromLeader, &param);
+
+    // If callback function decided to refuse this request, return here.
+    if (cb_ret != cb_func::Ok) {
+        p_in("[RESIGNATION REQUEST] refused by callback function");
+        return;
+    }
+
     recur_lock(lock_);
 
     if (immediate_yield) {

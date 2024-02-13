@@ -1436,7 +1436,34 @@ int leadership_takeover_by_request_test() {
     // Request leadership by the current leader, should fail.
     CHK_FALSE( s1.raftServer->request_leadership() );
 
-    // S3 requests the leadership from S1.
+    // Set callback function to refuse resignation.
+    bool refuse_request = true;
+    s1.ctx->set_cb_func([&](cb_func::Type t, cb_func::Param* p) -> cb_func::ReturnCode {
+        if (t != cb_func::Type::ResignationFromLeader) {
+            return cb_default(t, p);
+        }
+        if (refuse_request) {
+            return cb_func::ReturnCode::ReturnNull;
+        }
+        return cb_func::ReturnCode::Ok;
+    });
+
+    // S3 requests the leadership from S1, and it is supposed to be declined.
+    s1.dbgLog(" --- request leadership ---");
+    CHK_TRUE( s3.raftServer->request_leadership() );
+    // Send request.
+    s3.fNet->execReqResp();
+
+    // Send heartbeat.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+
+    // S1 should still be the leader.
+    CHK_TRUE( s1.raftServer->is_leader() );
+
+    // S3 requests the leadership from S1. Now it should succeed.
+    refuse_request = false;
     s1.dbgLog(" --- request leadership ---");
     CHK_TRUE( s3.raftServer->request_leadership() );
     // Send request.
