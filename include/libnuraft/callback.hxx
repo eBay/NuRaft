@@ -199,7 +199,14 @@ public:
          * Snapshot creation begins.
          * ctx: pointer to `uint64_t` (committed_idx).
          */
-        SnapshotCreationBegin = 26
+        SnapshotCreationBegin = 26,
+
+        /**
+         * Got a resgination request either automatically or manually.
+         * ctx: null.
+         */
+        ResignationFromLeader = 27,
+
     };
 
     struct Param {

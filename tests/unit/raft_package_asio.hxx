@@ -235,6 +235,10 @@ public:
         }
     }
 
+    void dbgLog(const std::string& msg) {
+        _s_info(myLogWrapper->getLogger()) << msg;
+    }
+
     TestMgr* getTestMgr() const {
         return static_cast<TestMgr*>(sMgr.get());
     }
