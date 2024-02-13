@@ -2238,6 +2238,110 @@ int snapshot_creation_index_inversion_test() {
     return 0;
 }
 
+int snapshot_scheduled_creation_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Append a message using separate thread.
+    ExecArgs exec_args(&s1);
+    TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 5;
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Manually create a snapshot.
+    uint64_t log_idx = s1.raftServer->create_snapshot();
+    CHK_GT(log_idx, 0);
+
+    // Schedule snapshot creation and wait 500ms, there shouldn't be any progress.
+    auto sched_ret = s1.raftServer->schedule_snapshot_creation();
+    TestSuite::sleep_ms(500, "wait for async snapshot creation");
+    CHK_FALSE(sched_ret->has_result());
+
+    uint64_t last_idx = s1.raftServer->get_last_log_idx();
+
+    // Append more messages asynchronously.
+    for (size_t ii = NUM; ii < NUM * 2; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    s1.fNet->execReqResp(); // replication.
+    s1.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Now it should have the result.
+    CHK_TRUE(sched_ret->has_result());
+    CHK_EQ(last_idx + 1, sched_ret->get());
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    fake_executer_killer(&exec_args);
+    hh.join();
+    CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int snapshot_randomized_creation_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -3386,6 +3490,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "snapshot creation index inversion test",
                snapshot_creation_index_inversion_test );
+
+    ts.doTest( "snapshot scheduled creation test",
+               snapshot_scheduled_creation_test );
 
     ts.doTest( "snapshot randomized creation test",
                snapshot_randomized_creation_test );

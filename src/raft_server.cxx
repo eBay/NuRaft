@@ -78,6 +78,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , serving_req_(false)
     , steps_to_down_(0)
     , snp_in_progress_(false)
+    , snp_creation_scheduled_(false)
+    , sched_snp_creation_result_(nullptr)
     , ctx_(ctx)
     , scheduler_(ctx->scheduler_)
     , election_exec_(std::bind(&raft_server::handle_election_timeout, this))
@@ -1120,14 +1122,17 @@ void raft_server::check_leadership_transfer() {
     ptr<raft_params> params = ctx_->get_params();
     if (!params->leadership_transfer_min_wait_time_) {
         // Transferring leadership is disabled.
+        p_tr("leadership transfer is disabled");
         return;
     }
     if (!leadership_transfer_timer_.timeout()) {
         // Leadership period is too short.
+        p_tr("leadership period is too short: %zu ms",
+             leadership_transfer_timer_.get_duration_us() / 1000);
         return;
     }
 
-    size_t hb_interval_ms = ctx_->get_params()->heart_beat_interval_;
+    size_t election_lower = ctx_->get_params()->election_timeout_lower_bound_;
 
     recur_lock(lock_);
 
@@ -1146,24 +1151,31 @@ void raft_server::check_leadership_transfer() {
         if (peer_elem->get_matched_idx() + params->stale_log_gap_ <
                 cur_commit_idx) {
             // This peer is lagging behind.
+            p_tr("peer %d is lagging behind, %lu < %lu",
+                 s_conf.get_id(), peer_elem->get_matched_idx(),
+                 cur_commit_idx);
             return;
         }
 
         uint64_t last_resp_ms = peer_elem->get_resp_timer_us() / 1000;
-        if (last_resp_ms > hb_interval_ms) {
+        if (last_resp_ms > election_lower) {
             // This replica is not responding.
+            p_tr("peer %d is not responding, %lu ms ago",
+                 s_conf.get_id(), last_resp_ms);
             return;
         }
     }
 
     if (my_priority_ >= max_priority || successor_id == -1) {
         // This leader already has the highest priority.
+        p_tr("my priority %d is already the highest", my_priority_);
         return;
     }
 
     if (!state_machine_->allow_leadership_transfer()) {
         // Although all conditions are met,
         // user does not want to transfer the leadership.
+        p_tr("state machine does not allow leadership transfer");
         return;
     }
 

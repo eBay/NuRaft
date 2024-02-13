@@ -469,6 +469,18 @@ ulong raft_server::create_snapshot() {
     return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
 }
 
+ptr< cmd_result<uint64_t> > raft_server::schedule_snapshot_creation() {
+    bool exp = false;
+    if (!snp_creation_scheduled_.compare_exchange_strong(exp, true)) {
+        p_wn("snapshot creation is already scheduled");
+        return nilptr;
+    }
+
+    sched_snp_creation_result_ = cs_new<cmd_result<uint64_t>>();
+    p_in("schedule snapshot creation");
+    return sched_snp_creation_result_;
+}
+
 ulong raft_server::get_last_snapshot_idx() const {
     std::lock_guard<std::mutex> l(last_snapshot_lock_);
     return last_snapshot_ ? last_snapshot_->get_last_log_idx(): 0;
@@ -494,7 +506,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         snapshot_distance = first_snapshot_distance_;
     }
 
-    if (!forced_creation) {
+    if (!forced_creation && !snp_creation_scheduled_) {
         // If `forced_creation == true`, ignore below conditions.
         if ( params->snapshot_distance_ == 0 ||
              ( committed_idx - log_store_->start_index() + 1 ) < snapshot_distance ) {
@@ -522,6 +534,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
     }
 
     if ( ( forced_creation ||
+           snp_creation_scheduled_ ||
            !local_snp ||
            committed_idx >= snapshot_distance + local_snp->get_last_log_idx() ) &&
          snp_in_progress_.compare_exchange_strong(f, true) )
@@ -544,6 +557,14 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
                  committed_idx, local_snp->get_last_log_idx());
             snp_in_progress_ = false;
             return false;
+        }
+
+        ptr<cmd_result<uint64_t>> manual_creation_cb = nullptr;
+        if (snp_creation_scheduled_) {
+            // User scheduled a new snapshot creation.
+            // Due to `snp_in_progress_` it will happen only once.
+            manual_creation_cb = sched_snp_creation_result_;
+            p_in("snapshot creation is scheduled by user");
         }
 
         while ( conf->get_log_idx() > committed_idx &&
@@ -593,6 +614,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
             std::bind( &raft_server::on_snapshot_completed,
                        this,
                        new_snapshot,
+                       manual_creation_cb,
                        std::placeholders::_1,
                        std::placeholders::_2 );
         timer_helper tt;
@@ -618,7 +640,10 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
 }
 
 void raft_server::on_snapshot_completed
-     ( ptr<snapshot>& s, bool result, ptr<std::exception>& err )
+     ( ptr<snapshot> s,
+       ptr<cmd_result<uint64_t>> manual_creation_cb,
+       bool result,
+       ptr<std::exception>& err )
 {
  do { // Dummy loop
     if (err != nilptr) {
@@ -659,6 +684,19 @@ void raft_server::on_snapshot_completed
         }
     }
  } while (false);
+
+    if (manual_creation_cb.get()) {
+        // This was a manual request scheduled by the user.
+        uint64_t idx = 0;
+        cmd_result_code code = cmd_result_code::FAILED;
+        if (err == nilptr && result) {
+            idx = s->get_last_log_idx();
+            code = cmd_result_code::OK;
+        }
+        manual_creation_cb->set_result(idx, err, code);
+        sched_snp_creation_result_.reset();
+        snp_creation_scheduled_ = false;
+    }
 
     snp_in_progress_.store(false);
 }
