@@ -797,9 +797,26 @@ public:
      * Manually create a snapshot based on the latest committed
      * log index of the state machine.
      *
+     * Note that snapshot creation will fail immediately if the previous
+     * snapshot task is still running.
+     *
      * @return Log index number of the created snapshot or`0` if failed.
      */
     ulong create_snapshot();
+
+    /**
+     * Manually and asynchronously create a snapshot on the next earliest
+     * available commited log index.
+     *
+     * Unlike `create_snapshot`, if the previous snapshot task is running,
+     * it will wait until the previous task is done. Once the snapshot
+     * creation is finished, it will be notified via the returned
+     * `cmd_result` with the log index number of the snapshot.
+     *
+     * @return `cmd_result` instance.
+     *         `nullptr` if there is already a scheduled snapshot creation.
+     */
+    ptr< cmd_result<uint64_t> > schedule_snapshot_creation();
 
     /**
      * Get the log index number of the last snapshot.
@@ -954,7 +971,8 @@ protected:
     void invite_srv_to_join_cluster();
     void rm_srv_from_cluster(int32 srv_id);
     int get_snapshot_sync_block_size() const;
-    void on_snapshot_completed(ptr<snapshot>& s,
+    void on_snapshot_completed(ptr<snapshot> s,
+                               ptr<cmd_result<uint64_t>> manual_creation_cb,
                                bool result,
                                ptr<std::exception>& err);
     void on_log_compacted(ulong log_idx,
@@ -1246,6 +1264,16 @@ protected:
      * Only one snapshot creation is allowed at a time.
      */
     std::atomic<bool> snp_in_progress_;
+
+    /**
+     * `true` if a manual snapshot creation is scheduled by the user.
+     */
+    std::atomic<bool> snp_creation_scheduled_;
+
+    /**
+     * Non-null if a manual snapshot creation is cheduled by the user.
+     */
+    ptr< cmd_result<uint64_t> > sched_snp_creation_result_;
 
     /**
      * (Read-only, but its contents will change)

@@ -135,8 +135,7 @@ We welcome contributions. If you find any bugs, potential flaws and edge cases, 
 
 Contact
 -------
-* Jung-Sang Ahn <junahn@ebay.com>
-* Gene Zhang <genzhang@ebay.com>
+* Jung-Sang Ahn <jungsang.ahn@gmail.com>
 
 
 License Information
