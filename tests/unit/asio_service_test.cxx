@@ -1330,6 +1330,9 @@ int leadership_transfer_test() {
     s3->stopAsio();
     delete s3;
 
+    // Wait enough time so that S1 can detect S3's failure.
+    TestSuite::sleep_sec(2, "shutdown S3 and wait");
+
     // Set the parameter to enable transfer (S1).
     s1->raftServer->update_params(params);
 
@@ -1337,7 +1340,7 @@ int leadership_transfer_test() {
     CHK_EQ( raft_server::PrioritySetResult::SET, s1->raftServer->set_priority(2, 100) );
 
     // Due to S3, transfer shouldn't happen.
-    TestSuite::sleep_sec(2, "shutdown S3, set priority of S2, and wait");
+    TestSuite::sleep_sec(2, "set priority of S2 and wait");
     CHK_TRUE( s1->raftServer->is_leader() );
 
     s3 = new RaftAsioPkg(3, s3_addr);
