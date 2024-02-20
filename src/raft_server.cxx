@@ -196,10 +196,10 @@ raft_server::raft_server(context* ctx, const init_options& opt)
                               log_store_->start_index() );
           i < log_store_->next_slot();
           ++i ) {
-        ptr<log_entry> entry(log_store_->entry_at(i));
-        if (entry->get_val_type() == log_val_type::conf) {
+        if (log_store_->is_conf(i))
+        {
             p_in( "detect a configuration change "
-                  "that is not committed yet at index %" PRIu64 "", i );
+                    "that is not committed yet at index %" PRIu64 "", i );
             config_changing_ = true;
             break;
         }
@@ -1013,9 +1013,10 @@ void raft_server::become_leader() {
         ulong s_idx = sm_commit_index_ + 1;
         ulong e_idx = log_store_->next_slot();
         for (ulong ii = s_idx; ii < e_idx; ++ii) {
-            ptr<log_entry> le = log_store_->entry_at(ii);
-            if (le->get_val_type() != log_val_type::conf) continue;
+            if (!log_store_->is_conf(ii))
+                continue;
 
+            ptr<log_entry> le = log_store_->entry_at(ii);
             if (last_config->get_log_idx() > ii)
             {
                 p_in("Currently assigned config is newer than some "

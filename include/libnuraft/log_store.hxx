@@ -127,6 +127,8 @@ public:
      */
     virtual ptr<log_entry> entry_at(ulong index) = 0;
 
+    virtual bool is_conf(ulong index) = 0;
+
     /**
      * Get the term for the log entry at the specified index.
      * Suggest to stop the system if the index >= this->next_slot()

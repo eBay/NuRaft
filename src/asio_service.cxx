@@ -1046,7 +1046,7 @@ public:
 
         ptr<asio_rpc_client> self = this->shared_from_this();
         while (!socket().is_open()) { // Dummy one-time loop
-            p_db( "socket %p to %s:%s is not opened yet",
+            p_ts( "socket %p to %s:%s is not opened yet",
                   this, host_.c_str(), port_.c_str() );
 
             // WARNING:

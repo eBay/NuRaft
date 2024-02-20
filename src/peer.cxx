@@ -236,7 +236,7 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         return true;
 
     } else {
-        p_tr("skip reconnect this time");
+        p_ts("skip reconnect this time");
     }
     return false;
 }
