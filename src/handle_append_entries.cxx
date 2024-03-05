@@ -188,6 +188,10 @@ bool raft_server::request_append_entries(ptr<peer> p) {
                     clone->custom_commit_quorum_size_ = 1;
                     clone->custom_election_quorum_size_ = 1;
                     ctx_->set_params(clone);
+                    // When the quorum size is 1 and the server is idle, there is no
+                    // opportunity to commit pending logs
+                    uint64_t leader_index = get_current_leader_index();
+                    commit(leader_index);
                 }
             }
 
