@@ -83,6 +83,8 @@ public:
         return buff_;
     }
 
+    void change_buf(const ptr<buffer>& buff);
+
     uint64_t get_timestamp() const {
         return timestamp_us_;
     }
