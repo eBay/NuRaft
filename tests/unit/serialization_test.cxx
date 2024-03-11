@@ -21,6 +21,7 @@ limitations under the License.
 #include "handle_custom_notification.hxx"
 #include "nuraft.hxx"
 #include "strfmt.hxx"
+#include "crc32.hxx"
 
 #include "test_common.h"
 
@@ -196,6 +197,18 @@ int snapshot_sync_req_zero_buffer_test(bool done) {
     return 0;
 }
 
+static int compare_log_entries(const ptr<log_entry>& e1, const ptr<log_entry>& e2) {
+    CHK_EQ(e1->get_term(), e2->get_term());
+    CHK_EQ(e1->get_val_type(), e2->get_val_type());
+    CHK_EQ(e1->get_buf().size(), e2->get_buf().size());
+    for (size_t i = 0; i < e1->get_buf().size(); ++i) {
+        byte b1 = e1->get_buf().get_byte();
+        byte b2 = e2->get_buf().get_byte();
+        CHK_EQ(b1, b2);
+    }
+    return 0;
+}
+
 int log_entry_test() {
     ptr<buffer> data = buffer::alloc(24 + rnd() % 100);
     for (size_t i = 0; i < data->size(); ++i) {
@@ -207,17 +220,21 @@ int log_entry_test() {
                              data,
                              static_cast<log_val_type>(1 + rnd() % 5) );
     ptr<buffer> buf2 = entry->serialize();
+    CHK_Z(compare_log_entries(entry, log_entry::deserialize(*buf2)));
 
-    ptr<log_entry> entry1 = log_entry::deserialize(*buf2);
-
-    CHK_EQ( entry->get_term(), entry1->get_term() );
-    CHK_EQ( entry->get_val_type(), entry1->get_val_type() );
-    CHK_EQ( entry->get_buf().size(), entry1->get_buf().size() );
-    for (size_t i = 0; i < entry->get_buf().size(); ++i) {
-        byte b1 = entry->get_buf().get_byte();
-        byte b2 = entry1->get_buf().get_byte();
-        CHK_EQ( b1, b2 );
+    // Change the data buffer in log_entry and check if everything is equal
+    ptr<buffer> data2 = buffer::alloc(24 + rnd() % 100);
+    for (size_t i = 0; i < data2->size(); ++i) {
+        data2->put(static_cast<byte>( rnd() % 255) );
     }
+    uint32_t new_crc = crc32_8(data2->data_begin(),
+                               data2->size(),
+                               0);
+    entry->change_buf(data2);
+    buf2 = entry->serialize();
+    CHK_Z(compare_log_entries(entry, log_entry::deserialize(*buf2)));
+
+    CHK_EQ(new_crc, entry->get_crc32());
     return 0;
 }
 

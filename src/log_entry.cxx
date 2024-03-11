@@ -18,9 +18,18 @@ log_entry::log_entry(ulong term,
     {
         if (buff_ && !has_crc32 && compute_crc) {
             has_crc32_ = true;
-            crc32_ = crc32_8( buff_->data_begin(),
-                              buff_->size(),
-                              0 );
+            crc32_ = crc32_8(buff_->data_begin(),
+                             buff_->size(),
+                             0);
         }
     }
+
+void log_entry::change_buf(const ptr<buffer>& buff) {
+    buff_ = buff;
+    if (buff_ && has_crc32_) {
+        crc32_ = crc32_8(buff_->data_begin(),
+                         buff_->size(),
+                         0);
+    }
+}
 }
