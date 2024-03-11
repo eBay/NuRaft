@@ -220,23 +220,19 @@ int log_entry_test() {
                              data,
                              static_cast<log_val_type>(1 + rnd() % 5) );
     ptr<buffer> buf2 = entry->serialize();
-    if (compare_log_entries(entry, log_entry::deserialize(*buf2)) == -1) {
-        return -1;
-    }
+    CHK_Z(compare_log_entries(entry, log_entry::deserialize(*buf2)));
 
     // Change the data buffer in log_entry and check if everything is equal
     ptr<buffer> data2 = buffer::alloc(24 + rnd() % 100);
     for (size_t i = 0; i < data2->size(); ++i) {
         data2->put(static_cast<byte>( rnd() % 255) );
     }
-    uint32_t new_crc = crc32_8(data2->data_begin(), 
-                               data2->size(), 
-                               0 );
+    uint32_t new_crc = crc32_8(data2->data_begin(),
+                               data2->size(),
+                               0);
     entry->change_buf(data2);
     buf2 = entry->serialize();
-    if (compare_log_entries(entry, log_entry::deserialize(*buf2)) == -1) {
-        return -1;
-    }
+    CHK_Z(compare_log_entries(entry, log_entry::deserialize(*buf2)));
 
     CHK_EQ(new_crc, entry->get_crc32());
     return 0;
