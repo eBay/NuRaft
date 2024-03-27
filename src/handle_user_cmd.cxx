@@ -348,7 +348,7 @@ void raft_server::auto_fwd_resp_handler( ptr<cmd_result<ptr<buffer>>> presult,
             presult->accept();
         }
     }
-
+    presult->set_result_code(resp->get_result_code());
     presult->set_result(resp_ctx, perr);
     auto_fwd_release_rpc_cli(cur_pkg, rpc_cli);
 }
