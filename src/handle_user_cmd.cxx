@@ -344,12 +344,13 @@ void raft_server::auto_fwd_resp_handler( ptr<cmd_result<ptr<buffer>>> presult,
 
     if (err) {
         perr = err;
+        code = cmd_result_code::FAILED;
     } else {
         if (resp->get_accepted()) {
             resp_ctx = resp->get_ctx();
             presult->accept();
-            code = resp->get_result_code();
         }
+        code = resp->get_result_code();
     }
 
     presult->set_result(resp_ctx, perr, code);
