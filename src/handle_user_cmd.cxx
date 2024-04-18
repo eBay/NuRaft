@@ -340,16 +340,20 @@ void raft_server::auto_fwd_resp_handler( ptr<cmd_result<ptr<buffer>>> presult,
 {
     ptr<buffer> resp_ctx(nullptr);
     ptr<std::exception> perr;
+    cmd_result_code code = cmd_result_code::OK;
+
     if (err) {
         perr = err;
+        code = cmd_result_code::FAILED;
     } else {
         if (resp->get_accepted()) {
             resp_ctx = resp->get_ctx();
             presult->accept();
         }
+        code = resp->get_result_code();
     }
 
-    presult->set_result(resp_ctx, perr);
+    presult->set_result(resp_ctx, perr, code);
     auto_fwd_release_rpc_cli(cur_pkg, rpc_cli);
 }
 
