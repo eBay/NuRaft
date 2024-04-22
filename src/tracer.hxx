@@ -25,36 +25,38 @@ limitations under the License.
 #include <stdarg.h>
 
 #ifdef _WIN32
-static inline std::string msg_if_given
-                          ( _Printf_format_string_ const char* format,
-                            ... ) {
+static inline std::string msg_if_given(_Printf_format_string_ const char* format, ...) {
 #else
 static inline std::string msg_if_given(const char* format, ...)
     __attribute__((format(printf, 1, 2)));
 
-
-static inline std::string msg_if_given
-                          ( const char* format,
-                            ... ) {
+static inline std::string msg_if_given(const char* format, ...) {
 #endif
     if (format[0] == 0x0) {
         return "";
-    } else {
-        _fix_format(format);
-        size_t len = 0;
-        char msg[2048];
+    }
+    _fix_format(format);
+    std::string msg(2048, '\0');
+    for (int i = 0; i < 2; ++i) {
         va_list args;
         va_start(args, format);
-        len = vsnprintf(msg, 2048, format, args);
+        const int len = vsnprintf(&msg[0], msg.size(), format, args);
         va_end(args);
-
-        // Get rid of newline at the end.
-        if (msg[len-1] == '\n') {
-            len--;
-            msg[len] = 0x0;
+        if (len < 0) {
+            return std::string("invalid format ") + format;
         }
-        return std::string(msg, len);
+        if (static_cast<size_t>(len) < msg.size()) {
+            msg.resize(len);
+            break;
+        }
+        msg.resize(len + 1);
     }
+
+    // Get rid of newline at the end.
+    if ((not msg.empty()) && (msg.back() == '\n')) {
+        msg.pop_back();
+    }
+    return msg;
 }
 
 #define L_TRACE (6)
