@@ -100,7 +100,7 @@ using namespace logger_test;
 int main(int argc, char** argv) {
     TestSuite ts(argc, argv);
 
-    ts.options.printTestMessage = false;
+    ts.options.printTestMessage = true;
 
     ts.doTest("logger basic test", logger_basic_test);
 
