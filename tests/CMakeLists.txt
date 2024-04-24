@@ -81,3 +81,10 @@ add_dependencies(stat_mgr_test
 target_link_libraries(stat_mgr_test
                       ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
 
+add_executable(logger_test
+               unit/logger_test.cxx)
+add_dependencies(logger_test
+                 static_lib)
+target_link_libraries(logger_test
+                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+

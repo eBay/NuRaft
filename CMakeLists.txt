@@ -321,6 +321,7 @@ if (CODE_COVERAGE GREATER 0)
         timer_test
         strfmt_test
         stat_mgr_test
+        logger_test
     )
 
     # lcov
