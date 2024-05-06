@@ -264,6 +264,8 @@ public:
                  "Cannot find server."},
                 {cmd_result_code::CANNOT_REMOVE_LEADER,
                  "Cannot remove leader."},
+                {cmd_result_code::SERVER_IS_LEAVING,
+                 "Server is leaving."},
                 {cmd_result_code::TERM_MISMATCH,
                  "The current term does not match the expected term."},
                 {cmd_result_code::RESULT_NOT_EXIST_YET,
