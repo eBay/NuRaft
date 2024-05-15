@@ -64,7 +64,7 @@ enum msg_type {
 
 inline bool ATTR_UNUSED is_valid_msg(msg_type type) {
     if ( type >= request_vote_request &&
-         type <= other_response ) {
+         type <= custom_notification_response ) {
         return true;
     }
     return false;

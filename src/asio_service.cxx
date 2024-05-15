@@ -47,11 +47,8 @@ limitations under the License.
 #include <atomic>
 #include <ctime>
 #include <exception>
-#include <fstream>
 #include <list>
-#include <queue>
 #include <thread>
-#include <regex>
 
 #ifdef USE_BOOST_ASIO
     using namespace boost;
@@ -382,9 +379,21 @@ public:
             // byte marker = header_->get_byte();
             h_bs.pos(0);
             byte marker = h_bs.get_u8();
-            if (marker == 0x1) {
-                // Means that this is RPC_RESP, shouldn't happen.
-                p_er("Wrong packet: expected REQ, got RESP");
+            if (marker != 0x0) {
+                // Means that this is not RPC_REQ, shouldn't happen.
+                p_er("Wrong packet: expected REQ, got %u", marker);
+
+                if (impl_->get_options().corrupted_msg_handler_) {
+                    impl_->get_options().corrupted_msg_handler_(header_, nullptr);
+                }
+
+                this->stop();
+                return;
+            }
+
+            msg_type m_type = (msg_type)h_bs.get_u8();
+            if (!is_valid_msg(m_type)) {
+                p_er("Wrong message type: got %u", (uint8_t)m_type);
 
                 if (impl_->get_options().corrupted_msg_handler_) {
                     impl_->get_options().corrupted_msg_handler_(header_, nullptr);
