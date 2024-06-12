@@ -122,9 +122,14 @@ public:
             auto entry = snapshots_.find(s.get_last_log_idx());
             if (entry == snapshots_.end()) {
                 // Snapshot doesn't exist.
+                //
+                // NOTE:
+                //   This should not happen in real use cases.
+                //   The below code is an example about how to handle
+                //   this case without aborting the server.
                 data_out = nullptr;
                 is_last_obj = true;
-                return 0;
+                return -1;
             }
             ctx = entry->second;
         }
