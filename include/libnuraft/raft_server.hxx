@@ -886,7 +886,8 @@ protected:
     int32 get_quorum_for_election();
     int32 get_quorum_for_commit();
     int32 get_leadership_expiry();
-    size_t get_not_responding_peers();
+    std::vector<ptr<peer>> get_not_responding_peers();
+    size_t get_not_responding_peers_count();
     size_t get_num_stale_peers();
 
     ptr<resp_msg> handle_append_entries(req_msg& req);
