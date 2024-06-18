@@ -1411,9 +1411,10 @@ private:
                     operation_timer_.expires_after
                     ( std::chrono::duration_cast<std::chrono::nanoseconds>
                       ( std::chrono::milliseconds( send_timeout_ms ) ) );
-                    operation_timer_.async_wait( std::bind( &asio_rpc_client::cancel_socket,
-                                this,
-                                std::placeholders::_1 ) );
+                    operation_timer_.async_wait(
+                        std::bind( &asio_rpc_client::cancel_socket,
+                                   this,
+                                   std::placeholders::_1 ) );
                 }
             } else {
                 ptr<resp_msg> rsp;
