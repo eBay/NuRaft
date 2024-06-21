@@ -738,7 +738,7 @@ private:
        try {
         ptr<buffer> resp_ctx = resp->get_ctx();
         int32 resp_ctx_size = (resp_ctx) ? resp_ctx->size() : 0;
-        int32 result_code_size = sizeof(cmd_result_code);
+        int32 result_code_size = sizeof(int32_t);
 
         uint32_t flags = 0x0;
         size_t resp_meta_size = 0;
