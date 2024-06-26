@@ -302,6 +302,10 @@ public:
     ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
     rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
 
+    bool is_lost() const { return lost_by_leader_; }
+    void set_lost() { lost_by_leader_ = true; }
+    void set_recovered() { lost_by_leader_ = false; }
+
 private:
     void handle_rpc_result(ptr<peer> myself,
                            ptr<rpc_client> my_rpc_client,
@@ -497,6 +501,8 @@ private:
      * All operations on this peer should be rejected.
      */
     std::atomic<bool> abandoned_;
+
+    std::atomic<bool> lost_by_leader_ {false};
 
     /**
      * Reserved message that should be sent next time.

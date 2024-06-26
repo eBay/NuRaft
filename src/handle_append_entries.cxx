@@ -162,7 +162,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
          chk_timer.timeout_and_reset() ) {
         // If auto adjust mode is on for 2-node cluster, and
         // the follower is not responding, adjust the quorum.
-        size_t num_not_responding_peers = get_not_responding_peers();
+        size_t num_not_responding_peers = get_not_responding_peers_count();
         size_t cur_quorum_size = get_quorum_for_commit();
         size_t num_stale_peers = get_num_stale_peers();
         if (cur_quorum_size >= 1) {
@@ -1191,7 +1191,7 @@ ulong raft_server::get_expected_committed_log_idx() {
 
     size_t quorum_idx = get_quorum_for_commit();
     if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
-        size_t not_responding_peers = get_not_responding_peers();
+        size_t not_responding_peers = get_not_responding_peers_count();
         if (not_responding_peers < voting_members - quorum_idx) {
             // If full consensus option is on, commit should be
             // agreed by all healthy members, and the number of

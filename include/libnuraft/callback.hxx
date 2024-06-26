@@ -207,6 +207,13 @@ public:
          */
         ResignationFromLeader = 27,
 
+        /**
+         * When a peer RPC errors count exceeds raft_server::limits.warning_limit_, or
+         * a peer doesn't respond for a long time (raft_params::leadership_expiry_),
+         * the peer is considered lost.
+         * ctx: null.
+         */
+        FollowerLost = 28,
     };
 
     struct Param {
