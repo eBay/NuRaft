@@ -213,7 +213,7 @@ public:
          * the peer is considered lost.
          * ctx: null.
          */
-        FollowerLost = 100,
+        FollowerLost = 28,
     };
 
     struct Param {

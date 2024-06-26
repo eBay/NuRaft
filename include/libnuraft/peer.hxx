@@ -302,9 +302,9 @@ public:
     ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
     rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
 
-    bool IsLost() const { return lost_by_leader_; }
-    void SetLost() { lost_by_leader_ = true; }
-    void SetRecovered() { lost_by_leader_ = false; }
+    bool is_lost() const { return lost_by_leader_; }
+    void set_lost() { lost_by_leader_ = true; }
+    void set_recovered() { lost_by_leader_ = false; }
 
 private:
     void handle_rpc_result(ptr<peer> myself,
