@@ -861,10 +861,10 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
             peer* pp = entry->second.get();
             int rpc_errs = pp->get_rpc_errs();
             if (rpc_errs >= raft_server::raft_limits_.warning_limit_) {
-                pp->set_recovered();
                 p_wn("recovered from RPC failure from peer %d, %d errors",
                      resp->get_src(), rpc_errs);
             }
+            pp->set_recovered();
             pp->reset_rpc_errs();
             pp->reset_resp_timer();
         }
@@ -1044,6 +1044,7 @@ void raft_server::become_leader() {
 
             pp->set_next_log_idx(log_store_->next_slot());
             enable_hb_for_peer(*pp);
+            pp->set_recovered();
         }
 
         // If there are uncommitted logs, search if conf log exists.

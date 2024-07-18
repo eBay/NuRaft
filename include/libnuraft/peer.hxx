@@ -74,6 +74,7 @@ public:
         , reconn_backoff_(0)
         , suppress_following_error_(false)
         , abandoned_(false)
+        , lost_by_leader_(false)
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
         , l_(logger)
@@ -502,7 +503,11 @@ private:
      */
     std::atomic<bool> abandoned_;
 
-    std::atomic<bool> lost_by_leader_ {false};
+    /**
+     * If `true`, this peer is considered unresponsive
+     * and treated as if it has been lost.
+     */
+    std::atomic<bool> lost_by_leader_;
 
     /**
      * Reserved message that should be sent next time.
