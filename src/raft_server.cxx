@@ -1189,7 +1189,7 @@ void raft_server::check_leadership_transfer() {
         if (peer_elem->get_matched_idx() + params->stale_log_gap_ <
                 cur_commit_idx) {
             // This peer is lagging behind.
-            p_tr("peer %d is lagging behind, %llu < %llu",
+            p_tr("peer %d is lagging behind, %" PRIu64 " < %" PRIu64,
                  s_conf.get_id(), peer_elem->get_matched_idx(),
                  cur_commit_idx);
             return;
