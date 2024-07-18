@@ -608,27 +608,43 @@ int32 raft_server::get_leadership_expiry() {
     return expiry;
 }
 
-size_t raft_server::get_not_responding_peers() {
+std::list<ptr<peer>> raft_server::get_not_responding_peers() {
+    std::list<ptr<peer>> rs;
+    auto cb = [&rs](const ptr<peer>& peer_ptr) {
+        rs.push_back(peer_ptr);
+    };
+    apply_to_not_responding_peers(cb);
+    return rs;
+}
+
+size_t raft_server::get_not_responding_peers_count() {
+    size_t num_not_resp_nodes = 0;
+    auto cb = [&num_not_resp_nodes](const ptr<peer>&) {
+        ++num_not_resp_nodes;
+    };
+    apply_to_not_responding_peers(cb);
+    return num_not_resp_nodes;
+}
+
+void raft_server::apply_to_not_responding_peers(
+    const std::function<void(const ptr<peer>&)>& callback) {
     // Check if quorum nodes are not responding
     // (i.e., don't respond 20x heartbeat time long).
-    size_t num_not_resp_nodes = 0;
-
     ptr<raft_params> params = ctx_->get_params();
-    int expiry = params->heart_beat_interval_ *
-                     raft_server::raft_limits_.response_limit_;
+    int expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
 
-    // Check the number of not responding peers.
+    // Check not responding peers.
     for (auto& entry: peers_) {
-        ptr<peer> p = entry.second;
+        const auto& peer_ptr = entry.second;
 
-        if (!is_regular_member(p)) continue;
+        if (!is_regular_member(peer_ptr)) continue;
 
-        int32 resp_elapsed_ms = (int32)(p->get_resp_timer_us() / 1000);
-        if ( resp_elapsed_ms > expiry ) {
-            num_not_resp_nodes++;
+        const auto resp_elapsed_ms =
+            static_cast<int32>(peer_ptr->get_resp_timer_us() / 1000);
+        if (resp_elapsed_ms > expiry) {
+            callback(peer_ptr);
         }
     }
-    return num_not_resp_nodes;
 }
 
 size_t raft_server::get_num_stale_peers() {
@@ -804,6 +820,14 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
         } else if (rpc_errs == raft_server::raft_limits_.warning_limit_) {
             p_wn("too verbose RPC error on peer (%d), "
                  "will suppress it from now", peer_id);
+            if (!pp || !pp->is_lost()) {
+                if (pp) {
+                    pp->set_lost();
+                }
+                cb_func::Param param(id_, leader_, peer_id);
+                const auto rc = ctx_->cb_func_.call(cb_func::FollowerLost, &param);
+                assert(rc == cb_func::ReturnCode::Ok);
+            }
         }
 
         if (pp && pp->is_leave_flag_set()) {
@@ -840,6 +864,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
                 p_wn("recovered from RPC failure from peer %d, %d errors",
                      resp->get_src(), rpc_errs);
             }
+            pp->set_recovered();
             pp->reset_rpc_errs();
             pp->reset_resp_timer();
         }
@@ -1019,6 +1044,7 @@ void raft_server::become_leader() {
 
             pp->set_next_log_idx(log_store_->next_slot());
             enable_hb_for_peer(*pp);
+            pp->set_recovered();
         }
 
         // If there are uncommitted logs, search if conf log exists.
@@ -1085,7 +1111,7 @@ bool raft_server::check_leadership_validity() {
     int32 num_voting_members = get_num_voting_members();
 
     int leadership_expiry = get_leadership_expiry();
-    int32 nr_peers = (int32)get_not_responding_peers();
+    int32 nr_peers = (int32)get_not_responding_peers_count();
     if (leadership_expiry < 0) {
         // Negative expiry: leadership will never expire.
         nr_peers = 0;
@@ -1101,6 +1127,18 @@ bool raft_server::check_leadership_validity() {
              peers_.size() + 1,
              get_leadership_expiry(),
              min_quorum_size);
+
+        const auto nr_peers_list = get_not_responding_peers();
+        assert(nr_peers_list.size() == static_cast<std::size_t>(nr_peers));
+        for (auto& peer : nr_peers_list) {
+            if (peer->is_lost()) {
+                continue;
+            }
+            peer->set_lost();
+            cb_func::Param param(id_, leader_, peer->get_id());
+            const auto rc = ctx_->cb_func_.call(cb_func::FollowerLost, &param);
+            assert(rc == cb_func::ReturnCode::Ok);
+        }
 
         // NOTE:
         //   For a cluster where the number of members is the same
