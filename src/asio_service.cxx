@@ -124,6 +124,9 @@ limitations under the License.
 // If set, each log entry will contain a CRC on the payload.
 #define CRC_ON_PAYLOAD (0x10)
 
+// If set, RPC message (response) includes result code
+#define INCLUDE_RESULT_CODE (0x20)
+
 // =======================
 
 namespace nuraft {
@@ -735,6 +738,7 @@ private:
        try {
         ptr<buffer> resp_ctx = resp->get_ctx();
         int32 resp_ctx_size = (resp_ctx) ? resp_ctx->size() : 0;
+        int32 result_code_size = sizeof(int32_t);
 
         uint32_t flags = 0x0;
         size_t resp_meta_size = 0;
@@ -758,6 +762,13 @@ private:
         }
 
         size_t carried_data_size = resp_meta_size + resp_hint_size + resp_ctx_size;
+
+        if (req->get_type() == msg_type::client_request ||
+            req->get_type() == msg_type::add_server_request ||
+            req->get_type() == msg_type::remove_server_request) {
+            flags |= INCLUDE_RESULT_CODE;
+            carried_data_size += result_code_size;
+        }
 
         int buf_size = RPC_RESP_HEADER_SIZE + carried_data_size;
         ptr<buffer> resp_buf = buffer::alloc(buf_size);
@@ -796,6 +807,11 @@ private:
         if (resp_ctx_size) {
             resp_ctx->pos(0);
             bs.put_buffer(*resp_ctx);
+        }
+
+        /* Put result code at the end to avoid breaking backward compatibility */
+        if (flags & INCLUDE_RESULT_CODE) {
+            bs.put_i32(resp->get_result_code());
         }
 
         aa::write( ssl_enabled_, ssl_socket_, socket_,
@@ -1407,6 +1423,15 @@ private:
                                  send_timeout_ms,
                                  std::placeholders::_1,
                                  std::placeholders::_2 ) );
+                if (send_timeout_ms != 0) {
+                    operation_timer_.expires_after
+                    ( std::chrono::duration_cast<std::chrono::nanoseconds>
+                      ( std::chrono::milliseconds( send_timeout_ms ) ) );
+                    operation_timer_.async_wait(
+                        std::bind( &asio_rpc_client::cancel_socket,
+                                   this,
+                                   std::placeholders::_1 ) );
+                }
             } else {
                 ptr<resp_msg> rsp;
                 ptr<rpc_exception> except
@@ -1477,6 +1502,7 @@ private:
                    std::error_code err,
                    asio::ip::tcp::resolver::iterator itor)
     {
+        operation_timer_.cancel();
         if (!err) {
             p_in( "%p connected to %s:%s (as a client)",
                   this, host_.c_str(), port_.c_str() );
@@ -1678,8 +1704,9 @@ private:
                   size_t bytes_transferred)
     {
         if ( !(flags & INCLUDE_META) &&
-             !(flags & INCLUDE_HINT) ) {
-            // Neither meta nor hint exists,
+             !(flags & INCLUDE_HINT) &&
+	     !(flags & INCLUDE_RESULT_CODE)) {
+            // Neither meta nor hint nor result code exists,
             // just use the buffer as it is for ctx.
             ctx_buf->pos(0);
             rsp->set_ctx(ctx_buf);
@@ -1729,9 +1756,21 @@ private:
         assert(remaining_len >= 0);
         if (remaining_len) {
             // It has context, read it.
-            ptr<buffer> actual_ctx = buffer::alloc(remaining_len);
+            size_t ctx_len = remaining_len;
+            if (flags & INCLUDE_RESULT_CODE) {
+                ctx_len -= sizeof(int32_t);
+            }
+            ptr<buffer> actual_ctx = buffer::alloc(ctx_len);
             bs.get_buffer(actual_ctx);
             rsp->set_ctx(actual_ctx);
+            remaining_len -= ctx_len;
+        }
+
+        // 4) Result code
+        if (flags & INCLUDE_RESULT_CODE) {
+            assert((size_t)remaining_len >= sizeof(int32_t));
+            cmd_result_code res = static_cast<cmd_result_code>(bs.get_i32());
+            rsp->set_result_code(res);
         }
 
         operation_timer_.cancel();

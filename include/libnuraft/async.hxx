@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace nuraft {
 
-enum cmd_result_code {
+enum cmd_result_code : int32_t {
     OK                              =  0,
     CANCELLED                       = -1,
     TIMEOUT                         = -2,
