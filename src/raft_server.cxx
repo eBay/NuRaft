@@ -1189,7 +1189,7 @@ void raft_server::check_leadership_transfer() {
         if (peer_elem->get_matched_idx() + params->stale_log_gap_ <
                 cur_commit_idx) {
             // This peer is lagging behind.
-            p_tr("peer %d is lagging behind, %lu < %lu",
+            p_tr("peer %d is lagging behind, %" PRIu64 " < %" PRIu64,
                  s_conf.get_id(), peer_elem->get_matched_idx(),
                  cur_commit_idx);
             return;
@@ -1198,7 +1198,7 @@ void raft_server::check_leadership_transfer() {
         uint64_t last_resp_ms = peer_elem->get_resp_timer_us() / 1000;
         if (last_resp_ms > election_lower) {
             // This replica is not responding.
-            p_tr("peer %d is not responding, %lu ms ago",
+            p_tr("peer %d is not responding, %" PRIu64 " ms ago",
                  s_conf.get_id(), last_resp_ms);
             return;
         }
