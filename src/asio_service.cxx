@@ -921,7 +921,7 @@ public:
         std::lock_guard<std::mutex> guard(listener_lock_);
         handler_ = handler;
         stopped_ = false;
-        start(guard);
+        start();
     }
 
     virtual void shutdown() override {
@@ -940,7 +940,7 @@ public:
     }
 
 private:
-    void start(std::lock_guard<std::mutex> & listener_lock) {
+    void start() {
         if (!acceptor_.is_open()) {
             return;
         }
@@ -983,7 +983,7 @@ private:
             // Re-listen only when not stopped,
             // otherwise crash happens as this class or `acceptor_`
             // may be destroyed in the meantime.
-            this->start(guard);
+            this->start();
         }
     }
 
