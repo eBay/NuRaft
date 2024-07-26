@@ -633,7 +633,7 @@ void raft_server::apply_to_not_responding_peers(
     // default argument for expiry is used in case user defines leadership_expiry_.
     ptr<raft_params> params = ctx_->get_params();
 
-    if(expiry == 0){
+    if (expiry == 0) {
         expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
     }
 
@@ -1120,7 +1120,7 @@ bool raft_server::check_leadership_validity() {
     int32 nr_peers{0};
 
     // Negative expiry: leadership will never expire.
-    if(leadership_expiry > 0){
+    if (leadership_expiry >= 0) {
         nr_peers = (int32)get_not_responding_peers_count(leadership_expiry);
     }
 
