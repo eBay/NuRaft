@@ -602,13 +602,13 @@ int32 raft_server::get_leadership_expiry() {
     int expiry = params->leadership_expiry_;
     if (expiry == 0) {
         // If 0, default expiry: 20x of heartbeat.
-        expiry = params->heart_beat_interval_ *
-                     raft_server::raft_limits_.leadership_limit_;
+        return params->heart_beat_interval_ *
+                 raft_server::raft_limits_.leadership_limit_;
     }
     return expiry;
 }
 
-std::list<ptr<peer>> raft_server::get_not_responding_peers() {
+std::list<ptr<peer>> raft_server::get_not_responding_peers(int expiry) {
     std::list<ptr<peer>> rs;
     auto cb = [&rs](const ptr<peer>& peer_ptr) {
         rs.push_back(peer_ptr);
@@ -617,21 +617,25 @@ std::list<ptr<peer>> raft_server::get_not_responding_peers() {
     return rs;
 }
 
-size_t raft_server::get_not_responding_peers_count() {
+size_t raft_server::get_not_responding_peers_count(int expiry) {
     size_t num_not_resp_nodes = 0;
     auto cb = [&num_not_resp_nodes](const ptr<peer>&) {
         ++num_not_resp_nodes;
     };
-    apply_to_not_responding_peers(cb);
+    apply_to_not_responding_peers(cb, expiry);
     return num_not_resp_nodes;
 }
 
 void raft_server::apply_to_not_responding_peers(
-    const std::function<void(const ptr<peer>&)>& callback) {
+    const std::function<void(const ptr<peer>&)>& callback, int expiry) {
     // Check if quorum nodes are not responding
-    // (i.e., don't respond 20x heartbeat time long).
+    // (i.e., don't respond 20x heartbeat time long or expiry if sent as argument).
+    // default argument for expiry is used in case user defines leadership_expiry_.
     ptr<raft_params> params = ctx_->get_params();
-    int expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
+
+    if (expiry == 0) {
+        expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
+    }
 
     // Check not responding peers.
     for (auto& entry: peers_) {
@@ -1110,12 +1114,16 @@ bool raft_server::check_leadership_validity() {
     // Check if quorum is not responding.
     int32 num_voting_members = get_num_voting_members();
 
+
     int leadership_expiry = get_leadership_expiry();
-    int32 nr_peers = (int32)get_not_responding_peers_count();
-    if (leadership_expiry < 0) {
-        // Negative expiry: leadership will never expire.
-        nr_peers = 0;
+
+    int32 nr_peers{0};
+
+    // Negative expiry: leadership will never expire.
+    if (leadership_expiry >= 0) {
+        nr_peers = (int32)get_not_responding_peers_count(leadership_expiry);
     }
+
     int32 min_quorum_size = get_quorum_for_commit() + 1;
     if ( (num_voting_members - nr_peers) < min_quorum_size ) {
         p_er("%d nodes (out of %d, %zu including learners) are not "
