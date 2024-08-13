@@ -125,6 +125,7 @@ struct asio_service_options {
         , crc_on_entire_message_(false)
         , crc_on_payload_(false)
         , corrupted_msg_handler_(nullptr)
+        , streaming_mode_(false)
         {}
 
     /**
@@ -276,6 +277,12 @@ struct asio_service_options {
      */
     std::function< void( std::shared_ptr<buffer>,
                          std::shared_ptr<buffer> ) > corrupted_msg_handler_;
+
+    /**
+     * If `true`, NuRaft will use stream mode when sending the request.
+     * The Request is sent immediately after the previous message has been sent 
+     */
+    bool streaming_mode_;
 };
 
 }

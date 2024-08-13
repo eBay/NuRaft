@@ -9,3 +9,4 @@ set -e
 ./tests/raft_server_test --abort-on-failure
 ./tests/failure_test --abort-on-failure
 ./tests/asio_service_test --abort-on-failure
+./tests/asio_service_stream_test --abort-on-failure
