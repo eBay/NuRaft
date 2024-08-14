@@ -280,7 +280,7 @@ struct asio_service_options {
 
     /**
      * If `true`, NuRaft will use stream mode when sending the request.
-     * The Request is sent immediately after the previous message has been sent 
+     * The request is sent immediately after the previous request has been sent.
      */
     bool streaming_mode_;
 };

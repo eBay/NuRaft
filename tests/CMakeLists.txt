@@ -33,15 +33,15 @@ target_link_libraries(asio_service_test
                       ${LIBRARIES})
 
 add_executable(asio_service_stream_test
-                unit/asio_service_stream_test.cxx
-                ${EXAMPLES_SRC}/logger.cc
-                ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+               unit/asio_service_stream_test.cxx
+               ${EXAMPLES_SRC}/logger.cc
+               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 add_dependencies(asio_service_stream_test
-                static_lib
-                build_ssl_key)
+                 static_lib
+                 build_ssl_key)
 target_link_libraries(asio_service_stream_test
-                ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
-                ${LIBRARIES})
+                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
+                      ${LIBRARIES})
 
 # === Benchmark ===
 add_executable(raft_bench

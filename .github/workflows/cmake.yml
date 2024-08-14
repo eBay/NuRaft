@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - master
+      - streaming
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)

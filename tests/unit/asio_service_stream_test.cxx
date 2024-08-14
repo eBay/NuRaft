@@ -37,7 +37,7 @@ namespace asio_service_stream_test {
         public:
         stream_msg_handler(context* ctx, const init_options& opt, ptr<logger_wrapper> log_wrapper) : 
         msg_handler(ctx, opt),
-        my_log_wrapper(log_wrapper),
+        my_log_wrapper_(log_wrapper),
         streamed_log_index(0)
         {}
 
@@ -56,19 +56,19 @@ namespace asio_service_stream_test {
                 buf->pos(0);
                 std::string buf_str = buf->get_str();
                 if (buf_str != test_msg) {
-                    SimpleLogger* ll = my_log_wrapper->getLogger();
+                    SimpleLogger* ll = my_log_wrapper_->getLogger();
                     _log_info(ll, "resp str: %s", buf_str.c_str());
                     msg_mismatch.store(true);
                 }
             } else {
-                SimpleLogger* ll = my_log_wrapper->getLogger();
+                SimpleLogger* ll = my_log_wrapper_->getLogger();
                 _log_info(ll, "req log index not match, req: %ld, current: %ld", 
                 req.get_last_log_idx(), streamed_log_index.load());
             }
             return resp;
         }
 
-        ptr<logger_wrapper> my_log_wrapper;
+        ptr<logger_wrapper> my_log_wrapper_;
         std::atomic<ulong> streamed_log_index;
         std::atomic<bool> msg_mismatch;
     };
@@ -76,9 +76,9 @@ namespace asio_service_stream_test {
     class stream_server {
         public:
         stream_server(int id, int port) : 
-        my_id(id),
-        port(port),
-        response_log_index(1)
+        my_id_(id),
+        port_(port),
+        response_log_index_(1)
 
         {
             init_server();
@@ -90,8 +90,8 @@ namespace asio_service_stream_test {
 
             while(count > 0) {
                 ptr<req_msg> req ( cs_new<req_msg>
-                ( 1, msg_type::append_entries_request, 1, my_id,
-                1, send_log_index, 1 ) );
+                ( 1, msg_type::append_entries_request, 1, my_id_,
+                1, send_log_index_, 1 ) );
 
                 ptr<log_entry> log( cs_new<log_entry>
                 ( 0, msg, log_val_type::app_log ) );
@@ -103,32 +103,32 @@ namespace asio_service_stream_test {
                         req,
                         std::placeholders::_1,
                         std::placeholders::_2 );
-                my_client->send(req, h);
-                send_log_index++;
+                my_client_->send(req, h);
+                send_log_index_++;
                 count--;
             }
         }
 
         void handle_result(ptr<req_msg>& req, ptr<resp_msg>& resp, ptr<rpc_exception>& err) {
             if (resp->get_next_idx() == get_next_log_index()) {
-                response_log_index++;
+                response_log_index_++;
             } else {
-                SimpleLogger* ll = my_log_wrapper->getLogger();
+                SimpleLogger* ll = my_log_wrapper_->getLogger();
                 _log_info(ll, "resp log index not match, resp: %ld, current: %ld", 
                 resp->get_next_idx(), get_next_log_index());
             }
         }
 
         void stop_server() {
-            if (my_listener) {
-                my_listener->stop();
-                my_listener->shutdown();
+            if (my_listener_) {
+                my_listener_->stop();
+                my_listener_->shutdown();
             }
 
-            if (asio_svc) {
-                asio_svc->stop();
+            if (asio_svc_) {
+                asio_svc_->stop();
                 size_t count = 0;
-                while (asio_svc->get_active_workers() && count < 500) {
+                while (asio_svc_->get_active_workers() && count < 500) {
                     // 10ms per tick.
                     timer_helper::sleep_ms(10);
                     count++;
@@ -137,59 +137,59 @@ namespace asio_service_stream_test {
         }
 
         ulong get_resp_log_index() {
-            return my_msg_handler->streamed_log_index;
+            return my_msg_handler_->streamed_log_index;
         }
 
         bool is_msg_mismatch() {
-            return my_msg_handler->msg_mismatch;
+            return my_msg_handler_->msg_mismatch;
         }
 
         ulong get_next_log_index() {
-            return response_log_index;
+            return response_log_index_;
         }
 
         private:
-        int my_id;
-        int port;
-        std::atomic<ulong> response_log_index;
-        ulong send_log_index = 0;
-        ptr<asio_service> asio_svc;
-        ptr<rpc_client> my_client;
-        ptr<rpc_listener> my_listener;
-        ptr<logger_wrapper> my_log_wrapper;
-        ptr<logger> my_log;
-        ptr<stream_msg_handler> my_msg_handler;
+        int my_id_;
+        int port_;
+        std::atomic<ulong> response_log_index_;
+        ulong send_log_index_ = 0;
+        ptr<asio_service> asio_svc_;
+        ptr<rpc_client> my_client_;
+        ptr<rpc_listener> my_listener_;
+        ptr<logger_wrapper> my_log_wrapper_;
+        ptr<logger> my_log_;
+        ptr<stream_msg_handler> my_msg_handler_;
 
         void init_server() {
-            std::string log_file_name = "./srv" + std::to_string(my_id) + ".log";
-            my_log_wrapper = cs_new<logger_wrapper>(log_file_name);
-            my_log = my_log_wrapper;
+            std::string log_file_name = "./srv" + std::to_string(my_id_) + ".log";
+            my_log_wrapper_ = cs_new<logger_wrapper>(log_file_name);
+            my_log_ = my_log_wrapper_;
 
             // opts
             asio_service::options asio_opt;
             asio_opt.thread_pool_size_  = 2;
             asio_opt.replicate_log_timestamp_ = false;
             asio_opt.streaming_mode_ = true;
-            asio_svc = cs_new<asio_service>(asio_opt, my_log);
+            asio_svc_ = cs_new<asio_service>(asio_opt, my_log_);
 
             // client
-            std::string endpoint = "localhost:"+std::to_string(port);
-            my_client = asio_svc->create_client(endpoint);
+            std::string endpoint = "localhost:"+std::to_string(port_);
+            my_client_ = asio_svc_->create_client(endpoint);
 
             // server
-            ptr<state_mgr> s_mgr = cs_new<TestMgr>(my_id, endpoint);
-            ptr<state_machine> sm = cs_new<TestSm>( my_log_wrapper->getLogger() );
-            ptr<delayed_task_scheduler> scheduler = asio_svc;
-            ptr<rpc_client_factory> rpc_cli_factory = asio_svc;
-            my_listener = asio_svc->create_rpc_listener(port, my_log);
+            ptr<state_mgr> s_mgr = cs_new<TestMgr>(my_id_, endpoint);
+            ptr<state_machine> sm = cs_new<TestSm>( my_log_wrapper_->getLogger() );
+            ptr<delayed_task_scheduler> scheduler = asio_svc_;
+            ptr<rpc_client_factory> rpc_cli_factory = asio_svc_;
+            my_listener_ = asio_svc_->create_rpc_listener(port_, my_log_);
 
             raft_params params;
-            context* ctx( new context( s_mgr, sm, my_listener, my_log,
+            context* ctx( new context( s_mgr, sm, my_listener_, my_log_,
                         rpc_cli_factory, scheduler, params ) );
             const raft_server::init_options& opt = raft_server::init_options();
-            my_msg_handler = cs_new<stream_msg_handler>(ctx, opt, my_log_wrapper);
-            ptr<msg_handler> handler = my_msg_handler;
-            my_listener->listen(handler);
+            my_msg_handler_ = cs_new<stream_msg_handler>(ctx, opt, my_log_wrapper_);
+            ptr<msg_handler> handler = my_msg_handler_;
+            my_listener_->listen(handler);
         }
     };
 
