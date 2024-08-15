@@ -38,7 +38,8 @@ namespace asio_service_stream_test {
         stream_msg_handler(context* ctx, const init_options& opt, ptr<logger_wrapper> log_wrapper) : 
         msg_handler(ctx, opt),
         my_log_wrapper_(log_wrapper),
-        streamed_log_index(0)
+        streamed_log_index(0),
+        msg_mismatch(false)
         {}
 
         ptr<resp_msg> process_req(req_msg& req,
@@ -47,8 +48,7 @@ namespace asio_service_stream_test {
             ptr<resp_msg> resp = cs_new<resp_msg>( state_->get_term(),
                                         msg_type::append_entries_response,
                                         id_,
-                                        req.get_src(),
-                                        log_store_->next_slot() );
+                                        req.get_src());
             if (req.get_last_log_idx() == streamed_log_index) {
                 streamed_log_index++;
                 resp->accept(streamed_log_index.load());

@@ -1057,6 +1057,8 @@ public:
         , socket_busy_(false)
         , operation_timer_(io_svc)
         , l_(l)
+        , pending_read_(0)
+        , pending_write_(0)
     {
         client_id_ = impl_->assign_client_id();
         if (ssl_enabled_) {
@@ -1157,17 +1159,17 @@ public:
                   rpc_handler& when_done,
                   uint64_t send_timeout_ms) {
         auto_lock(pending_write_reqs_lock_);
-        if (pending_write == 0) {
+        if (pending_write_ == 0) {
             register_req_send(req, when_done, send_timeout_ms);
         } else {
             pending_write_reqs_.push_back(
                 cs_new<pending_req_pkg>(req, when_done, send_timeout_ms));
         }
 
-        pending_write++;
+        pending_write_++;
         p_db("start to send msg to peer %d, start_log_idx: %ld, size: %ld,"
              " pending write reqs: %ld", req->get_dst(), req->get_last_log_idx(), 
-             req->log_entries().size(), pending_write);
+             req->log_entries().size(), pending_write_);
     }
 
     void register_req_send(ptr<req_msg>& req,
@@ -1903,30 +1905,30 @@ private:
         {
             auto_lock(pending_read_reqs_lock_);
             // process pending request
-            if (pending_read == 0) {
+            if (pending_read_ == 0) {
                 register_response_read(req, when_done);
             } else {
                 pending_read_reqs_.push_back(cs_new<pending_req_pkg>(req, when_done));
             }
             
-            pending_read++;
+            pending_read_++;
             p_db("msg to peer %d has been write down, start_log_idx: %ld,"
                  " size: %ld, pending read reqs: %ld", req->get_dst(), 
                  req->get_last_log_idx(), 
-                 req->log_entries().size(), pending_read);
+                 req->log_entries().size(), pending_read_);
         }
 
         // next process write
         {
             auto_lock(pending_write_reqs_lock_);
-            pending_write--;
+            pending_write_--;
             if (pending_write_reqs_.size() > 0) {
                 ptr<pending_req_pkg> next_req_pkg = *pending_write_reqs_.begin();
                 register_req_send(next_req_pkg->req_, next_req_pkg->when_done_, 
                                   next_req_pkg->timeout_ms_);
                 pending_write_reqs_.pop_front();
                 p_db("trigger next write, start_log_idx: %ld, pending write reqs: %ld",
-                     next_req_pkg->req_->get_last_log_idx(), pending_write);
+                     next_req_pkg->req_->get_last_log_idx(), pending_write_);
             }
         }
     }
@@ -1938,13 +1940,13 @@ private:
 
         // trigger next read
         auto_lock(pending_read_reqs_lock_);    
-        pending_read--;
+        pending_read_--;
         if (pending_read_reqs_.size() > 0) {
             ptr<pending_req_pkg> next_req_pkg = *pending_read_reqs_.begin();
             register_response_read(next_req_pkg->req_, next_req_pkg->when_done_);
             pending_read_reqs_.pop_front();
             p_db("trigger next read, start_log_idx: %ld, pending read reqs: %ld", 
-                next_req_pkg->req_->get_last_log_idx(), pending_read);
+                next_req_pkg->req_->get_last_log_idx(), pending_read_);
         }
     }
 
@@ -1990,12 +1992,12 @@ private:
     /**
      * Count of pending read
     */
-    size_t pending_read;
+    size_t pending_read_;
 
     /**
      * Count of pending write
     */
-    size_t pending_write;
+    size_t pending_write_;
 };
 
 } // namespace nuraft
