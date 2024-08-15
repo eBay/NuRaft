@@ -1057,8 +1057,6 @@ public:
         , socket_busy_(false)
         , operation_timer_(io_svc)
         , l_(l)
-        , pending_read_(0)
-        , pending_write_(0)
     {
         client_id_ = impl_->assign_client_id();
         if (ssl_enabled_) {
@@ -1132,13 +1130,9 @@ public:
                       ( ssl_enabled_ ? "enabled" : "disabled" ) );
             }
             abandoned_= true;
-            ptr<resp_msg> rsp;
-            ptr<rpc_exception> except
-               ( cs_new<rpc_exception>
-                       ( lstrfmt("timeout while connecting to %s")
-                                .fmt(host_.c_str()),
-                         req ) );
-            when_done(rsp, except);
+            std::string err_msg = lstrfmt("timeout while connecting to %s")
+                                          .fmt(host_.c_str());
+            handle_error(req, err_msg, when_done);
             return;
         }
         register_req_send(req, when_done, send_timeout_ms);
@@ -1155,21 +1149,35 @@ public:
         }
     }
 
+    void handle_error(ptr<req_msg> req,
+                      std::string& err_msg,
+                      rpc_handler when_done) {
+        close_socket(err_msg);
+
+        // if not in stream mode, we need to call when_done directly
+        // in stream mode, all the when_done will be invoked in close_socket
+        if (!impl_->get_options().streaming_mode_) {
+            ptr<resp_msg> resp;
+            ptr<rpc_exception> except
+               ( cs_new<rpc_exception>
+                 ( err_msg, req ) );
+            when_done(resp, except);
+        }
+    }
+
     void pre_send(ptr<req_msg>& req,
                   rpc_handler& when_done,
                   uint64_t send_timeout_ms) {
         auto_lock(pending_write_reqs_lock_);
-        if (pending_write_ == 0) {
-            register_req_send(req, when_done, send_timeout_ms);
-        } else {
-            pending_write_reqs_.push_back(
+        pending_write_reqs_.push_back(
                 cs_new<pending_req_pkg>(req, when_done, send_timeout_ms));
+        if (pending_write_reqs_.size() == 1) {
+            register_req_send(req, when_done, send_timeout_ms);
         }
 
-        pending_write_++;
         p_db("start to send msg to peer %d, start_log_idx: %ld, size: %ld,"
              " pending write reqs: %ld", req->get_dst(), req->get_last_log_idx(), 
-             req->log_entries().size(), pending_write_);
+             req->log_entries().size(), pending_write_reqs_.size());
     }
 
     void register_req_send(ptr<req_msg>& req,
@@ -1179,12 +1187,8 @@ public:
             p_er( "client %p to %s:%s is already stale (SSL %s)",
                   this, host_.c_str(), port_.c_str(),
                   ( ssl_enabled_ ? "enabled" : "disabled" ) );
-            ptr<resp_msg> rsp;
-            ptr<rpc_exception> except
-               ( cs_new<rpc_exception>
-                 ( lstrfmt("abandoned client to %s").fmt(host_.c_str()),
-                   req ) );
-            when_done(rsp, except);
+            std::string err_msg = lstrfmt("abandoned client to %s").fmt(host_.c_str());
+            handle_error(req, err_msg, when_done);
             return;
         }
 
@@ -1244,17 +1248,14 @@ public:
                             execute_resolver(self, req, resolved_host, resolved_port,
                                              when_done, send_timeout_ms);
                         } else {
-                            ptr<resp_msg> rsp;
-                            ptr<rpc_exception> except
-                               ( cs_new<rpc_exception>
-                                       ( lstrfmt("failed to resolve host %s by given "
-                                                 "custom resolver "
-                                                 "due to error %d, %s")
-                                                .fmt( host_.c_str(),
-                                                      err.value(),
-                                                      err.message().c_str() ),
-                                         req ) );
-                            when_done(rsp, except);
+                            std::string err_msg = lstrfmt("failed to resolve "
+                                                          "host %s by given "
+                                                          "custom resolver "
+                                                          "due to error %d, %s")
+                                                          .fmt( host_.c_str(),
+                                                                err.value(),
+                                                                err.message().c_str() );
+                            handle_error(req, err_msg, when_done);
                         }
                     } );
             } else {
@@ -1477,16 +1478,12 @@ private:
                                    std::placeholders::_1 ) );
                 }
             } else {
-                ptr<resp_msg> rsp;
-                ptr<rpc_exception> except
-                   ( cs_new<rpc_exception>
-                           ( lstrfmt("failed to resolve host %s "
-                                     "due to error %d, %s")
-                                    .fmt( host.c_str(),
-                                          err.value(),
-                                          err.message().c_str() ),
-                             req ) );
-                when_done(rsp, except);
+                std::string err_msg = lstrfmt("failed to resolve host %s "
+                                      "due to error %d, %s")
+                                      .fmt( host.c_str(),
+                                            err.value(),
+                                            err.message().c_str() );
+                handle_error(req, err_msg, when_done);
             }
         } );
     }
@@ -1513,7 +1510,7 @@ private:
         }
     }
 
-    void close_socket() {
+    void close_socket(std::string err_msg = "") {
         // Do nothing,
         // early closing socket before destroying this instance
         // may cause problem, especially when SSL is enabled.
@@ -1535,16 +1532,17 @@ private:
 
         // clear write queue and read queue here
         // from oldest to latest, read queue first
-
         {
             auto_lock(pending_read_reqs_lock_);
             for (auto& pkg: pending_read_reqs_) {
                 ptr<resp_msg> rsp;
+                if (err_msg.empty()) {
+                    err_msg = lstrfmt("socket to host %s is closed")
+                            .fmt( host_.c_str());
+                }
                 ptr<rpc_exception> except
                     ( cs_new<rpc_exception>
-                        ( lstrfmt("socket to host %s closed")
-                            .fmt( host_.c_str()),
-                        pkg->req_));
+                        ( err_msg, pkg->req_));
                 pkg->when_done_(rsp, except);
             }
             pending_read_reqs_.clear();
@@ -1555,11 +1553,13 @@ private:
             auto_lock(pending_write_reqs_lock_);
             for (auto& pkg: pending_write_reqs_) {
                 ptr<resp_msg> rsp;
+                if (err_msg.empty()) {
+                    err_msg = lstrfmt("socket to host %s is closed")
+                            .fmt( host_.c_str());
+                }
                 ptr<rpc_exception> except
                     ( cs_new<rpc_exception>
-                        ( lstrfmt("socket to host %s closed")
-                            .fmt( host_.c_str()),
-                        pkg->req_));
+                        ( err_msg, pkg->req_));
                 pkg->when_done_(rsp, except);
             }
             pending_write_reqs_.clear();
@@ -1610,14 +1610,12 @@ private:
 
         } else {
             abandoned_ = true;
-            ptr<resp_msg> rsp;
-            ptr<rpc_exception> except
-                ( cs_new<rpc_exception>
-                  ( sstrfmt("failed to connect to peer %d, %s:%s, error %d, %s")
-                           .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value(), err.message().c_str() ),
-                    req ) );
-            when_done(rsp, except);
+            std::string err_msg = sstrfmt("failed to connect to "
+                                          "peer %d, %s:%s, error %d, %s")
+                                          .fmt( req->get_dst(), host_.c_str(),
+                                                port_.c_str(), err.value(), 
+                                                err.message().c_str() );
+            handle_error(req, err_msg, when_done);
         }
     }
 
@@ -1641,15 +1639,12 @@ private:
                   err.message().c_str() );
 
             // Immediately stop.
-            ptr<resp_msg> resp;
-            ptr<rpc_exception> except
-                ( cs_new<rpc_exception>
-                  ( sstrfmt("failed SSL handshake with peer %d, %s:%s, "
-                            "error %d, %s")
-                           .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value(), err.message().c_str() ),
-                    req ) );
-            when_done(resp, except);
+            std::string err_msg = sstrfmt("failed SSL handshake with peer %d, %s:%s, "
+                                          "error %d, %s")
+                                          .fmt( req->get_dst(), host_.c_str(),
+                                                port_.c_str(), err.value(), 
+                                                err.message().c_str() );
+            handle_error(req, err_msg, when_done);
         }
     }
 
@@ -1670,16 +1665,12 @@ private:
         } else {
             operation_timer_.cancel();
             abandoned_ = true;
-            ptr<resp_msg> rsp;
-            ptr<rpc_exception> except
-                ( cs_new<rpc_exception>
-                  ( sstrfmt( "failed to send request to peer %d, %s:%s, "
-                             "error %d, %s" )
-                           .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value(), err.message().c_str() ),
-                    req ) );
-            close_socket();
-            when_done(rsp, except);
+            std::string err_msg = sstrfmt( "failed to send request to peer %d, %s:%s, "
+                                           "error %d, %s" )
+                                           .fmt( req->get_dst(), host_.c_str(),
+                                                 port_.c_str(), err.value(), 
+                                                 err.message().c_str() );
+            handle_error(req, err_msg, when_done);
         }
     }
 
@@ -1692,16 +1683,12 @@ private:
         ptr<asio_rpc_client> self(this->shared_from_this());
         if (err) {
             abandoned_ = true;
-            ptr<resp_msg> rsp;
-            ptr<rpc_exception> except
-                ( cs_new<rpc_exception>
-                  ( sstrfmt( "failed to read response to peer %d, %s:%s, "
-                             "error %d, %s" )
-                           .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), err.value(), err.message().c_str() ),
-                    req ) );
-            close_socket();
-            when_done(rsp, except);
+            std::string err_msg = sstrfmt( "failed to read response to peer %d, %s:%s, "
+                                           "error %d, %s" )
+                                           .fmt( req->get_dst(), host_.c_str(),
+                                                 port_.c_str(), err.value(), 
+                                                 err.message().c_str() );
+            handle_error(req, err_msg, when_done);
             return;
         }
 
@@ -1715,16 +1702,12 @@ private:
         uint32_t flags = (flags_and_crc >> 32);
 
         if (crc_local != crc_buf) {
-            ptr<resp_msg> rsp;
-            ptr<rpc_exception> except
-                ( cs_new<rpc_exception>
-                  ( sstrfmt( "CRC mismatch in response from peer %d, %s:%s, "
-                             "local calculation %x, from buffer %x")
-                           .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str(), crc_local, crc_buf ),
-                    req ) );
-            close_socket();
-            when_done(rsp, except);
+            std::string err_msg = sstrfmt( "CRC mismatch in response from "
+                                           "peer %d, %s:%s, "
+                                           "local calculation %x, from buffer %x")
+                                           .fmt( req->get_dst(), host_.c_str(),
+                                                 port_.c_str(), crc_local, crc_buf );
+            handle_error(req, err_msg, when_done);
             return;
         }
 
@@ -1869,16 +1852,11 @@ private:
 
         if (!meta_ok) {
             // Callback function returns false, should return failure.
-            ptr<resp_msg> rsp;
-            ptr<rpc_exception> except
-                ( cs_new<rpc_exception>
-                  ( sstrfmt( "response meta verification failed: "
-                             "from peer %d, %s:%s")
-                           .fmt( req->get_dst(), host_.c_str(),
-                                 port_.c_str() ),
-                    req ) );
-            close_socket();
-            when_done(rsp, except);
+            std::string err_msg = sstrfmt( "response meta verification failed: "
+                                           "from peer %d, %s:%s")
+                                           .fmt( req->get_dst(), host_.c_str(),
+                                                 port_.c_str() );
+            handle_error(req, err_msg, when_done);
             return false;
         }
         return true;
@@ -1904,31 +1882,27 @@ private:
         // first process read
         {
             auto_lock(pending_read_reqs_lock_);
-            // process pending request
-            if (pending_read_ == 0) {
+            pending_read_reqs_.push_back(cs_new<pending_req_pkg>(req, when_done));
+            if (pending_read_reqs_.size() == 1) {
                 register_response_read(req, when_done);
-            } else {
-                pending_read_reqs_.push_back(cs_new<pending_req_pkg>(req, when_done));
             }
             
-            pending_read_++;
             p_db("msg to peer %d has been write down, start_log_idx: %ld,"
                  " size: %ld, pending read reqs: %ld", req->get_dst(), 
                  req->get_last_log_idx(), 
-                 req->log_entries().size(), pending_read_);
+                 req->log_entries().size(), pending_read_reqs_.size());
         }
 
         // next process write
         {
             auto_lock(pending_write_reqs_lock_);
-            pending_write_--;
+            pending_write_reqs_.pop_front();
             if (pending_write_reqs_.size() > 0) {
                 ptr<pending_req_pkg> next_req_pkg = *pending_write_reqs_.begin();
                 register_req_send(next_req_pkg->req_, next_req_pkg->when_done_, 
                                   next_req_pkg->timeout_ms_);
-                pending_write_reqs_.pop_front();
                 p_db("trigger next write, start_log_idx: %ld, pending write reqs: %ld",
-                     next_req_pkg->req_->get_last_log_idx(), pending_write_);
+                     next_req_pkg->req_->get_last_log_idx(), pending_write_reqs_.size());
             }
         }
     }
@@ -1940,13 +1914,12 @@ private:
 
         // trigger next read
         auto_lock(pending_read_reqs_lock_);    
-        pending_read_--;
+        pending_read_reqs_.pop_front();
         if (pending_read_reqs_.size() > 0) {
             ptr<pending_req_pkg> next_req_pkg = *pending_read_reqs_.begin();
             register_response_read(next_req_pkg->req_, next_req_pkg->when_done_);
-            pending_read_reqs_.pop_front();
             p_db("trigger next read, start_log_idx: %ld, pending read reqs: %ld", 
-                next_req_pkg->req_->get_last_log_idx(), pending_read_);
+                next_req_pkg->req_->get_last_log_idx(), pending_read_reqs_.size());
         }
     }
 
@@ -1970,7 +1943,7 @@ private:
     ptr<logger> l_;
 
     /**
-     * Queue of request which is pending for reading
+     * Queue of request which is pending for reading.
      */
     std::list<ptr<pending_req_pkg>> pending_read_reqs_;
 
@@ -1980,7 +1953,7 @@ private:
     std::mutex pending_read_reqs_lock_;
 
     /**
-     * Queue of request which is pending for writing
+     * Queue of request which is pending for writing.
      */
     std::list<ptr<pending_req_pkg>> pending_write_reqs_;
 
@@ -1988,16 +1961,6 @@ private:
      * Lock for pending_write_reqs_queue.
      */
     std::mutex pending_write_reqs_lock_;
-
-    /**
-     * Count of pending read
-    */
-    size_t pending_read_;
-
-    /**
-     * Count of pending write
-    */
-    size_t pending_write_;
 };
 
 } // namespace nuraft
