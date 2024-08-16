@@ -279,8 +279,9 @@ struct asio_service_options {
                          std::shared_ptr<buffer> ) > corrupted_msg_handler_;
 
     /**
-     * If `true`, NuRaft will use stream mode when sending the request.
-     * The request is sent immediately after the previous request has been sent.
+     * If `true`,  NuRaft will use streaming mode, which allows it to send
+     * subsequent requests without waiting for the response to previous requests.
+     * The order of responses will be identical to the order of requests.
      */
     bool streaming_mode_;
 };

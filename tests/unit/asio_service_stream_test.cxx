@@ -1,6 +1,5 @@
 /************************************************************************
-Copyright 2017-2019 eBay Inc.
-Author/Developer(s): Jung-Sang Ahn
+Copyright 2017-present eBay Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,14 +15,11 @@ limitations under the License.
 **************************************************************************/
 
 #include "buffer_serializer.hxx"
-#include "debugging_options.hxx"
 #include "in_memory_log_store.hxx"
 #include "raft_package_asio.hxx"
 
 #include "event_awaiter.hxx"
 #include "test_common.h"
-
-#include <unordered_map>
 
 #include <stdio.h>
 
@@ -31,38 +27,38 @@ using namespace nuraft;
 using namespace raft_functional_common;
 
 namespace asio_service_stream_test {
-    const std::string test_msg = "stream-test-msg-str";
+    const std::string TEST_MSG = "stream-test-msg-str";
 
     class stream_msg_handler : public nuraft::msg_handler {
-        public:
-        stream_msg_handler(context* ctx, const init_options& opt, ptr<logger_wrapper> log_wrapper) : 
-        msg_handler(ctx, opt),
-        my_log_wrapper_(log_wrapper),
-        streamed_log_index(0),
-        msg_mismatch(false)
-        {}
+    public:
+        stream_msg_handler(context* ctx,
+                           const init_options& opt,
+                           ptr<logger_wrapper> log_wrapper)
+            : msg_handler(ctx, opt)
+            , my_log_wrapper_(log_wrapper)
+            , streamed_log_index(0)
+            , msg_mismatch(false)
+            {}
 
-        ptr<resp_msg> process_req(req_msg& req,
-                                const req_ext_params& ext_params) 
-        {
-            ptr<resp_msg> resp = cs_new<resp_msg>( state_->get_term(),
-                                        msg_type::append_entries_response,
-                                        id_,
-                                        req.get_src());
+        ptr<resp_msg> process_req(req_msg& req, const req_ext_params& ext_params) {
+            ptr<resp_msg> resp = cs_new<resp_msg>(state_->get_term(),
+                                                  msg_type::append_entries_response,
+                                                  id_,
+                                                  req.get_src());
             if (req.get_last_log_idx() == streamed_log_index) {
                 streamed_log_index++;
                 resp->accept(streamed_log_index.load());
                 ptr<buffer> buf = req.log_entries().at(0)->get_buf_ptr();
                 buf->pos(0);
                 std::string buf_str = buf->get_str();
-                if (buf_str != test_msg) {
+                if (buf_str != TEST_MSG) {
                     SimpleLogger* ll = my_log_wrapper_->getLogger();
                     _log_info(ll, "resp str: %s", buf_str.c_str());
                     msg_mismatch.store(true);
                 }
             } else {
                 SimpleLogger* ll = my_log_wrapper_->getLogger();
-                _log_info(ll, "req log index not match, req: %ld, current: %ld", 
+                _log_info(ll, "req log index not match, req: %ld, current: %ld",
                 req.get_last_log_idx(), streamed_log_index.load());
             }
             return resp;
@@ -74,49 +70,64 @@ namespace asio_service_stream_test {
     };
 
     class stream_server {
-        public:
-        stream_server(int id, int port) : 
-        my_id_(id),
-        port_(port),
-        response_log_index_(1)
-
+    public:
+        stream_server(int id, int port)
+            : my_id_(id)
+            , port_(port)
+            , next_log_index_(1)
         {
             init_server();
         }
 
         void send_req(int count) {
-            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
-            msg->put(test_msg);
+            ptr<buffer> msg = buffer::alloc(TEST_MSG.size() + 1);
+            msg->put(TEST_MSG);
 
-            while(count > 0) {
-                ptr<req_msg> req ( cs_new<req_msg>
-                ( 1, msg_type::append_entries_request, 1, my_id_,
-                1, send_log_index_, 1 ) );
+            TestSuite::Progress pp(count, "sending req");
 
-                ptr<log_entry> log( cs_new<log_entry>
-                ( 0, msg, log_val_type::app_log ) );
+            while (count > 0) {
+                ptr<req_msg> req(cs_new<req_msg>(
+                    1, msg_type::append_entries_request, 1, my_id_,
+                    1, sent_log_index_, 1));
+
+                ptr<log_entry> log(cs_new<log_entry>(0, msg, log_val_type::app_log));
                 req->log_entries().push_back(log);
 
-                rpc_handler h = (rpc_handler)std::bind
-                    ( &stream_server::handle_result,
-                        this,
-                        req,
-                        std::placeholders::_1,
-                        std::placeholders::_2 );
+                rpc_handler h = (rpc_handler)std::bind(
+                    &stream_server::handle_result,
+                    this,
+                    req,
+                    std::placeholders::_1,
+                    std::placeholders::_2);
                 my_client_->send(req, h);
-                send_log_index_++;
+                sent_log_index_++;
+                pp.update(sent_log_index_);
                 count--;
+            }
+            pp.done();
+            num_messages_sent_= sent_log_index_;
+        }
+
+        void handle_result(ptr<req_msg>& req,
+                           ptr<resp_msg>& resp,
+                           ptr<rpc_exception>& err)
+        {
+            if (resp->get_next_idx() == get_next_log_index()) {
+                next_log_index_++;
+            } else {
+                SimpleLogger* ll = my_log_wrapper_->getLogger();
+                _log_info(ll, "resp log index not match, resp: %ld, current: %ld",
+                resp->get_next_idx(), get_next_log_index());
+            }
+            if (next_log_index_ == num_messages_sent_ + 1) {
+                ea.invoke();
             }
         }
 
-        void handle_result(ptr<req_msg>& req, ptr<resp_msg>& resp, ptr<rpc_exception>& err) {
-            if (resp->get_next_idx() == get_next_log_index()) {
-                response_log_index_++;
-            } else {
-                SimpleLogger* ll = my_log_wrapper_->getLogger();
-                _log_info(ll, "resp log index not match, resp: %ld, current: %ld", 
-                resp->get_next_idx(), get_next_log_index());
-            }
+        bool waiting_for_responses(int timeout_ms = 3000) {
+            TestSuite::_msg("wait for responses (up to %d ms)\n", timeout_ms);
+            ea.wait_ms(timeout_ms);
+            return (next_log_index_ == num_messages_sent_ + 1);
         }
 
         void stop_server() {
@@ -145,20 +156,22 @@ namespace asio_service_stream_test {
         }
 
         ulong get_next_log_index() {
-            return response_log_index_;
+            return next_log_index_;
         }
 
-        private:
+    private:
         int my_id_;
         int port_;
-        std::atomic<ulong> response_log_index_;
-        ulong send_log_index_ = 0;
+        std::atomic<ulong> next_log_index_;
+        ulong sent_log_index_ = 0;
         ptr<asio_service> asio_svc_;
         ptr<rpc_client> my_client_;
         ptr<rpc_listener> my_listener_;
         ptr<logger_wrapper> my_log_wrapper_;
         ptr<logger> my_log_;
         ptr<stream_msg_handler> my_msg_handler_;
+        size_t num_messages_sent_ = 0;
+        EventAwaiter ea;
 
         void init_server() {
             std::string log_file_name = "./srv" + std::to_string(my_id_) + ".log";
@@ -193,7 +206,7 @@ namespace asio_service_stream_test {
         }
     };
 
-    int init_stream_server() {
+    int stream_server_happy_path_test() {
         reset_log_files();
 
         stream_server s(1, 20010);
@@ -202,7 +215,7 @@ namespace asio_service_stream_test {
         s.send_req(count);
 
         // check req
-        TestSuite::sleep_ms(1000, "wait for sending req");
+        CHK_TRUE(s.waiting_for_responses());
         CHK_EQ(count, s.get_resp_log_index());
         CHK_EQ(count, s.get_next_log_index() - 1);
         CHK_FALSE(s.is_msg_mismatch());
@@ -221,7 +234,7 @@ int main(int argc, char** argv) {
     TestSuite ts(argc, argv);
     ts.options.printTestMessage = true;
 
-    ts.doTest( "init_stream_server",
-               init_stream_server );
+    ts.doTest("stream server happy path test",
+              stream_server_happy_path_test);
     return 0;
 }
