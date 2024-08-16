@@ -1168,16 +1168,20 @@ public:
     void pre_send(ptr<req_msg>& req,
                   rpc_handler& when_done,
                   uint64_t send_timeout_ms) {
-        auto_lock(pending_write_reqs_lock_);
-        pending_write_reqs_.push_back(
+        bool need_send = false;
+        {
+            auto_lock(pending_write_reqs_lock_);
+            pending_write_reqs_.push_back(
                 cs_new<pending_req_pkg>(req, when_done, send_timeout_ms));
-        if (pending_write_reqs_.size() == 1) {
-            register_req_send(req, when_done, send_timeout_ms);
+            need_send = pending_write_reqs_.size() == 1;
+            p_db("start to send msg to peer %d, start_log_idx: %ld, size: %ld,"
+                 " pending write reqs: %ld", req->get_dst(), req->get_last_log_idx(), 
+                 req->log_entries().size(), pending_write_reqs_.size());
         }
 
-        p_db("start to send msg to peer %d, start_log_idx: %ld, size: %ld,"
-             " pending write reqs: %ld", req->get_dst(), req->get_last_log_idx(), 
-             req->log_entries().size(), pending_write_reqs_.size());
+        if (need_send) {
+            register_req_send(req, when_done, send_timeout_ms);
+        }
     }
 
     void register_req_send(ptr<req_msg>& req,
@@ -1530,40 +1534,36 @@ private:
             return;
         }
 
-        // clear write queue and read queue here
-        // from oldest to latest, read queue first
+        // clear write queue and read queue here from oldest to latest
+        // read queue first
+        finish_fail_request(pending_read_reqs_, pending_read_reqs_lock_, err_msg);
+        finish_fail_request(pending_write_reqs_, pending_write_reqs_lock_, err_msg);
+    }
+
+    void finish_fail_request(std::list<ptr<pending_req_pkg>>& reqs_list, 
+                             std::mutex& lock, 
+                             std::string& err_msg) {
+        std::list<ptr<pending_req_pkg>> temp_reqs;
         {
-            auto_lock(pending_read_reqs_lock_);
-            for (auto& pkg: pending_read_reqs_) {
-                ptr<resp_msg> rsp;
-                if (err_msg.empty()) {
-                    err_msg = lstrfmt("socket to host %s is closed")
-                            .fmt( host_.c_str());
-                }
-                ptr<rpc_exception> except
-                    ( cs_new<rpc_exception>
-                        ( err_msg, pkg->req_));
-                pkg->when_done_(rsp, except);
+            auto_lock(lock);
+            for (auto& pkg: reqs_list) {
+                temp_reqs.push_back(pkg);
             }
-            pending_read_reqs_.clear();
+            reqs_list.clear();
         }
 
-        // clear write queue
-        {
-            auto_lock(pending_write_reqs_lock_);
-            for (auto& pkg: pending_write_reqs_) {
-                ptr<resp_msg> rsp;
-                if (err_msg.empty()) {
-                    err_msg = lstrfmt("socket to host %s is closed")
-                            .fmt( host_.c_str());
-                }
-                ptr<rpc_exception> except
-                    ( cs_new<rpc_exception>
-                        ( err_msg, pkg->req_));
-                pkg->when_done_(rsp, except);
+        for (auto& pkg: temp_reqs) {
+            ptr<resp_msg> rsp;
+            if (err_msg.empty()) {
+                err_msg = lstrfmt("socket to host %s is closed")
+                        .fmt( host_.c_str());
             }
-            pending_write_reqs_.clear();
+            ptr<rpc_exception> except
+                ( cs_new<rpc_exception>
+                    ( err_msg, pkg->req_));
+            pkg->when_done_(rsp, except);
         }
+        temp_reqs.clear();
     }
 
     void cancel_socket(const ERROR_CODE& err) {
@@ -1880,30 +1880,38 @@ private:
 
     void post_send(ptr<req_msg>& req, rpc_handler& when_done) {
         // first process read
+        bool need_read = false;
         {
             auto_lock(pending_read_reqs_lock_);
             pending_read_reqs_.push_back(cs_new<pending_req_pkg>(req, when_done));
-            if (pending_read_reqs_.size() == 1) {
-                register_response_read(req, when_done);
-            }
-            
+            need_read = pending_read_reqs_.size() == 1;
             p_db("msg to peer %d has been write down, start_log_idx: %ld,"
                  " size: %ld, pending read reqs: %ld", req->get_dst(), 
                  req->get_last_log_idx(), 
                  req->log_entries().size(), pending_read_reqs_.size());
         }
 
+        if (need_read) {
+            register_response_read(req, when_done);
+        }
+
         // next process write
+        bool has_pending_write = false;
+        ptr<pending_req_pkg> next_req_pkg;
         {
             auto_lock(pending_write_reqs_lock_);
             pending_write_reqs_.pop_front();
             if (pending_write_reqs_.size() > 0) {
-                ptr<pending_req_pkg> next_req_pkg = *pending_write_reqs_.begin();
-                register_req_send(next_req_pkg->req_, next_req_pkg->when_done_, 
-                                  next_req_pkg->timeout_ms_);
+                has_pending_write = true;
+                next_req_pkg = *pending_write_reqs_.begin();
                 p_db("trigger next write, start_log_idx: %ld, pending write reqs: %ld",
                      next_req_pkg->req_->get_last_log_idx(), pending_write_reqs_.size());
             }
+        }
+
+        if (has_pending_write) {
+            register_req_send(next_req_pkg->req_, next_req_pkg->when_done_, 
+                                next_req_pkg->timeout_ms_);
         }
     }
 
@@ -1913,13 +1921,21 @@ private:
         }
 
         // trigger next read
-        auto_lock(pending_read_reqs_lock_);    
-        pending_read_reqs_.pop_front();
-        if (pending_read_reqs_.size() > 0) {
-            ptr<pending_req_pkg> next_req_pkg = *pending_read_reqs_.begin();
+        bool has_pending_read = false;
+        ptr<pending_req_pkg> next_req_pkg;
+        {
+            auto_lock(pending_read_reqs_lock_);
+            pending_read_reqs_.pop_front();
+            if (pending_read_reqs_.size() > 0) {
+                has_pending_read = true;
+                next_req_pkg = *pending_read_reqs_.begin();
+                p_db("trigger next read, start_log_idx: %ld, pending read reqs: %ld", 
+                     next_req_pkg->req_->get_last_log_idx(), pending_read_reqs_.size());
+            }
+        }
+
+        if (has_pending_read) {
             register_response_read(next_req_pkg->req_, next_req_pkg->when_done_);
-            p_db("trigger next read, start_log_idx: %ld, pending read reqs: %ld", 
-                next_req_pkg->req_->get_last_log_idx(), pending_read_reqs_.size());
         }
     }
 
