@@ -893,6 +893,7 @@ protected:
     void apply_to_not_responding_peers(const std::function<void(const ptr<peer>&)>&, int expiry = 0);
 
     ptr<resp_msg> handle_append_entries(req_msg& req);
+    bool try_start_append(ptr<peer>& p, bool make_busy_success);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
     ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);

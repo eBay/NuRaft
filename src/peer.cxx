@@ -27,14 +27,14 @@ limitations under the License.
 
 namespace nuraft {
 
-void peer::send_req( ptr<peer> myself,
+bool peer::send_req( ptr<peer> myself,
                      ptr<req_msg>& req,
                      rpc_handler& handler )
 {
     if (abandoned_) {
         p_er("peer %d has been shut down, cannot send request",
              config_->get_id());
-        return;
+        return false;
     }
 
     if (req) {
@@ -52,9 +52,17 @@ void peer::send_req( ptr<peer> myself,
             // to serve next operation.
             p_tr("rpc local is null");
             set_free();
-            return;
+            return false;
         }
         rpc_local = rpc_;
+        if (req->get_type() == msg_type::append_entries_request) {
+            if (is_busy()) {
+                flying_requests_count++;
+            } else {
+                p_tr("busy lock is released");
+                return false;
+            }
+        }
     }
     rpc_handler h = (rpc_handler)std::bind
                     ( &peer::handle_rpc_result,
@@ -67,6 +75,15 @@ void peer::send_req( ptr<peer> myself,
                       std::placeholders::_2 );
     if (rpc_local) {
         rpc_local->send(req, h);
+    }
+    return true;
+}
+
+void peer::try_set_free() {
+    flying_requests_count--;
+    if (flying_requests_count == 0) {
+        append_done();
+        set_free();
     }
 }
 
@@ -84,7 +101,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                               ptr<rpc_exception>& err )
 {
     const static std::unordered_set<int> msg_types_to_free( {
-        msg_type::append_entries_request,
+        // msg_type::append_entries_request,
         msg_type::install_snapshot_request,
         msg_type::request_vote_request,
         msg_type::pre_vote_request,
@@ -130,6 +147,8 @@ void peer::handle_rpc_result( ptr<peer> myself,
             //   it may free the peer even though new RPC client is already created.
             if ( msg_types_to_free.find(req->get_type()) != msg_types_to_free.end() ) {
                 set_free();
+            } else if (req->get_type() == msg_type::append_entries_request) {
+                try_set_free();
             }
         }
 
@@ -231,6 +250,7 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         //   hence reset timer.
         reset_active_timer();
 
+        reset_stream();
         set_free();
         set_manual_free();
         return true;

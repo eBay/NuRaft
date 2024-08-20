@@ -77,6 +77,12 @@ public:
         , lost_by_leader_(false)
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
+        , last_streamed_log_idx_(0)
+        , stream_mode_flag_(false)
+        , append_log_flag_(false)
+        , first_append_log_flag_(false)
+        , writing_flag_(false)
+        , flying_requests_count(0)
         , l_(logger)
     {
         reset_ls_timer();
@@ -215,7 +221,7 @@ public:
         hb_interval_ = new_interval;
     }
 
-    void send_req(ptr<peer> myself,
+    bool send_req(ptr<peer> myself,
                   ptr<req_msg>& req,
                   rpc_handler& handler);
 
@@ -303,6 +309,56 @@ public:
     ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
     rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
 
+    ulong get_last_streamed_log_idx() {
+        return last_streamed_log_idx_.load();
+    }
+
+    void set_last_streamed_log_idx(ulong idx) {
+        last_streamed_log_idx_.store(idx);
+    }
+
+    bool start_writing() {
+        bool f = false;
+        return writing_flag_.compare_exchange_strong(f, true);
+    }
+
+    void write_done() {
+        writing_flag_.store(false);
+    }
+
+    void enable_stream() {
+        stream_mode_flag_.store(true);
+    }
+
+    void disable_stream() {
+        stream_mode_flag_.store(false);
+    }
+
+    bool is_streaming() const {
+        return stream_mode_flag_ && append_log_flag_;
+    }
+
+    void start_append() {
+        append_log_flag_.store(true);
+    }
+
+    void append_done() {
+        append_log_flag_.store(false);
+    }
+
+    void first_append() {
+        first_append_log_flag_.store(true);
+    }
+
+    bool try_finish_first_append() {
+        bool f = true;
+        return first_append_log_flag_.compare_exchange_strong(f, false);
+    }
+
+    void reset_flying_requests() {
+        flying_requests_count = 0;
+    }
+
     bool is_lost() const { return lost_by_leader_; }
     void set_lost() { lost_by_leader_ = true; }
     void set_recovered() { lost_by_leader_ = false; }
@@ -314,6 +370,17 @@ private:
                            ptr<rpc_result>& pending_result,
                            ptr<resp_msg>& resp,
                            ptr<rpc_exception>& err);
+
+    void try_set_free();
+
+    void reset_stream() {
+        set_last_streamed_log_idx(0);
+        try_finish_first_append();
+        append_done();
+        write_done();
+        disable_stream();
+        reset_flying_requests();
+    }
 
     /**
      * Information (config) of this server.
@@ -518,6 +585,36 @@ private:
      * Handler for reserved message.
      */
     rpc_handler rsv_msg_handler_;
+
+    /**
+     * Last log index sent in stream mode.
+     */
+    std::atomic<ulong> last_streamed_log_idx_;
+
+    /**
+     * `true` if we enable stream mode.
+     */
+    std::atomic<bool> stream_mode_flag_;
+
+    /**
+     * `true` if peer is locked by appending log.
+     */
+    std::atomic<bool> append_log_flag_;
+
+    /**
+     * `true` if the peer lock was acquired in non-stream mode.
+     */
+    std::atomic<bool> first_append_log_flag_;
+
+    /**
+     * `true` if this peer is processing append log request.
+     */
+    std::atomic<bool> writing_flag_;
+
+    /**
+     * Count of flying requests sent by this peer.
+     */
+    ulong flying_requests_count;
 
     /**
      * Logger instance.

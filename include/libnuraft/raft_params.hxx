@@ -97,6 +97,7 @@ struct raft_params {
         , use_bg_thread_for_snapshot_io_(false)
         , use_full_consensus_among_healthy_members_(false)
         , parallel_log_appending_(false)
+        , enable_stream_mode_(false)
         {}
 
     /**
@@ -604,6 +605,8 @@ public:
      * before returning the response.
      */
     bool parallel_log_appending_;
+
+    bool enable_stream_mode_;
 };
 
 }
