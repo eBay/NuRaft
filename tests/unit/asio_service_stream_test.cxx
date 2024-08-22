@@ -43,7 +43,7 @@ public:
         open_logs();
     }
 
-    bool wait_for_responses(int timeout_ms = 3000) {
+    int wait_for_responses(int timeout_ms = 3000) {
         TestSuite::_msg("wait for responses (up to %d ms)\n", timeout_ms);
         ea_.wait_ms(timeout_ms);
         CHK_EQ(next_log_index_.load(), num_messages_sent_.load() + 1);
@@ -431,15 +431,15 @@ int main(int argc, char** argv) {
     TestSuite ts(argc, argv);
     ts.options.printTestMessage = true;
 
-    // ts.doTest("stream server happy path test",
-    //           stream_server_happy_path_test);
-    // ts.doTest("client send msg to wrong endpoint test", 
-    //           client_send_to_wrong_endpoint_test);
-    // ts.doTest("client close after sending test",
-    //           client_close_after_sending_test);
+    ts.doTest("stream server happy path test",
+              stream_server_happy_path_test);
+    ts.doTest("client send msg to wrong endpoint test",
+              client_send_to_wrong_endpoint_test);
+    ts.doTest("client close after sending test",
+              client_close_after_sending_test);
     ts.doTest("server timeout test",
               server_timeout_test);
-    // ts.doTest("server close after sending test",
-    //           server_close_after_sending_test);
+    ts.doTest("server close after sending test",
+              server_close_after_sending_test);
     return 0;
 }
