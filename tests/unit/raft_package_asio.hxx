@@ -90,7 +90,8 @@ public:
     void initServer(bool enable_ssl = false,
                     bool use_global_asio = false,
                     bool use_bg_snapshot_io = true,
-                    const raft_server::init_options& opt = raft_server::init_options()) {
+                    const raft_server::init_options& opt = raft_server::init_options(),
+                    bool use_stream_asio = false) {
         std::string log_file_name = "./srv" + std::to_string(myId) + ".log";
         myLogWrapper = cs_new<logger_wrapper>(log_file_name);
         myLog = myLogWrapper;
@@ -100,6 +101,10 @@ public:
 
         asio_service::options asio_opt;
         asio_opt.thread_pool_size_  = 4;
+        if (use_stream_asio) {
+            asio_opt.streaming_mode_ = true;
+        }
+        
         if (enable_ssl) {
             asio_opt.enable_ssl_        = enable_ssl;
             asio_opt.verify_sn_         = RaftAsioPkg::verifySn;

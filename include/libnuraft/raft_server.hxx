@@ -893,6 +893,7 @@ protected:
     void apply_to_not_responding_peers(const std::function<void(const ptr<peer>&)>&, int expiry = 0);
 
     ptr<resp_msg> handle_append_entries(req_msg& req);
+    bool try_start_append(ptr<peer>& p, bool make_busy_success);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
     ptr<resp_msg> handle_vote_req(req_msg& req);
     ptr<resp_msg> handle_cli_req_prelock(req_msg& req, const req_ext_params& ext_params);
@@ -929,6 +930,7 @@ protected:
     void request_vote(bool force_vote);
     void request_append_entries();
     bool request_append_entries(ptr<peer> p);
+    bool send_request(ptr<peer>& p, ptr<req_msg>& msg, rpc_handler& m_handler);
     void handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
     void handle_append_entries_resp(resp_msg& resp);
     void handle_install_snapshot_resp(resp_msg& resp);
@@ -946,7 +948,7 @@ protected:
     void handle_join_leave_rpc_err(msg_type t_msg, ptr<peer> p);
     void reset_srv_to_join();
     void reset_srv_to_leave();
-    ptr<req_msg> create_append_entries_req(ptr<peer>& pp);
+    ptr<req_msg> create_append_entries_req(ptr<peer>& pp, ulong last_streamed_log_idx = 0);
     ptr<req_msg> create_sync_snapshot_req(ptr<peer>& pp,
                                           ulong last_log_idx,
                                           ulong term,

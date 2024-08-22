@@ -83,17 +83,6 @@ void peer::handle_rpc_result( ptr<peer> myself,
                               ptr<resp_msg>& resp,
                               ptr<rpc_exception>& err )
 {
-    const static std::unordered_set<int> msg_types_to_free( {
-        msg_type::append_entries_request,
-        msg_type::install_snapshot_request,
-        msg_type::request_vote_request,
-        msg_type::pre_vote_request,
-        msg_type::leave_cluster_request,
-        msg_type::custom_notification_request,
-        msg_type::reconnect_request,
-        msg_type::priority_change_request
-    } );
-
     if (abandoned_) {
         p_in("peer %d has been shut down, ignore response.", config_->get_id());
         return;
@@ -128,9 +117,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
             // WARNING:
             //   `set_free()` should be protected by `rpc_protector_`, otherwise
             //   it may free the peer even though new RPC client is already created.
-            if ( msg_types_to_free.find(req->get_type()) != msg_types_to_free.end() ) {
-                set_free();
-            }
+            try_set_free(req->get_type());
         }
 
         reset_active_timer();
@@ -165,11 +152,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
             uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;
             if (cur_rpc_id == given_rpc_id) {
                 rpc_.reset();
-                if ( msg_types_to_free.find(req->get_type()) !=
-                         msg_types_to_free.end() ) {
-                    set_free();
-                }
-
+                try_set_free(req->get_type());
             } else {
                 // WARNING (MONSTOR-9378):
                 //   RPC client has been reset before this request returns
@@ -184,6 +167,31 @@ void peer::handle_rpc_result( ptr<peer> myself,
                       my_rpc_client.get(),
                       given_rpc_id );
             }
+        }
+    }
+}
+
+void peer::try_set_free(msg_type type) {
+    const static std::unordered_set<int> msg_types_to_free( {
+        // msg_type::append_entries_request,
+        msg_type::install_snapshot_request,
+        msg_type::request_vote_request,
+        msg_type::pre_vote_request,
+        msg_type::leave_cluster_request,
+        msg_type::custom_notification_request,
+        msg_type::reconnect_request,
+        msg_type::priority_change_request
+    } );
+
+    if ( msg_types_to_free.find(type) !=
+                msg_types_to_free.end() ) {
+        set_free();
+    }
+
+    if (type == msg_type::append_entries_request) {
+        flying_append_entry_request_.fetch_sub(1);
+        if (!is_streaming()) {
+            set_free();
         }
     }
 }
@@ -231,6 +239,8 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         //   hence reset timer.
         reset_active_timer();
 
+        reset_stream();
+        flying_append_entry_request_.store(0);
         set_free();
         set_manual_free();
         return true;

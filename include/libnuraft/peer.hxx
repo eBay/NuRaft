@@ -77,6 +77,9 @@ public:
         , lost_by_leader_(false)
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
+        , last_streamed_log_idx_(0)
+        , max_log_gap_in_stream_( ctx.get_params()->max_log_gap_in_stream_ )
+        , flying_append_entry_request_(0)
         , l_(logger)
     {
         reset_ls_timer();
@@ -303,6 +306,37 @@ public:
     ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
     rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
 
+    ulong get_last_streamed_log_idx() {
+        return last_streamed_log_idx_.load();
+    }
+
+    void set_last_streamed_log_idx(ulong expected, ulong idx) {
+        last_streamed_log_idx_.compare_exchange_strong(expected, idx);
+    }
+
+    bool is_streaming() {
+        return max_log_gap_in_stream_ > 0;
+    }
+
+    int32 get_max_log_gap_in_stream() {
+        return max_log_gap_in_stream_;
+    }
+
+    void reset_stream() {
+        last_streamed_log_idx_.store(0);
+    }
+
+    bool start_append_entry() {
+        ulong expected = 0;
+        return flying_append_entry_request_.compare_exchange_strong(expected, 1);
+    }
+
+    void add_append_entry_request() {
+        flying_append_entry_request_.fetch_add(1);
+    }
+
+    void try_set_free(msg_type type);
+
     bool is_lost() const { return lost_by_leader_; }
     void set_lost() { lost_by_leader_ = true; }
     void set_recovered() { lost_by_leader_ = false; }
@@ -518,6 +552,18 @@ private:
      * Handler for reserved message.
      */
     rpc_handler rsv_msg_handler_;
+
+    /**
+     * Last log index sent in stream mode.
+     */
+    std::atomic<ulong> last_streamed_log_idx_;
+
+    int32 max_log_gap_in_stream_;
+
+    /**
+     * if `true`, this peer is in stream mode.
+     */
+    std::atomic<ulong> flying_append_entry_request_;
 
     /**
      * Logger instance.
