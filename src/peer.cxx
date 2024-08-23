@@ -189,8 +189,9 @@ void peer::try_set_free(msg_type type) {
     }
 
     if (type == msg_type::append_entries_request) {
-        flying_append_entry_request_.fetch_sub(1);
-        if (!is_streaming()) {
+        if (is_streaming()) {
+            flying_append_entry_request_.fetch_sub(1);
+        } else {
             set_free();
         }
     }
