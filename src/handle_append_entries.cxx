@@ -1091,9 +1091,10 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         // Try enable stream here
         int32 max_gap_in_stream = ctx_->get_params()->max_log_gap_in_stream_;
         ulong acceptable_precommit_idx = resp.get_next_idx() +
-                                        max_gap_in_stream;
+                                         max_gap_in_stream;
+        ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
         if (max_gap_in_stream > 0 &&
-            p->get_last_streamed_log_idx() == 0 && 
+            last_streamed_log_idx == 0 && 
             resp.get_next_idx() > 0 &&
             p->get_last_sent_idx() < resp.get_next_idx() && 
             precommit_index_ < acceptable_precommit_idx) {
@@ -1101,12 +1102,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         }
 
         // Even we check streamed log index here, catch up may send empty request.
-        ulong next_sent_log = p->get_last_streamed_log_idx() + 1;
-        if (next_sent_log == 1) {
-            next_sent_log = resp.get_next_idx();
-        }
+        ulong next_idx_to_send = last_streamed_log_idx 
+                                 ? last_streamed_log_idx + 1 
+                                 : resp.get_next_idx();
         need_to_catchup = p->clear_pending_commit() ||
-                          next_sent_log < log_store_->next_slot();
+                          next_idx_to_send < log_store_->next_slot();
 
     } else {
         std::lock_guard<std::mutex> guard(p->get_lock());
