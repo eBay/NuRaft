@@ -78,8 +78,6 @@ public:
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
         , last_streamed_log_idx_(0)
-        , max_log_gap_in_stream_( ctx.get_params()->max_log_gap_in_stream_ )
-        , flying_append_entry_request_(0)
         , l_(logger)
     {
         reset_ls_timer();
@@ -220,7 +218,8 @@ public:
 
     void send_req(ptr<peer> myself,
                   ptr<req_msg>& req,
-                  rpc_handler& handler);
+                  rpc_handler& handler,
+                  bool streaming = false);
 
     void shutdown();
 
@@ -314,28 +313,11 @@ public:
         last_streamed_log_idx_.compare_exchange_strong(expected, idx);
     }
 
-    bool is_streaming() {
-        return max_log_gap_in_stream_ > 0;
-    }
-
-    int32 get_max_log_gap_in_stream() {
-        return max_log_gap_in_stream_;
-    }
-
     void reset_stream() {
         last_streamed_log_idx_.store(0);
     }
 
-    bool start_append_entry() {
-        ulong expected = 0;
-        return flying_append_entry_request_.compare_exchange_strong(expected, 1);
-    }
-
-    void add_append_entry_request() {
-        flying_append_entry_request_.fetch_add(1);
-    }
-
-    void try_set_free(msg_type type);
+    void try_set_free(msg_type type, bool streaming);
 
     bool is_lost() const { return lost_by_leader_; }
     void set_lost() { lost_by_leader_ = true; }
@@ -346,6 +328,7 @@ private:
                            ptr<rpc_client> my_rpc_client,
                            ptr<req_msg>& req,
                            ptr<rpc_result>& pending_result,
+                           bool streaming,
                            ptr<resp_msg>& resp,
                            ptr<rpc_exception>& err);
 
@@ -557,13 +540,6 @@ private:
      * Last log index sent in stream mode.
      */
     std::atomic<ulong> last_streamed_log_idx_;
-
-    int32 max_log_gap_in_stream_;
-
-    /**
-     * if `true`, this peer is in stream mode.
-     */
-    std::atomic<ulong> flying_append_entry_request_;
 
     /**
      * Logger instance.

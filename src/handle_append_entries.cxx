@@ -271,7 +271,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         }
     }
 
-    if (p->is_streaming()) {
+    if (ctx_->get_params()->max_log_gap_in_stream_ > 0) {
         // If reserved message exists, process it first.
         ptr<req_msg> msg = p->get_rsv_msg();
         rpc_handler m_handler = p->get_rsv_msg_handler();
@@ -290,23 +290,12 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             if (msg) {
                 p_tr("send request to %d\n in stream mode, last streamed log idx: %ld", 
                      (int)p->get_id(), last_streamed_log_idx);
-                if (msg->get_type() == msg_type::append_entries_request) {
-                    // two condition
-                    // 1. streaming is on
-                    // 2. streaming is off, but it is the first request
-                    if (last_streamed_log_idx == 0
-                            && p->start_append_entry()) {
-                        p_tr("send first request to %d\n in stream mode, "
-                             "start idx: %ld", (int)p->get_id(), 
-                             msg->get_last_log_idx());
-                        return send_request(p, msg, m_handler);
-                    } else if (last_streamed_log_idx > 0) {
-                        p_tr("send following request to %d\n in stream mode, " 
-                             "start idx: %ld", (int)p->get_id(), 
-                             msg->get_last_log_idx());
-                        p->add_append_entry_request();
-                        return send_request(p, msg, m_handler);
-                    }
+                if (msg->get_type() == msg_type::append_entries_request &&
+                    last_streamed_log_idx > 0) {
+                    p_tr("send following request to %d\n in stream mode, " 
+                            "start idx: %ld", (int)p->get_id(), 
+                            msg->get_last_log_idx());
+                    return send_request(p, msg, m_handler, true);
                 } else {
                     if (p->make_busy()) {
                         p_tr("send %s request to %d\n in stream mode", 
@@ -381,7 +370,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
 
 bool raft_server::send_request(ptr<peer>& p, 
                                ptr<req_msg>& msg, 
-                               rpc_handler& m_handler) {
+                               rpc_handler& m_handler,
+                               bool streaming) {
     if (!p->is_manual_free()) {
         // Actual recovery.
         if ( p->get_long_puase_warnings() >=
@@ -493,9 +483,11 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,ulong last_st
     // return nullptr to indicate such errors.
     ulong end_idx = std::min( cur_nxt_idx,
                               last_log_idx + 1 + ctx_->get_params()->max_append_size_ );
-    if (last_streamed_log_idx > 0) {
-        end_idx = std::min( end_idx, last_log_idx + (p.get_max_log_gap_in_stream() - 
-                            (last_streamed_log_idx - p.get_next_log_idx() + 1)) );
+    // max_acceptable_stream_log may be smaller than 0
+    ulong max_acceptable_stream_log = ctx_->get_params()->max_log_gap_in_stream_ - 
+                                      (last_streamed_log_idx - p.get_next_log_idx() + 1);
+    if (last_streamed_log_idx > 0 && max_acceptable_stream_log > 0) {
+        end_idx = std::min( end_idx, last_log_idx + max_acceptable_stream_log );
     }
 
     // NOTE: If this is a retry, probably the follower is down.
@@ -1097,13 +1089,14 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         commit( committed_index );
 
         // Try enable stream here
-        ulong accepted_precommit_idx = resp.get_next_idx() +
-                                        p->get_max_log_gap_in_stream();
-        if (p->is_streaming() &&
+        int32 max_gap_in_stream = ctx_->get_params()->max_log_gap_in_stream_;
+        ulong acceptable_precommit_idx = resp.get_next_idx() +
+                                        max_gap_in_stream;
+        if (max_gap_in_stream > 0 &&
             p->get_last_streamed_log_idx() == 0 && 
             resp.get_next_idx() > 0 &&
             p->get_last_sent_idx() < resp.get_next_idx() && 
-            precommit_index_ < accepted_precommit_idx) {
+            precommit_index_ < acceptable_precommit_idx) {
             p->set_last_streamed_log_idx(0, resp.get_next_idx() - 1);
         }
 

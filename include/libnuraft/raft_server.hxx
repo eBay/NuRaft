@@ -929,7 +929,7 @@ protected:
     void request_vote(bool force_vote);
     void request_append_entries();
     bool request_append_entries(ptr<peer> p);
-    bool send_request(ptr<peer>& p, ptr<req_msg>& msg, rpc_handler& m_handler);
+    bool send_request(ptr<peer>& p, ptr<req_msg>& msg, rpc_handler& m_handler, bool streaming = false);
     void handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err);
     void handle_append_entries_resp(resp_msg& resp);
     void handle_install_snapshot_resp(resp_msg& resp);

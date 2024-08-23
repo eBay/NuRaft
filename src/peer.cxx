@@ -29,7 +29,8 @@ namespace nuraft {
 
 void peer::send_req( ptr<peer> myself,
                      ptr<req_msg>& req,
-                     rpc_handler& handler )
+                     rpc_handler& handler,
+                     bool streaming )
 {
     if (abandoned_) {
         p_er("peer %d has been shut down, cannot send request",
@@ -63,6 +64,7 @@ void peer::send_req( ptr<peer> myself,
                       rpc_local,
                       req,
                       pending,
+                      streaming,
                       std::placeholders::_1,
                       std::placeholders::_2 );
     if (rpc_local) {
@@ -80,6 +82,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                               ptr<rpc_client> my_rpc_client,
                               ptr<req_msg>& req,
                               ptr<rpc_result>& pending_result,
+                              bool streaming,
                               ptr<resp_msg>& resp,
                               ptr<rpc_exception>& err )
 {
@@ -117,7 +120,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
             // WARNING:
             //   `set_free()` should be protected by `rpc_protector_`, otherwise
             //   it may free the peer even though new RPC client is already created.
-            try_set_free(req->get_type());
+            try_set_free(req->get_type(), streaming);
         }
 
         reset_active_timer();
@@ -152,7 +155,8 @@ void peer::handle_rpc_result( ptr<peer> myself,
             uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;
             if (cur_rpc_id == given_rpc_id) {
                 rpc_.reset();
-                try_set_free(req->get_type());
+                reset_stream();
+                try_set_free(req->get_type(), streaming);
             } else {
                 // WARNING (MONSTOR-9378):
                 //   RPC client has been reset before this request returns
@@ -171,7 +175,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
     }
 }
 
-void peer::try_set_free(msg_type type) {
+void peer::try_set_free(msg_type type, bool streaming) {
     const static std::unordered_set<int> msg_types_to_free( {
         // msg_type::append_entries_request,
         msg_type::install_snapshot_request,
@@ -188,12 +192,8 @@ void peer::try_set_free(msg_type type) {
         set_free();
     }
 
-    if (type == msg_type::append_entries_request) {
-        if (is_streaming()) {
-            flying_append_entry_request_.fetch_sub(1);
-        } else {
-            set_free();
-        }
+    if (type == msg_type::append_entries_request && !streaming) {
+        set_free();
     }
 }
 
@@ -241,7 +241,6 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         reset_active_timer();
 
         reset_stream();
-        flying_append_entry_request_.store(0);
         set_free();
         set_manual_free();
         return true;
