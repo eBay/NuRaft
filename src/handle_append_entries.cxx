@@ -271,77 +271,64 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         }
     }
 
-    if (ctx_->get_params()->max_log_gap_in_stream_ > 0) {
-        // If reserved message exists, process it first.
-        ptr<req_msg> msg = p->get_rsv_msg();
-        rpc_handler m_handler = p->get_rsv_msg_handler();
-        if (msg) {
-            if (p->make_busy()) {
-                // Clear the reserved message.
-                p->set_rsv_msg(nullptr, nullptr);
-                p_in("found reserved message to peer %d, type %d",
-                        p->get_id(), msg->get_type());
-                return send_request(p, msg, m_handler);
-            }
-        } else {
-            ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
-            msg = create_append_entries_req(p, last_streamed_log_idx);
-            m_handler = resp_handler_;
-            if (msg) {
-                p_tr("send request to %d\n in stream mode, last streamed log idx: %ld", 
-                     (int)p->get_id(), last_streamed_log_idx);
-                if (msg->get_type() == msg_type::append_entries_request &&
-                    last_streamed_log_idx > 0) {
-                    p_tr("send following request to %d\n in stream mode, " 
-                            "start idx: %ld", (int)p->get_id(), 
-                            msg->get_last_log_idx());
-                    return send_request(p, msg, m_handler, true);
-                } else {
-                    if (p->make_busy()) {
-                        p_tr("send %s request to %d\n in stream mode", 
-                             msg_type_to_string(msg->get_type()).c_str(),
-                             (int)p->get_id());
-                        return send_request(p, msg, m_handler);
-                    }
-                }
-            } else {
-                if ( params->use_bg_thread_for_snapshot_io_ &&
-                    p->get_snapshot_sync_ctx() ) {
-                    // If this is an async snapshot request, invoke IO thread.
-                    snapshot_io_mgr::instance().invoke();
-                }
-                return true;
-            }
+    // If reserved message exists, process it first.
+    ptr<req_msg> msg = p->get_rsv_msg();
+    rpc_handler m_handler = p->get_rsv_msg_handler();
+    if (msg) {
+        if (p->make_busy()) {
+            // Clear the reserved message.
+            p->set_rsv_msg(nullptr, nullptr);
+            p_in("found reserved message to peer %d, type %d",
+                    p->get_id(), msg->get_type());
+            return send_request(p, msg, m_handler);
         }
     } else {
-        if (p->make_busy()) {
+        ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
+        bool streaming = last_streamed_log_idx > 0;
+
+        if (streaming || p->make_busy()) {
             p_tr("send request to %d\n", (int)p->get_id());
+            msg = create_append_entries_req(p, last_streamed_log_idx);
+            m_handler = resp_handler_;
 
-            // If reserved message exists, process it first.
-            ptr<req_msg> msg = p->get_rsv_msg();
-            rpc_handler m_handler = p->get_rsv_msg_handler();
             if (msg) {
-                // Clear the reserved message.
-                p->set_rsv_msg(nullptr, nullptr);
-                p_in("found reserved message to peer %d, type %d",
-                    p->get_id(), msg->get_type());
-            } else {
-                // Normal message.
-                msg = create_append_entries_req(p);
-                m_handler = resp_handler_;
-            }
+                streaming = streaming && 
+                            msg->get_type() == msg_type::append_entries_request;
+                bool make_busy_result = p->is_busy();
+                if (streaming) {
+                    // trottling
+                    if (ctx_->get_params()->max_log_gap_in_stream_ + 
+                        p->get_next_log_idx() < (last_streamed_log_idx + 1)) {
+                        p_wn("flying log entry exceeds %d in stream mode, skip this request",
+                             ctx_->get_params()->max_log_gap_in_stream_);
+                        streaming = false;
+                    } else {
+                        p_tr("send following request to %d in stream mode, " 
+                             "start idx: %ld", (int)p->get_id(), 
+                             msg->get_last_log_idx());
+                        p->set_last_streamed_log_idx(
+                            last_streamed_log_idx, 
+                            last_streamed_log_idx + msg->log_entries().size());
+                    }
+                } else if (!make_busy_result) {
+                    make_busy_result = p->make_busy();
+                }
 
-            if (!msg) {
-                // Even normal message doesn't exist.
-                p->set_free();
+                if (streaming || make_busy_result) {
+                    return send_request(p, msg, m_handler, streaming);
+                }
+            } else {
+                if (!streaming) {
+                    p->set_free();
+                }
+
                 if ( params->use_bg_thread_for_snapshot_io_ &&
-                    p->get_snapshot_sync_ctx() ) {
+                     p->get_snapshot_sync_ctx() ) {
                     // If this is an async snapshot request, invoke IO thread.
                     snapshot_io_mgr::instance().invoke();
                 }
                 return true;
             }
-            return send_request(p, msg, m_handler);
         }
     }
 
@@ -427,7 +414,8 @@ bool raft_server::send_request(ptr<peer>& p,
     return true;
 }
 
-ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,ulong last_streamed_log_idx) {
+ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
+                                                    ulong custom_last_log_idx) {
     peer& p = *pp;
     ulong cur_nxt_idx(0L);
     ulong commit_idx(0L);
@@ -449,8 +437,8 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,ulong last_st
             p.set_next_log_idx(cur_nxt_idx);
         }
 
-        if (last_streamed_log_idx > 0) {
-            last_log_idx = last_streamed_log_idx;
+        if (custom_last_log_idx > 0) {
+            last_log_idx = custom_last_log_idx;
         } else {
             last_log_idx = p.get_next_log_idx() - 1;
         }
@@ -483,12 +471,6 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,ulong last_st
     // return nullptr to indicate such errors.
     ulong end_idx = std::min( cur_nxt_idx,
                               last_log_idx + 1 + ctx_->get_params()->max_append_size_ );
-    // max_acceptable_stream_log may be smaller than 0
-    ulong max_acceptable_stream_log = ctx_->get_params()->max_log_gap_in_stream_ - 
-                                      (last_streamed_log_idx - p.get_next_log_idx() + 1);
-    if (last_streamed_log_idx > 0 && max_acceptable_stream_log > 0) {
-        end_idx = std::min( end_idx, last_log_idx + max_acceptable_stream_log );
-    }
 
     // NOTE: If this is a retry, probably the follower is down.
     //       Send just one log until it comes back
@@ -608,10 +590,6 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,ulong last_st
         v.insert(v.end(), log_entries->begin(), log_entries->end());
     }
     p.set_last_sent_idx(last_log_idx + 1);
-    if (last_streamed_log_idx > 0) {
-        p.set_last_streamed_log_idx(last_streamed_log_idx,
-        last_log_idx + req->log_entries().size());
-    }
 
     return req;
 }
