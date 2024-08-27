@@ -296,10 +296,10 @@ bool raft_server::request_append_entries(ptr<peer> p) {
                             msg->get_type() == msg_type::append_entries_request;
                 bool make_busy_result = p->is_busy();
                 if (streaming) {
-                    // trottling
+                    // throttling
                     if (ctx_->get_params()->max_log_gap_in_stream_ + 
                         p->get_next_log_idx() < (last_streamed_log_idx + 1)) {
-                        p_wn("flying log entry exceeds %d in stream mode, skip this request",
+                        p_db("flying log entry exceeds %d in stream mode, skip this request",
                              ctx_->get_params()->max_log_gap_in_stream_);
                         streaming = false;
                     } else {
