@@ -77,6 +77,7 @@ public:
         , lost_by_leader_(false)
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
+        , last_streamed_log_idx_(0)
         , l_(logger)
     {
         reset_ls_timer();
@@ -217,7 +218,8 @@ public:
 
     void send_req(ptr<peer> myself,
                   ptr<req_msg>& req,
-                  rpc_handler& handler);
+                  rpc_handler& handler,
+                  bool streaming = false);
 
     void shutdown();
 
@@ -303,6 +305,20 @@ public:
     ptr<req_msg> get_rsv_msg() const { return rsv_msg_; }
     rpc_handler get_rsv_msg_handler() const { return rsv_msg_handler_; }
 
+    ulong get_last_streamed_log_idx() {
+        return last_streamed_log_idx_.load();
+    }
+
+    void set_last_streamed_log_idx(ulong expected, ulong idx) {
+        last_streamed_log_idx_.compare_exchange_strong(expected, idx);
+    }
+
+    void reset_stream() {
+        last_streamed_log_idx_.store(0);
+    }
+
+    void try_set_free(msg_type type, bool streaming);
+
     bool is_lost() const { return lost_by_leader_; }
     void set_lost() { lost_by_leader_ = true; }
     void set_recovered() { lost_by_leader_ = false; }
@@ -312,6 +328,7 @@ private:
                            ptr<rpc_client> my_rpc_client,
                            ptr<req_msg>& req,
                            ptr<rpc_result>& pending_result,
+                           bool streaming,
                            ptr<resp_msg>& resp,
                            ptr<rpc_exception>& err);
 
@@ -518,6 +535,11 @@ private:
      * Handler for reserved message.
      */
     rpc_handler rsv_msg_handler_;
+
+    /**
+     * Last log index sent in stream mode.
+     */
+    std::atomic<ulong> last_streamed_log_idx_;
 
     /**
      * Logger instance.
