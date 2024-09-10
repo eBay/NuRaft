@@ -284,10 +284,17 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         }
     } else {
         ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
+        int32 max_gap_in_stream = ctx_->get_params()->max_log_gap_in_stream_;
+        if (last_streamed_log_idx > 0 && max_gap_in_stream == 0) {
+            p_in("disable stream mode at runtime");
+            last_streamed_log_idx = 0;
+            p->reset_stream();
+        }
         bool streaming = last_streamed_log_idx > 0;
 
         if (streaming || p->make_busy()) {
-            p_tr("send request to %d\n", (int)p->get_id());
+            p_tr("send request to %d, streaming: %d, is_busy: %d\n", (int)p->get_id(),
+                 streaming, p->is_busy());
             msg = create_append_entries_req(p, last_streamed_log_idx);
             m_handler = resp_handler_;
 
@@ -297,10 +304,10 @@ bool raft_server::request_append_entries(ptr<peer> p) {
                 bool make_busy_result = p->is_busy();
                 if (streaming) {
                     // throttling
-                    if (ctx_->get_params()->max_log_gap_in_stream_ + 
-                        p->get_next_log_idx() < (last_streamed_log_idx + 1)) {
-                        p_db("flying log entry exceeds %d in stream mode, skip this request",
-                             ctx_->get_params()->max_log_gap_in_stream_);
+                    if (max_gap_in_stream + p->get_next_log_idx() 
+                        <= (last_streamed_log_idx + 1)) {
+                        p_db("flying log entry exceeds %d in stream mode, "
+                             "skip this request", max_gap_in_stream);
                         streaming = false;
                     } else {
                         p_tr("send following request to %d in stream mode, " 
@@ -388,7 +395,7 @@ bool raft_server::send_request(ptr<peer>& p,
         p->reset_manual_free();
     }
 
-    p->send_req(p, msg, m_handler);
+    p->send_req(p, msg, m_handler, streaming);
     p->reset_ls_timer();
 
     cb_func::Param param(id_, leader_, p->get_id(), msg.get());
@@ -1062,24 +1069,28 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                           ( cb_func::GotAppendEntryRespFromPeer, &param );
         (void)rc;
 
-        // Try to commit with this response.
-        ulong committed_index = get_expected_committed_log_idx();
-        commit( committed_index );
-
-        // Try enable stream here
+        // Try to enable stream
         int32 max_gap_in_stream = ctx_->get_params()->max_log_gap_in_stream_;
         ulong acceptable_precommit_idx = resp.get_next_idx() +
                                          max_gap_in_stream;
         ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
+        p_tr("max gap: %d, acceptable_precommit_idx: %ld, last_streamed_log_idx: %ld, "
+             "last_sent: %ld, next_idx: %ld", max_gap_in_stream, 
+             acceptable_precommit_idx, last_streamed_log_idx, p->get_last_sent_idx(), 
+             resp.get_next_idx());
         if (max_gap_in_stream > 0 &&
             last_streamed_log_idx == 0 && 
             resp.get_next_idx() > 0 &&
             p->get_last_sent_idx() < resp.get_next_idx() && 
             precommit_index_ < acceptable_precommit_idx) {
+            p_in("start stream mode at idx: %ld", resp.get_next_idx() - 1);
             p->set_last_streamed_log_idx(0, resp.get_next_idx() - 1);
         }
 
-        // Even we check streamed log index here, catch up may send empty request.
+        // Try to commit with this response.
+        ulong committed_index = get_expected_committed_log_idx();
+        commit( committed_index );
+
         ulong next_idx_to_send = last_streamed_log_idx 
                                  ? last_streamed_log_idx + 1 
                                  : resp.get_next_idx();
