@@ -1628,7 +1628,7 @@ ulong raft_server::term_for_log(ulong log_idx) {
         }
         p_lv(log_lv, "log_store_->start_index() %" PRIu64, log_store_->start_index());
         //ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
-        //::exit(-1);
+        //::pthread_exit(nullptr);
         return 0L;
     }
 

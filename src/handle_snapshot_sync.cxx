@@ -123,7 +123,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
                      last_log_idx, snp->get_last_log_idx());
             }
             ctx_->state_mgr_->system_exit(raft_err::N16_snapshot_for_peer_not_found);
-            ::exit(-1);
+            ::pthread_exit(nullptr);
             return ptr<req_msg>();
             // LCOV_EXCL_STOP
         }
@@ -135,7 +135,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
                  "machine implementation, stop the system to prevent "
                  "further errors");
             ctx_->state_mgr_->system_exit(raft_err::N17_empty_snapshot);
-            ::exit(-1);
+            ::pthread_exit(nullptr);
             return ptr<req_msg>();
             // LCOV_EXCL_STOP
         }
@@ -187,7 +187,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
                   "bytes are expected, must be something wrong, exit.",
                   sz_rd, data->size() );
             ctx_->state_mgr_->system_exit(raft_err::N18_partial_snapshot_block);
-            ::exit(-1);
+            ::pthread_exit(nullptr);
             return ptr<req_msg>();
             // LCOV_EXCL_STOP
         }
@@ -251,7 +251,7 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req, std::unique
                   req.get_src() );
             ctx_->state_mgr_->system_exit
                 ( raft_err::N10_leader_receive_InstallSnapshotRequest );
-            ::exit(-1);
+            ::pthread_exit(nullptr);
             return ptr<resp_msg>();
             // LCOV_EXCL_STOP
 
@@ -543,7 +543,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
             // LCOV_EXCL_START
             p_er("bad server role for applying a snapshot, exit for debugging");
             ctx_->state_mgr_->system_exit(raft_err::N11_not_follower_for_snapshot);
-            ::exit(-1);
+            ::pthread_exit(nullptr);
             // LCOV_EXCL_STOP
         }
 
@@ -564,7 +564,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
                 p_er("failed to apply the snapshot after log compacted, "
                      "to ensure the safety, will shutdown the system");
                 ctx_->state_mgr_->system_exit(raft_err::N12_apply_snapshot_failed);
-                ::exit(-1);
+                ::pthread_exit(nullptr);
                 return false;
                 // LCOV_EXCL_STOP
             }
@@ -608,7 +608,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
     // LCOV_EXCL_START
     p_er("failed to handle snapshot installation due to system errors");
     ctx_->state_mgr_->system_exit(raft_err::N13_snapshot_install_failed);
-    ::exit(-1);
+    ::pthread_exit(nullptr);
     return false;
     // LCOV_EXCL_STOP
  }

@@ -150,7 +150,7 @@ void raft_server::commit_in_bg() {
               "exiting to protect the system",
               err.what() );
         ctx_->state_mgr_->system_exit(raft_err::N20_background_commit_err);
-        ::exit(-1);
+        ::pthread_exit(nullptr);
         // LCOV_EXCL_STOP
      }
     }
@@ -228,7 +228,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             // LCOV_EXCL_START
             p_ft( "failed to get log entry with idx %" PRIu64 "", index_to_commit );
             ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
-            ::exit(-1);
+            ::pthread_exit(nullptr);
             // LCOV_EXCL_STOP
         }
 
@@ -239,7 +239,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             p_ft( "empty log at idx %" PRIu64 ", must be log corruption",
                   index_to_commit );
             ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
-            ::exit(-1);
+            ::pthread_exit(nullptr);
             // LCOV_EXCL_STOP
         }
 
@@ -304,7 +304,7 @@ void raft_server::commit_app_log(ulong idx_to_commit,
         p_ft( "pre-commit index %" PRIu64 " is smaller than commit index %" PRIu64,
               pc_idx, sm_idx );
         ctx_->state_mgr_->system_exit(raft_err::N23_precommit_order_inversion);
-        ::exit(-1);
+        ::pthread_exit(nullptr);
     }
     ret_value = state_machine_->commit_ext
                 ( state_machine::ext_op_params( sm_idx, buf ) );
@@ -583,7 +583,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
                      "cannot be found in current committed logs, "
                      "this is a system error, exiting");
                 ctx_->state_mgr_->system_exit(raft_err::N6_no_snapshot_found);
-                ::exit(-1);
+                ::pthread_exit(nullptr);
                 return false;
                 // LCOV_EXCL_STOP
             }
@@ -600,7 +600,7 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
                  ", committed idx %" PRIu64,
                  conf->get_log_idx(), conf->get_prev_log_idx(), committed_idx);
             //ctx_->state_mgr_->system_exit(raft_err::N7_no_config_at_idx_one);
-            //::exit(-1);
+            //::pthread_exit(nullptr);
             //return;
         }
 
