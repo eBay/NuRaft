@@ -24,6 +24,7 @@ limitations under the License.
 #include "context.hxx"
 #include "error_code.hxx"
 #include "event_awaiter.hxx"
+#include "exit_handler.hxx"
 #include "global_mgr.hxx"
 #include "handle_client_request.hxx"
 #include "handle_custom_notification.hxx"
@@ -1628,7 +1629,7 @@ ulong raft_server::term_for_log(ulong log_idx) {
         }
         p_lv(log_lv, "log_store_->start_index() %" PRIu64, log_store_->start_index());
         //ctx_->state_mgr_->system_exit(raft_err::N19_bad_log_idx_for_term);
-        //::pthread_exit(nullptr);
+        //_sys_exit(-1);
         return 0L;
     }
 
