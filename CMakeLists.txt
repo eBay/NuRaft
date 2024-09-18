@@ -78,6 +78,7 @@ endif()
 
 
 # === Compiler flags ===
+option(USE_PTHREAD_EXIT "Call pthread_exit on server threads" OFF)
 if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
@@ -95,11 +96,19 @@ if (NOT WIN32)
     else()
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
     endif ()
+    if (USE_PTHREAD_EXIT)
+        message(STATUS "Using ::pthread_exit for termination")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_PTHREAD_EXIT")
+    endif()
 
 else ()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5045 /wd4571 /wd4774 /wd4820 /wd5039 /wd4626 /wd4625 /wd5026 /wd5027 /wd4623 /wd4996 /wd4530 /wd4267 /wd4244 /W3")
     message(STATUS "---- WIN32 ----")
     set(DISABLE_SSL 1)
+
+    if (USE_PTHREAD_EXIT)
+        message(FATAL_ERROR "Using ::pthread_exit not supported on Windows")
+    endif()
 endif ()
 
 # === Disable SSL ===

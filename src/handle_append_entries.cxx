@@ -25,6 +25,7 @@ limitations under the License.
 #include "cluster_config.hxx"
 #include "error_code.hxx"
 #include "event_awaiter.hxx"
+#include "exit_handler.hxx"
 #include "handle_custom_notification.hxx"
 #include "peer.hxx"
 #include "snapshot.hxx"
@@ -406,7 +407,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
         p_er( "Peer's lastLogIndex is too large %" PRIu64 " v.s. %" PRIu64 ", ",
               last_log_idx, cur_nxt_idx );
         ctx_->state_mgr_->system_exit(raft_err::N8_peer_last_log_idx_too_large);
-        ::exit(-1);
+        _sys_exit(-1);
         return ptr<req_msg>();
         // LCOV_EXCL_STOP
     }
