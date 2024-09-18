@@ -182,7 +182,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         ea_sm_commit_exec_in_progress_->invoke();
     });
 
-    p_db( "commit upto %" PRIu64 ", curruent idx %" PRIu64,
+    p_db( "commit upto %" PRIu64 ", current idx %" PRIu64,
           quick_commit_index_.load(), sm_commit_index_.load() );
 
     ulong log_start_idx = log_store_->start_index();
@@ -268,7 +268,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
                  index_to_commit);
         }
     }
-    p_db( "DONE: commit upto %" PRIu64 ", curruent idx %" PRIu64,
+    p_db( "DONE: commit upto %" PRIu64 ", current idx %" PRIu64,
           quick_commit_index_.load(), sm_commit_index_.load() );
     if (role_ == srv_role::follower) {
         ulong leader_idx = leader_commit_index_.load();
