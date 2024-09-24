@@ -284,9 +284,11 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         }
     } else {
         ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
-        int32 max_gap_in_stream = ctx_->get_params()->max_log_gap_in_stream_;
+        int32 max_gap_in_stream = params->max_log_gap_in_stream_;
         if (last_streamed_log_idx > 0 && max_gap_in_stream == 0) {
-            p_in("disable stream mode at runtime");
+            p_in("disable stream mode for peer %d at runtime, "
+                 "current streamed log: %" PRIu64 "", p->get_id(), 
+                 last_streamed_log_idx);
             last_streamed_log_idx = 0;
             p->reset_stream();
         }
@@ -304,14 +306,14 @@ bool raft_server::request_append_entries(ptr<peer> p) {
                 bool make_busy_result = p->is_busy();
                 if (streaming) {
                     // throttling
-                    if (max_gap_in_stream + p->get_next_log_idx() 
-                        <= (last_streamed_log_idx + 1)) {
+                    if (max_gap_in_stream + p->get_next_log_idx() <= 
+                            (last_streamed_log_idx + 1)) {
                         p_db("flying log entry exceeds %d in stream mode, "
                              "skip this request", max_gap_in_stream);
                         streaming = false;
                     } else {
                         p_tr("send following request to %d in stream mode, " 
-                             "start idx: %ld", (int)p->get_id(), 
+                             "start idx: %" PRIu64 "", (int)p->get_id(), 
                              msg->get_last_log_idx());
                         p->set_last_streamed_log_idx(
                             last_streamed_log_idx, 
@@ -1074,16 +1076,18 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         ulong acceptable_precommit_idx = resp.get_next_idx() +
                                          max_gap_in_stream;
         ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
-        p_tr("max gap: %d, acceptable_precommit_idx: %ld, last_streamed_log_idx: %ld, "
-             "last_sent: %ld, next_idx: %ld", max_gap_in_stream, 
-             acceptable_precommit_idx, last_streamed_log_idx, p->get_last_sent_idx(), 
-             resp.get_next_idx());
+        p_tr("peer %d, max gap: %d, acceptable_precommit_idx: %" PRIu64 ", "
+             "last_streamed_log_idx: %" PRIu64 ", "
+             "last_sent: %" PRIu64 ", next_idx: %" PRIu64 "", p->get_id(), 
+             max_gap_in_stream, acceptable_precommit_idx, last_streamed_log_idx, 
+             p->get_last_sent_idx(), resp.get_next_idx());
         if (max_gap_in_stream > 0 &&
             last_streamed_log_idx == 0 && 
             resp.get_next_idx() > 0 &&
             p->get_last_sent_idx() < resp.get_next_idx() && 
             precommit_index_ < acceptable_precommit_idx) {
-            p_in("start stream mode at idx: %ld", resp.get_next_idx() - 1);
+            p_in("start stream mode for peer %d at idx: %" PRIu64 "", 
+                 p->get_id(), resp.get_next_idx() - 1);
             p->set_last_streamed_log_idx(0, resp.get_next_idx() - 1);
         }
 
@@ -1091,6 +1095,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         ulong committed_index = get_expected_committed_log_idx();
         commit( committed_index );
 
+        // As commit might send request, so refresh streamed log idx here
+        last_streamed_log_idx = p->get_last_streamed_log_idx();
         ulong next_idx_to_send = last_streamed_log_idx 
                                  ? last_streamed_log_idx + 1 
                                  : resp.get_next_idx();

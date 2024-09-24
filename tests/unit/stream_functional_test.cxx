@@ -1,6 +1,5 @@
 /************************************************************************
-Copyright 2017-2019 eBay Inc.
-Author/Developer(s): Jung-Sang Ahn
+Copyright 2017-present eBay Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,10 +29,10 @@ using namespace raft_functional_common;
 namespace stream_functional_test {
 
 int launch_asio_servers(const std::vector<RaftAsioPkg*>& pkgs,
-                   bool enable_ssl,
-                   bool use_global_asio = false,
-                   bool use_bg_snapshot_io = true,
-                   const raft_server::init_options& opt = raft_server::init_options()) {
+                        bool enable_ssl,
+                        bool use_global_asio = false,
+                        bool use_bg_snapshot_io = true,
+                        const raft_server::init_options& opt = raft_server::init_options()) {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
@@ -268,6 +267,7 @@ int enable_and_disable_stream_mode_test() {
 
     // Append 10 logs in non-stream mode
     CHK_Z( append_log_in_non_stream(pkgs, s1, 10) );
+    CHK_Z( s1.fNet->getNumPendingReqs(s2_addr) );
 
     // Set stream mode params
     update_stream_params(pkgs, 500);
@@ -330,6 +330,8 @@ int activate_and_deactivate_stream_mode_test() {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
         param.return_method_ = raft_params::async_handler;
+        // avoid send snapshot twice
+        param.reserved_log_items_ = 5;
         pp->raftServer->update_params(param);
     }
 
@@ -375,8 +377,8 @@ int activate_and_deactivate_stream_mode_test() {
     CHK_Z( append_log_in_stream_without_delivery(s1, s2_addr, 1, 1) );
 
     // Activate stream mode
-    // It need to re-install the snapshot because of config change, 18 reqs
-    CHK_Z( drain_pending_reqs_queue(pkgs, s1, s2_addr, 18) );
+    // 3 reqs: log 16, log 17 + commit 16, commit 17
+    CHK_Z( drain_pending_reqs_queue(pkgs, s1, s2_addr, 3) );
 
     // Append 10 logs in stream mode, pending reqs > 1
     CHK_Z( append_log_in_stream_without_delivery(s1, s2_addr, 10, 10) );
@@ -464,6 +466,7 @@ int snapshot_transmission_in_stream_mode() {
 
     // Append 10 logs in non-stream mode
     CHK_Z( append_log_in_non_stream(pkgs, s1, 10) );
+    CHK_Z( s1.fNet->getNumPendingReqs(s2_addr) );
     
     // Set stream mode params
     update_stream_params(pkgs, 500);
@@ -567,7 +570,7 @@ int main(int argc, char** argv) {
 
     // Snapshot transmission in stream mode
     ts.doTest( "snapshot transmission in stream mode",
-            snapshot_transmission_in_stream_mode );
+               snapshot_transmission_in_stream_mode );
 
     return 0;
 }
