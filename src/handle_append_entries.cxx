@@ -593,9 +593,21 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
             become_follower();
         } else if (role_ == srv_role::leader) {
             p_wn( "Receive AppendEntriesRequest from another leader (%d) "
-                  "with same term, there must be a bug. Ignore it instead of exit.",
+                  "with same term, there must be a bug. Invoking the callback.",
                   req.get_src() );
-            return nullptr;
+
+            cb_func::Param param(id_, leader_, -1, &req);
+            cb_func::ReqResp req_resp;
+            req_resp.req = &req;
+
+            ctx_->cb_func_.call(cb_func::ReceivedMisbehavingMessage, &param);
+            if (!req_resp.resp.get()) {
+                p_wn("callback function didn't return response, ignore this request");
+            } else {
+                p_wn("callback function returned response, send it back");
+            }
+            return req_resp.resp;
+
         } else {
             update_target_priority();
             // Modified by JungSang Ahn, Mar 28 2018:
