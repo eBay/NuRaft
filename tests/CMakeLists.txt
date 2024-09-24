@@ -43,14 +43,15 @@ target_link_libraries(asio_service_stream_test
                       ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
                       ${LIBRARIES})
 
-add_executable(asio_stream_test
-               unit/asio_stream_test.cxx
+add_executable(stream_functional_test
+               unit/stream_functional_test.cxx
+               unit/fake_network.cxx
                ${EXAMPLES_SRC}/logger.cc
                ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(asio_stream_test
+add_dependencies(stream_functional_test
                  static_lib
                  build_ssl_key)
-target_link_libraries(asio_stream_test
+target_link_libraries(stream_functional_test
                       ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
                       ${LIBRARIES})
 
