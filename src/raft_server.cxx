@@ -1044,7 +1044,8 @@ void raft_server::become_leader() {
             // Reset RPC client for all peers.
             // NOTE: Now we don't reset client, as we already did it
             //       during pre-vote phase.
-            // NOTE: connection will be re-used after taking over leadership
+            // NOTE: In the case that this peer takeover the leadership,
+            //       connection will be re-used
             // reconnect_client(*pp);
 
             pp->set_next_log_idx(log_store_->next_slot());
