@@ -115,12 +115,12 @@ void peer::handle_rpc_result( ptr<peer> myself,
                       cur_rpc_id,
                       my_rpc_client.get(),
                       given_rpc_id );
-                return;
+            } else {
+                // WARNING:
+                //   `set_free()` should be protected by `rpc_protector_`, otherwise
+                //   it may free the peer even though new RPC client is already created.
+                try_set_free(req->get_type(), streaming);
             }
-            // WARNING:
-            //   `set_free()` should be protected by `rpc_protector_`, otherwise
-            //   it may free the peer even though new RPC client is already created.
-            try_set_free(req->get_type(), streaming);
         }
 
         reset_active_timer();
