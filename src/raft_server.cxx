@@ -1044,6 +1044,8 @@ void raft_server::become_leader() {
             // Reset RPC client for all peers.
             // NOTE: Now we don't reset client, as we already did it
             //       during pre-vote phase.
+            // NOTE: In the case that this peer takeover the leadership,
+            //       connection will be re-used
             // reconnect_client(*pp);
 
             pp->set_next_log_idx(log_store_->next_slot());
@@ -1392,6 +1394,7 @@ void raft_server::become_follower() {
     {   std::lock_guard<std::mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
+            it->second->reset_stream();
         }
 
         srv_to_join_.reset();
