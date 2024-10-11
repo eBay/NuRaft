@@ -538,7 +538,8 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         if (forced_creation || snp_creation_scheduled_)
             return true;
 
-        return !local_snapshot || committed_idx >= snapshot_distance + local_snapshot->get_last_log_idx();
+        return !local_snapshot ||
+               committed_idx >= snapshot_distance + local_snapshot->get_last_log_idx();
     };
 
     if ( can_create_snapshot(local_snp) &&
