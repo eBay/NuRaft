@@ -534,12 +534,29 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         return false;
     }
 
-    if ( ( forced_creation ||
-           snp_creation_scheduled_ ||
-           !local_snp ||
-           committed_idx >= snapshot_distance + local_snp->get_last_log_idx() ) &&
-         snp_in_progress_.compare_exchange_strong(f, true) )
-    {
+    auto can_create_snapshot = [&](const ptr<snapshot>& local_snapshot) {
+        if (forced_creation || snp_creation_scheduled_)
+            return true;
+
+        return !local_snapshot ||
+               committed_idx >= snapshot_distance + local_snapshot->get_last_log_idx();
+    };
+
+    if ( can_create_snapshot(local_snp) &&
+         snp_in_progress_.compare_exchange_strong(f, true) ) {
+        local_snp = get_last_snapshot();
+
+        // NOTE:
+        //   Because we fetch local_snp before checking the flag snp_in_progress_
+        //   we can have a newer snapshot that was created between
+        //   fetching of local_snp and setting the snp_in_progress_ to false
+        //   to avoid creating snapshots too soon, we recheck the distance when we are
+        //   sure this is the only thread creating snapshot
+        if (!can_create_snapshot(local_snp)) {
+            snp_in_progress_ = false;
+            return false;
+        }
+
         snapshot_in_action = true;
         p_in("creating a snapshot for index %" PRIu64 "", committed_idx);
 
@@ -550,7 +567,6 @@ bool raft_server::snapshot_and_compact(ulong committed_idx, bool forced_creation
         //
         //   To avoid such a case, while `snp_in_progress_` is true,
         //   we re-check the latest snapshot index here.
-        local_snp = get_last_snapshot();
         if (local_snp && local_snp->get_last_log_idx() >= committed_idx) {
             p_wn("snapshot index inversion detected, "
                  "skip snapshot creation for index %" PRIu64 ", "
