@@ -94,6 +94,7 @@ struct raft_params {
         , return_method_(blocking)
         , auto_forwarding_req_timeout_(0)
         , grace_period_of_lagging_state_machine_(0)
+        , use_new_joiner_type_(false)
         , use_bg_thread_for_snapshot_io_(false)
         , use_full_consensus_among_healthy_members_(false)
         , parallel_log_appending_(false)
@@ -552,6 +553,20 @@ public:
      * not contain the latest data yet) being a leader.
      */
     int32 grace_period_of_lagging_state_machine_;
+
+    /**
+     * If `true`, the new joiner will be added to cluster config as a `new_joiner`
+     * even before syncing all data. The new joiner will not initiate a vote or
+     * participate in leader election.
+     *
+     * Once the log gap becomes smaller than `log_sync_stop_gap_`, the new joiner
+     * will be a regular member.
+     *
+     * The purpose of this featuer is to preserve the new joiner information
+     * even after leader re-election, in order to let the new leader continue
+     * the sync process without calling `add_srv` again.
+     */
+    bool use_new_joiner_type_;
 
     /**
      * (Experimental)

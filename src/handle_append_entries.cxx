@@ -564,7 +564,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         //   may cause stepping down of this node.
         ptr<cluster_config> cur_config = get_config();
         ptr<srv_config> my_config = cur_config->get_server(id_);
-        if (my_config) {
+        if (my_config && !my_config->is_new_joiner()) {
             p_in("catch-up process is done, clearing the flag");
             catching_up_ = false;
         }
@@ -1079,6 +1079,45 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
               "resp next %" PRIu64 ", new next log idx %" PRIu64,
               p->get_id(), prev_next_log,
               resp.get_next_idx(), p->get_next_log_idx() );
+    }
+
+    if (!config_changing_ && p->get_config().is_new_joiner()) {
+        auto params = ctx_->get_params();
+        uint64_t log_sync_stop_gap =
+            params->log_sync_stop_gap_ ? params->log_sync_stop_gap_ : 1;
+        uint64_t matched_idx = p->get_matched_idx();
+        uint64_t next_slot = log_store_->next_slot();
+        if (matched_idx + log_sync_stop_gap >= next_slot) {
+            p_in("peer %d is no longer a new joiner, matched index: %" PRIu64 ", "
+                 "next slot: %" PRIu64 ", sync stop gap: %" PRIu64
+                 ", set new joiner flag to false",
+                 p->get_id(), matched_idx, next_slot, log_sync_stop_gap);
+
+            // Clone the current cluster config.
+            ptr<cluster_config> cur_conf = get_config();
+            ptr<buffer> enc_conf_buf = cur_conf->serialize();
+            ptr<cluster_config> new_conf = cluster_config::deserialize(*enc_conf_buf);
+            new_conf->set_log_idx(log_store_->next_slot());
+
+            // Remove new joiner flag.
+            for (auto& ss: new_conf->get_servers()) {
+                if (ss->get_id() == p->get_id()) {
+                    ss->set_new_joiner(false);
+                    break;
+                }
+            }
+
+            ptr<buffer> new_conf_buf(new_conf->serialize());
+            ptr<log_entry> entry( cs_new<log_entry>( state_->get_term(),
+                                                     new_conf_buf,
+                                                     log_val_type::conf,
+                                                     timer_helper::get_timeofday_us() ) );
+            store_log_entry(entry);
+            config_changing_ = true;
+            uncommitted_config_ = new_conf;
+            request_append_entries();
+            return;
+        }
     }
 
     // NOTE:

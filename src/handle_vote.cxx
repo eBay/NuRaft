@@ -254,7 +254,7 @@ void raft_server::request_vote(bool force_vote) {
     for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
         ptr<peer> pp = it->second;
         if (!is_regular_member(pp)) {
-            // Do not send voting request to learner.
+            // Do not send voting request to learner or new joiner.
             continue;
         }
         ptr<req_msg> req = cs_new<req_msg>

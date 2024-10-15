@@ -393,6 +393,7 @@ void raft_server::apply_and_log_current_params() {
           "max batch %d, backoff %d, snapshot distance %d, "
           "enable randomized snapshot creation %s, "
           "log sync stop gap %d, "
+          "use new joiner type %s, "
           "reserved logs %d, client timeout %d, "
           "auto forwarding %s, API call type %s, "
           "custom commit quorum size %d, "
@@ -411,6 +412,7 @@ void raft_server::apply_and_log_current_params() {
           params->snapshot_distance_,
           params->enable_randomized_snapshot_creation_ ? "YES" : "NO",
           params->log_sync_stop_gap_,
+          params->use_new_joiner_type_ ? "YES" : "NO",
           params->reserved_log_items_,
           params->client_req_timeout_,
           ( params->auto_forwarding_ ? "ON" : "OFF" ),
@@ -545,6 +547,9 @@ bool raft_server::is_regular_member(const ptr<peer>& p) {
 
     // Skip learner.
     if (p->is_learner()) return false;
+
+    // Skip new joiner.
+    if (p->is_new_joiner()) return false;
 
     return true;
 }

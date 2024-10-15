@@ -99,6 +99,10 @@ public:
         return config_->is_learner();
     }
 
+    bool is_new_joiner() const {
+        return config_->is_new_joiner();
+    }
+
     const srv_config& get_config() {
         return *config_;
     }
