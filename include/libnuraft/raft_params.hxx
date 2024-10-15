@@ -98,6 +98,7 @@ struct raft_params {
         , use_full_consensus_among_healthy_members_(false)
         , parallel_log_appending_(false)
         , max_log_gap_in_stream_(0)
+        , max_flying_bytes_(0)
         {}
 
     /**
@@ -606,7 +607,22 @@ public:
      */
     bool parallel_log_appending_;
 
+    /**
+     * It great than 0, append entry request will be sent immediately without
+     * waiting for the response of previous append entry request.
+     * 
+     * The throtlling is control by max_log_gap_in_stream_ and max_flying_bytes_.
+     * 
+     * If the number of flying log entry exceeds max_log_gap_in_stream_ 
+     * or flying bytes exceeds max_flying_bytes_, 
+     * next request will not be delivered immediately.
+    */
     int32 max_log_gap_in_stream_;
+
+    /**
+     * Max flying bytes we allow. If it is zero, we don't use it as throttling.
+    */
+    ulong max_flying_bytes_;
 };
 
 }

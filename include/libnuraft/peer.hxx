@@ -78,6 +78,7 @@ public:
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
         , last_streamed_log_idx_(0)
+        , flying_bytes(0)
         , l_(logger)
     {
         reset_ls_timer();
@@ -317,6 +318,22 @@ public:
         last_streamed_log_idx_.store(0);
     }
 
+    size_t get_flying_bytes() {
+        return flying_bytes.load();
+    }
+
+    void flying_bytes_add(size_t total_size) {
+        flying_bytes.fetch_add(total_size);
+    }
+
+    void flying_bytes_sub(size_t total_size) {
+        flying_bytes.fetch_sub(total_size);
+    }
+
+    void reset_flying_bytes() {
+        flying_bytes.store(0);
+    }
+
     void try_set_free(msg_type type, bool streaming);
 
     bool is_lost() const { return lost_by_leader_; }
@@ -329,6 +346,7 @@ private:
                            ptr<req_msg>& req,
                            ptr<rpc_result>& pending_result,
                            bool streaming,
+                           size_t total_size,
                            ptr<resp_msg>& resp,
                            ptr<rpc_exception>& err);
 
@@ -540,6 +558,11 @@ private:
      * Last log index sent in stream mode.
      */
     std::atomic<ulong> last_streamed_log_idx_;
+
+    /**
+     * Current flying bytes of append entry requests.
+     */
+    std::atomic<size_t> flying_bytes;
 
     /**
      * Logger instance.

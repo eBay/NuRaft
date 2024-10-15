@@ -174,6 +174,16 @@ void update_stream_params(const std::vector<RaftPkg*>& pkgs,
     }
 }
 
+void update_max_fly_bytes_params(const std::vector<RaftPkg*>& pkgs,
+                          int max_flying_bytes) {
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.max_flying_bytes_ = max_flying_bytes;
+        pp->raftServer->update_params(param);
+    }
+}
+
 int stream_basic_function_test() {
     reset_log_files();
 
@@ -395,7 +405,7 @@ int activate_and_deactivate_stream_mode_test() {
     return 0;
 }
 
-int stream_mode_throttling_test() {
+int stream_mode_base_throttling_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
 
@@ -427,8 +437,59 @@ int stream_mode_throttling_test() {
 
     // Send one more log, pending reqs should not increase
     CHK_Z( append_log_in_stream_without_delivery(s1, s2_addr, 1, max_gap) );
+    
     // Need 2 * max_gap, because every append log need one commit request
     int expected_delivery = 2 * max_gap + 1;
+    CHK_Z( drain_pending_reqs_queue(pkgs, s1, s2_addr,
+                                    expected_delivery, expected_delivery) );
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+
+    f_base->destroy();
+    return 0;
+}
+
+int stream_mode_flying_bytes_throttling_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+
+    // Set stream mode and max flying bytes params
+    // idx 0-9, size is 13, idx 10-99, size is 14
+    int max_flying_bytes = 13 * 9;
+    update_stream_params(pkgs, 500);
+    update_max_fly_bytes_params(pkgs, max_flying_bytes);
+
+    // Append 1 log to enable stream
+    CHK_Z( activate_stream(s1, s2_addr) );
+
+    // Append number of max gap logs in stream mode
+    CHK_Z( append_log_in_stream_without_delivery(s1, s2_addr, 10, 10) );
+
+    // Send one more log, pending reqs should not increase
+    CHK_Z( append_log_in_stream_without_delivery(s1, s2_addr, 1, 10) );
+
+    // Need 2 * max_gap, because every append log need one commit request
+    int expected_delivery = 2 * 10 + 1;
     CHK_Z( drain_pending_reqs_queue(pkgs, s1, s2_addr,
                                     expected_delivery, expected_delivery) );
     CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
@@ -514,9 +575,10 @@ int snapshot_transmission_in_stream_mode() {
     // There shouldn't be any open snapshot ctx.
     CHK_Z( s1.getTestSm()->getNumOpenedUserCtxs() );
 
-     // Append two logs, it only generate 1 reqs for S3
+    // Append two logs, it only generate 1 reqs for S3
     CHK_Z( append_log_in_stream_without_delivery(s1, s3_addr, 1, 1) );
     CHK_Z( append_log_in_stream_without_delivery(s1, s3_addr, 1, 1) );
+
     // Peer in stream mode will generate more requests, so drain S2.
     // Enable stream mode for S3.
     // 2 pending requests, 2 commit requests
@@ -563,10 +625,12 @@ int main(int argc, char** argv) {
     ts.doTest( "activate and deactivate stream mode test",
                activate_and_deactivate_stream_mode_test );
 
-    // Put some sleep in follower's code, 
-    // and see if streaming throttling (max log gap) is working
-    ts.doTest( "stream mode throttling test",
-               stream_mode_throttling_test );
+    // Throttling test
+    ts.doTest( "stream mode base throttling test",
+               stream_mode_base_throttling_test );
+
+    ts.doTest( "stream mode flying bytes throttling test",
+               stream_mode_flying_bytes_throttling_test );
 
     // Snapshot transmission in stream mode
     ts.doTest( "snapshot transmission in stream mode",
