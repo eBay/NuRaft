@@ -58,8 +58,13 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
 
     // Before checking duplicate ID, confirm srv_to_leave_ is gone.
     check_srv_to_leave_timeout();
-    ptr<srv_config> srv_conf =
-        srv_config::deserialize( entries[0]->get_buf() );
+    ptr<srv_config> srv_conf = srv_config::deserialize( entries[0]->get_buf() );
+
+    ptr<raft_params> params = ctx_->get_params();
+    if (params->use_new_joiner_type_) {
+        srv_conf->set_new_joiner(true);
+    }
+
     if ( peers_.find( srv_conf->get_id() ) != peers_.end() ||
          id_ == srv_conf->get_id() ) {
         p_wn( "the server to be added has a duplicated "
@@ -232,7 +237,8 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
     ptr<raft_params> params = ctx_->get_params();
     if ( ( params->log_sync_stop_gap_ > 0 &&
            gap < (ulong)params->log_sync_stop_gap_ ) ||
-         params->log_sync_stop_gap_ == 0 ) {
+         params->log_sync_stop_gap_ == 0 ||
+         params->use_new_joiner_type_ ) {
         p_in( "[SYNC LOG] LogSync is done for server %d "
               "with log gap %" PRIu64 " (%" PRIu64 " - %" PRIu64 ", limit %d), "
               "now put the server into cluster",

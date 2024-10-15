@@ -22,6 +22,9 @@ limitations under the License.
 
 namespace nuraft {
 
+static const uint8_t LEARNER_FLAG = 0x1;
+static const uint8_t NEW_JOINER_FLAG = 0x2;
+
 ptr<srv_config> srv_config::deserialize(buffer& buf) {
     buffer_serializer bs(buf);
     return deserialize(bs);
@@ -34,9 +37,17 @@ ptr<srv_config> srv_config::deserialize(buffer_serializer& bs) {
     const char* aux_char = bs.get_cstr();
     std::string endpoint( (endpoint_char) ? endpoint_char : std::string() );
     std::string aux( (aux_char) ? aux_char : std::string() );
-    byte is_learner = bs.get_u8();
+
+    uint8_t srv_type = bs.get_u8();
+    bool is_learner = (srv_type & LEARNER_FLAG) ? true : false;
+    bool new_joiner = (srv_type & NEW_JOINER_FLAG) ? true : false;
+
     int32 priority = bs.get_i32();
-    return cs_new<srv_config>(id, dc_id, endpoint, aux, is_learner, priority);
+
+    ptr<srv_config> ret =
+        cs_new<srv_config>(id, dc_id, endpoint, aux, is_learner, priority);
+    ret->set_new_joiner(new_joiner);
+    return ret;
 }
 
 ptr<buffer> srv_config::serialize() const{
@@ -52,7 +63,12 @@ ptr<buffer> srv_config::serialize() const{
     buf->put(dc_id_);
     buf->put(endpoint_);
     buf->put(aux_);
-    buf->put((byte)(learner_?(1):(0)));
+
+    uint8_t srv_type = 0x0;
+    srv_type |= (learner_ ? LEARNER_FLAG : 0x0);
+    srv_type |= (new_joiner_ ? NEW_JOINER_FLAG : 0x0);
+    buf->put((byte)srv_type);
+
     buf->put(priority_);
     buf->pos(0);
     return buf;

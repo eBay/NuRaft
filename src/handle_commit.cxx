@@ -757,10 +757,17 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         if (id_ == (*it)->get_id()) {
             my_priority_ = (*it)->get_priority();
             steps_to_down_ = 0;
-            if (role_ == srv_role::follower &&
+            if (!(*it)->is_new_joiner() &&
+                role_ == srv_role::follower &&
                 catching_up_) {
-                // If this node is newly added, start election timer
-                // without waiting for the next append_entries message.
+                // Except for new joiner type, if this server is added
+                // to the cluster config, that means the sync is done.
+                // Start election timer without waiting for
+                // the next append_entries message.
+                //
+                // If this server is a new joiner, `catching_up_` flag
+                // will be cleared when it becomes a regular member,
+                // that is also notified by a new cluster config.
                 p_in("now this node is the part of cluster, "
                      "catch-up process is done, clearing the flag");
                 catching_up_ = false;
@@ -799,6 +806,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         str_buf << "add peer " << srv_added->get_id()
                 << ", " << srv_added->get_endpoint()
                 << ", " << (srv_added->is_learner() ? "learner" : "voting member")
+                << ", " << (srv_added->is_new_joiner() ? "new joiner" : "regular")
                 << std::endl;
 
         peers_.insert(std::make_pair(srv_added->get_id(), p));
@@ -940,6 +948,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
                  << ", DC ID " << s_conf->get_dc_id()
                  << ", " << s_conf->get_endpoint()
                  << ", " << (s_conf->is_learner() ? "learner" : "voting member")
+                 << ", " << (s_conf->is_new_joiner() ? "new joiner" : "regular member")
                  << ", " << s_conf->get_priority()
                  << std::endl;
     }
