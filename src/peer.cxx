@@ -93,7 +93,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                               ptr<req_msg>& req,
                               ptr<rpc_result>& pending_result,
                               bool streaming,
-                              ulong total_size,
+                              size_t total_size,
                               ptr<resp_msg>& resp,
                               ptr<rpc_exception>& err )
 {
