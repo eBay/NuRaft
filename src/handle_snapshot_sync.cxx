@@ -183,14 +183,12 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
         data = buffer::alloc((size_t)(std::min((ulong)blk_sz, sz_left)));
         int32 sz_rd = state_machine_->read_snapshot_data(*snp, offset, *data);
         if ((size_t)sz_rd < data->size()) {
-            // LCOV_EXCL_START
             p_er( "only %d bytes could be read from snapshot while %zu "
                   "bytes are expected, must be something wrong, exit.",
                   sz_rd, data->size() );
             ctx_->state_mgr_->system_exit(raft_err::N18_partial_snapshot_block);
             _sys_exit(-1);
             return ptr<req_msg>();
-            // LCOV_EXCL_STOP
         }
         last_request = (offset + (ulong)data->size()) >= snp->size();
         data_idx = offset;
