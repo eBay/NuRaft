@@ -58,10 +58,10 @@ void peer::send_req( ptr<peer> myself,
         rpc_local = rpc_;
     }
 
-    size_t total_size = 0;
+    size_t req_size_bytes = 0;
     if (req->get_type() == append_entries_request) {
         for (auto& entry: req->log_entries()) {
-            total_size += entry->get_buf_ptr()->size();
+            req_size_bytes += entry->get_buf_ptr()->size();
         }
     }
     
@@ -73,11 +73,11 @@ void peer::send_req( ptr<peer> myself,
                       req,
                       pending,
                       streaming,
-                      total_size,
+                      req_size_bytes,
                       std::placeholders::_1,
                       std::placeholders::_2 );
     if (rpc_local) {
-        myself->flying_bytes_add(total_size);
+        myself->bytes_in_flight_add(req_size_bytes);
         rpc_local->send(req, h);
     }
 }
@@ -93,7 +93,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                               ptr<req_msg>& req,
                               ptr<rpc_result>& pending_result,
                               bool streaming,
-                              size_t total_size,
+                              size_t req_size_bytes,
                               ptr<resp_msg>& resp,
                               ptr<rpc_exception>& err )
 {
@@ -130,7 +130,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 // WARNING:
                 //   `set_free()` should be protected by `rpc_protector_`, otherwise
                 //   it may free the peer even though new RPC client is already created.
-                flying_bytes_sub(total_size);
+                bytes_in_flight_sub(req_size_bytes);
                 try_set_free(req->get_type(), streaming);
             }
         }
@@ -168,7 +168,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
             if (cur_rpc_id == given_rpc_id) {
                 rpc_.reset();
                 reset_stream();
-                reset_flying_bytes();
+                reset_bytes_in_flight();
                 try_set_free(req->get_type(), streaming);
             } else {
                 // WARNING (MONSTOR-9378):
@@ -254,7 +254,7 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         reset_active_timer();
 
         reset_stream();
-        reset_flying_bytes();
+        reset_bytes_in_flight();
         set_free();
         set_manual_free();
         return true;

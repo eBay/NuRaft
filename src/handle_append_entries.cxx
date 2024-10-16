@@ -308,8 +308,9 @@ bool raft_server::request_append_entries(ptr<peer> p) {
                     // throttling
                     if (max_gap_in_stream + p->get_next_log_idx() <= 
                             (last_streamed_log_idx + 1) || 
-                            ( params->max_flying_bytes_ &&
-                            p->get_flying_bytes() > params->max_flying_bytes_)) {
+                        (params->max_bytes_in_flight_in_stream_ &&
+                            p->get_bytes_in_flight() > 
+                            params->max_bytes_in_flight_in_stream_)) {
                         streaming = false;
                     } else {
                         p_tr("send following request to %d in stream mode, " 
@@ -352,10 +353,10 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             p_wn("skipped sending msg to %d too long time, "
                  "last streamed idx: %" PRIu64 ""
                  "next log idx: %" PRIu64 ""
-                 "flying bytes: %" PRIu64 ""
+                 "in-flight: %" PRIu64 " bytes"
                  "last msg sent %d ms ago",
                  p->get_id(), p->get_last_streamed_log_idx(), 
-                 p->get_next_log_idx(), p->get_flying_bytes(), last_ts_ms);
+                 p->get_next_log_idx(), p->get_bytes_in_flight(), last_ts_ms);
         } else if ( p->get_long_puase_warnings() ==
                         raft_server::raft_limits_.warning_limit_ ) {
             p_wn("long pause warning to %d is too verbose, "
@@ -1050,8 +1051,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
          (int)p->get_id(), resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
-    p_tr("peer %d batch size hint: %" PRId64 " bytes, flying bytes: %" PRId64 "", 
-         p->get_id(), bs_hint, p->get_flying_bytes());
+    p_tr("peer %d batch size hint: %" PRId64 " bytes, in-flight: %" PRId64 " bytes", 
+         p->get_id(), bs_hint, p->get_bytes_in_flight());
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {

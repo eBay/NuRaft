@@ -30,6 +30,7 @@ limitations under the License.
 #include "srv_config.hxx"
 
 #include <atomic>
+#include <cassert>
 
 namespace nuraft {
 
@@ -78,7 +79,7 @@ public:
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
         , last_streamed_log_idx_(0)
-        , flying_bytes(0)
+        , bytes_in_flight_(0)
         , l_(logger)
     {
         reset_ls_timer();
@@ -318,20 +319,21 @@ public:
         last_streamed_log_idx_.store(0);
     }
 
-    size_t get_flying_bytes() {
-        return flying_bytes.load();
+    int64_t get_bytes_in_flight() {
+        return bytes_in_flight_.load();
     }
 
-    void flying_bytes_add(size_t total_size) {
-        flying_bytes.fetch_add(total_size);
+    void bytes_in_flight_add(size_t req_size_bytes) {
+        bytes_in_flight_.fetch_add(req_size_bytes);
     }
 
-    void flying_bytes_sub(size_t total_size) {
-        flying_bytes.fetch_sub(total_size);
+    void bytes_in_flight_sub(size_t req_size_bytes) {
+        bytes_in_flight_.fetch_sub(req_size_bytes);
+        assert(bytes_in_flight_ >= 0);
     }
 
-    void reset_flying_bytes() {
-        flying_bytes.store(0);
+    void reset_bytes_in_flight() {
+        bytes_in_flight_.store(0);
     }
 
     void try_set_free(msg_type type, bool streaming);
@@ -346,7 +348,7 @@ private:
                            ptr<req_msg>& req,
                            ptr<rpc_result>& pending_result,
                            bool streaming,
-                           size_t total_size,
+                           size_t req_size_bytes,
                            ptr<resp_msg>& resp,
                            ptr<rpc_exception>& err);
 
@@ -560,9 +562,9 @@ private:
     std::atomic<ulong> last_streamed_log_idx_;
 
     /**
-     * Current flying bytes of append entry requests.
+     * Current bytes of in-flight append entry requests.
      */
-    std::atomic<size_t> flying_bytes;
+    std::atomic<int64_t> bytes_in_flight_;
 
     /**
      * Logger instance.

@@ -175,11 +175,11 @@ void update_stream_params(const std::vector<RaftPkg*>& pkgs,
 }
 
 void update_max_fly_bytes_params(const std::vector<RaftPkg*>& pkgs,
-                          int max_flying_bytes) {
+                          int max_bytes_in_flight_in_stream) {
     for (auto& entry: pkgs) {
         RaftPkg* pp = entry;
         raft_params param = pp->raftServer->get_current_params();
-        param.max_flying_bytes_ = max_flying_bytes;
+        param.max_bytes_in_flight_in_stream_ = max_bytes_in_flight_in_stream;
         pp->raftServer->update_params(param);
     }
 }
@@ -475,9 +475,9 @@ int stream_mode_flying_bytes_throttling_test() {
 
     // Set stream mode and max flying bytes params
     // idx 0-9, size is 13, idx 10-99, size is 14
-    int max_flying_bytes = 13 * 9;
+    int max_bytes_in_flight = 13 * 9;
     update_stream_params(pkgs, 500);
-    update_max_fly_bytes_params(pkgs, max_flying_bytes);
+    update_max_fly_bytes_params(pkgs, max_bytes_in_flight);
 
     // Append 1 log to enable stream
     CHK_Z( activate_stream(s1, s2_addr) );
