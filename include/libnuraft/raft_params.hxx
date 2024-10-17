@@ -608,20 +608,19 @@ public:
     bool parallel_log_appending_;
 
     /**
-     * It great than 0, append entry request will be sent immediately without
-     * waiting for the response of previous append entry request.
-     * 
-     * The throtlling is control by max_log_gap_in_stream_ and max_flying_bytes_.
-     * 
-     * If the number of flying log entry exceeds max_log_gap_in_stream_ 
-     * or flying bytes exceeds max_flying_bytes_, 
-     * next request will not be delivered immediately.
-    */
+     * If non-zero, streaming mode is enabled and `append_entries` requests are
+     * dispatched instantly without awaiting the response from the prior request.
+     *,
+     * The count of logs in-flight will be capped by this value, allowing it
+     * to function as a throttling mechanism, in conjunction with
+     * `max_bytes_in_flight_in_stream_`.
+     */
     int32 max_log_gap_in_stream_;
 
     /**
-     * Max in-flight bytes we allow. If it is zero, we don't use it as throttling.
-    */
+     * If non-zero, the volume of data in-flight will be restricted to this
+     * specified byte limit. This limitation is effective only in streaming mode.
+     */
     int64_t max_bytes_in_flight_in_stream_;
 };
 
