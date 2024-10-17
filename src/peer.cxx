@@ -57,6 +57,14 @@ void peer::send_req( ptr<peer> myself,
         }
         rpc_local = rpc_;
     }
+
+    size_t req_size_bytes = 0;
+    if (req->get_type() == append_entries_request) {
+        for (auto& entry: req->log_entries()) {
+            req_size_bytes += entry->get_buf_ptr()->size();
+        }
+    }
+    
     rpc_handler h = (rpc_handler)std::bind
                     ( &peer::handle_rpc_result,
                       this,
@@ -65,9 +73,11 @@ void peer::send_req( ptr<peer> myself,
                       req,
                       pending,
                       streaming,
+                      req_size_bytes,
                       std::placeholders::_1,
                       std::placeholders::_2 );
     if (rpc_local) {
+        myself->bytes_in_flight_add(req_size_bytes);
         rpc_local->send(req, h);
     }
 }
@@ -83,6 +93,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                               ptr<req_msg>& req,
                               ptr<rpc_result>& pending_result,
                               bool streaming,
+                              size_t req_size_bytes,
                               ptr<resp_msg>& resp,
                               ptr<rpc_exception>& err )
 {
@@ -119,6 +130,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 // WARNING:
                 //   `set_free()` should be protected by `rpc_protector_`, otherwise
                 //   it may free the peer even though new RPC client is already created.
+                bytes_in_flight_sub(req_size_bytes);
                 try_set_free(req->get_type(), streaming);
             }
         }
@@ -156,6 +168,7 @@ void peer::handle_rpc_result( ptr<peer> myself,
             if (cur_rpc_id == given_rpc_id) {
                 rpc_.reset();
                 reset_stream();
+                reset_bytes_in_flight();
                 try_set_free(req->get_type(), streaming);
             } else {
                 // WARNING (MONSTOR-9378):
@@ -241,6 +254,7 @@ bool peer::recreate_rpc(ptr<srv_config>& config,
         reset_active_timer();
 
         reset_stream();
+        reset_bytes_in_flight();
         set_free();
         set_manual_free();
         return true;

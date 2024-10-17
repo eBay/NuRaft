@@ -287,7 +287,7 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         int32 max_gap_in_stream = params->max_log_gap_in_stream_;
         if (last_streamed_log_idx > 0 && max_gap_in_stream == 0) {
             p_in("disable stream mode for peer %d at runtime, "
-                 "current streamed log: %" PRIu64 "", p->get_id(), 
+                 "current streamed log: %" PRIu64 "", p->get_id(),
                  last_streamed_log_idx);
             last_streamed_log_idx = 0;
             p->reset_stream();
@@ -301,22 +301,26 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             m_handler = resp_handler_;
 
             if (msg) {
-                streaming = streaming && 
+                streaming = streaming &&
                             msg->get_type() == msg_type::append_entries_request;
                 bool make_busy_result = p->is_busy();
                 if (streaming) {
                     // throttling
-                    if (max_gap_in_stream + p->get_next_log_idx() <= 
-                            (last_streamed_log_idx + 1)) {
-                        p_db("flying log entry exceeds %d in stream mode, "
-                             "skip this request", max_gap_in_stream);
+                    int64_t max_stream_bytes =
+                        params->max_bytes_in_flight_in_stream_ > 0
+                        ? params->max_bytes_in_flight_in_stream_ : 0;
+
+                    if (max_gap_in_stream + p->get_next_log_idx() <=
+                            (last_streamed_log_idx + 1) ||
+                        (max_stream_bytes &&
+                         p->get_bytes_in_flight() > max_stream_bytes)) {
                         streaming = false;
                     } else {
-                        p_tr("send following request to %d in stream mode, " 
-                             "start idx: %" PRIu64 "", (int)p->get_id(), 
+                        p_tr("send following request to %d in stream mode, "
+                             "start idx: %" PRIu64 "", (int)p->get_id(),
                              msg->get_last_log_idx());
                         p->set_last_streamed_log_idx(
-                            last_streamed_log_idx, 
+                            last_streamed_log_idx,
                             last_streamed_log_idx + msg->log_entries().size());
                     }
                 } else if (!make_busy_result) {
@@ -350,9 +354,12 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         p->inc_long_pause_warnings();
         if (p->get_long_puase_warnings() < raft_server::raft_limits_.warning_limit_) {
             p_wn("skipped sending msg to %d too long time, "
+                 "last streamed idx: %" PRIu64 ""
+                 "next log idx: %" PRIu64 ""
+                 "in-flight: %" PRIu64 " bytes"
                  "last msg sent %d ms ago",
-                 p->get_id(), last_ts_ms);
-
+                 p->get_id(), p->get_last_streamed_log_idx(),
+                 p->get_next_log_idx(), p->get_bytes_in_flight(), last_ts_ms);
         } else if ( p->get_long_puase_warnings() ==
                         raft_server::raft_limits_.warning_limit_ ) {
             p_wn("long pause warning to %d is too verbose, "
@@ -362,10 +369,8 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     return false;
 }
 
-
-
-bool raft_server::send_request(ptr<peer>& p, 
-                               ptr<req_msg>& msg, 
+bool raft_server::send_request(ptr<peer>& p,
+                               ptr<req_msg>& msg,
                                rpc_handler& m_handler,
                                bool streaming) {
     if (!p->is_manual_free()) {
@@ -1049,7 +1054,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
          (int)p->get_id(), resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
-    p_tr("peer %d batch size hint: %" PRId64 " bytes", p->get_id(), bs_hint);
+    p_tr("peer %d batch size hint: %" PRId64 " bytes, in-flight: %" PRId64 " bytes",
+         p->get_id(), bs_hint, p->get_bytes_in_flight());
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {
@@ -1078,15 +1084,15 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
         p_tr("peer %d, max gap: %d, acceptable_precommit_idx: %" PRIu64 ", "
              "last_streamed_log_idx: %" PRIu64 ", "
-             "last_sent: %" PRIu64 ", next_idx: %" PRIu64 "", p->get_id(), 
-             max_gap_in_stream, acceptable_precommit_idx, last_streamed_log_idx, 
+             "last_sent: %" PRIu64 ", next_idx: %" PRIu64 "", p->get_id(),
+             max_gap_in_stream, acceptable_precommit_idx, last_streamed_log_idx,
              p->get_last_sent_idx(), resp.get_next_idx());
         if (max_gap_in_stream > 0 &&
-            last_streamed_log_idx == 0 && 
+            last_streamed_log_idx == 0 &&
             resp.get_next_idx() > 0 &&
-            p->get_last_sent_idx() < resp.get_next_idx() && 
+            p->get_last_sent_idx() < resp.get_next_idx() &&
             precommit_index_ < acceptable_precommit_idx) {
-            p_in("start stream mode for peer %d at idx: %" PRIu64 "", 
+            p_in("start stream mode for peer %d at idx: %" PRIu64 "",
                  p->get_id(), resp.get_next_idx() - 1);
             p->set_last_streamed_log_idx(0, resp.get_next_idx() - 1);
         }
@@ -1097,8 +1103,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
         // As commit might send request, so refresh streamed log idx here
         last_streamed_log_idx = p->get_last_streamed_log_idx();
-        ulong next_idx_to_send = last_streamed_log_idx 
-                                 ? last_streamed_log_idx + 1 
+        ulong next_idx_to_send = last_streamed_log_idx
+                                 ? last_streamed_log_idx + 1
                                  : resp.get_next_idx();
         need_to_catchup = p->clear_pending_commit() ||
                           next_idx_to_send < log_store_->next_slot();
@@ -1144,7 +1150,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
               "resp next %" PRIu64 ", new next log idx %" PRIu64,
               p->get_id(), prev_next_log,
               resp.get_next_idx(), p->get_next_log_idx() );
-        
+
         // disable stream
         p->reset_stream();
     }

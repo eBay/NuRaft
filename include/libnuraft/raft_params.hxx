@@ -98,6 +98,7 @@ struct raft_params {
         , use_full_consensus_among_healthy_members_(false)
         , parallel_log_appending_(false)
         , max_log_gap_in_stream_(0)
+        , max_bytes_in_flight_in_stream_(0)
         {}
 
     /**
@@ -606,7 +607,21 @@ public:
      */
     bool parallel_log_appending_;
 
+    /**
+     * If non-zero, streaming mode is enabled and `append_entries` requests are
+     * dispatched instantly without awaiting the response from the prior request.
+     *,
+     * The count of logs in-flight will be capped by this value, allowing it
+     * to function as a throttling mechanism, in conjunction with
+     * `max_bytes_in_flight_in_stream_`.
+     */
     int32 max_log_gap_in_stream_;
+
+    /**
+     * If non-zero, the volume of data in-flight will be restricted to this
+     * specified byte limit. This limitation is effective only in streaming mode.
+     */
+    int64_t max_bytes_in_flight_in_stream_;
 };
 
 }

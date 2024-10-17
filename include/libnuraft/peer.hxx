@@ -30,6 +30,7 @@ limitations under the License.
 #include "srv_config.hxx"
 
 #include <atomic>
+#include <cassert>
 
 namespace nuraft {
 
@@ -78,6 +79,7 @@ public:
         , rsv_msg_(nullptr)
         , rsv_msg_handler_(nullptr)
         , last_streamed_log_idx_(0)
+        , bytes_in_flight_(0)
         , l_(logger)
     {
         reset_ls_timer();
@@ -317,6 +319,23 @@ public:
         last_streamed_log_idx_.store(0);
     }
 
+    int64_t get_bytes_in_flight() {
+        return bytes_in_flight_.load();
+    }
+
+    void bytes_in_flight_add(size_t req_size_bytes) {
+        bytes_in_flight_.fetch_add(req_size_bytes);
+    }
+
+    void bytes_in_flight_sub(size_t req_size_bytes) {
+        bytes_in_flight_.fetch_sub(req_size_bytes);
+        assert(bytes_in_flight_ >= 0);
+    }
+
+    void reset_bytes_in_flight() {
+        bytes_in_flight_.store(0);
+    }
+
     void try_set_free(msg_type type, bool streaming);
 
     bool is_lost() const { return lost_by_leader_; }
@@ -329,6 +348,7 @@ private:
                            ptr<req_msg>& req,
                            ptr<rpc_result>& pending_result,
                            bool streaming,
+                           size_t req_size_bytes,
                            ptr<resp_msg>& resp,
                            ptr<rpc_exception>& err);
 
@@ -540,6 +560,11 @@ private:
      * Last log index sent in stream mode.
      */
     std::atomic<ulong> last_streamed_log_idx_;
+
+    /**
+     * Current bytes of in-flight append entry requests.
+     */
+    std::atomic<int64_t> bytes_in_flight_;
 
     /**
      * Logger instance.
