@@ -200,13 +200,20 @@ public:
      *     this parameter.
      * @param data Payload of given object.
      * @param is_first_obj `true` if this is the first object.
-     * @param is_last_obj `true` if this is the last object.
+     * @param is_last_obj[in,out] 
+     *     when [in]
+     *     `true` if this is the last object indicated by the sender.
+     * 
+     *     when [out]
+     *     As a result of this API call, if the receiver wants the sender 
+     *     to resend the last object, it should set this parameter to `false`，
+     *     so that apply_snapshot() will not be called.
      */
     virtual void save_logical_snp_obj(snapshot& s,
                                       ulong& obj_id,
                                       buffer& data,
                                       bool is_first_obj,
-                                      bool is_last_obj) {}
+                                      bool& is_last_obj) {}
 
     /**
      * Apply received snapshot to state machine.
