@@ -332,6 +332,8 @@ if (CODE_COVERAGE GREATER 0)
         stat_mgr_test
         logger_test
         new_joiner_test
+        asio_service_stream_test
+        stream_functional_test
     )
 
     # lcov
