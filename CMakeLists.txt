@@ -322,6 +322,8 @@ if (CODE_COVERAGE GREATER 0)
         strfmt_test
         stat_mgr_test
         logger_test
+        asio_service_stream_test
+        stream_functional_test
     )
 
     # lcov
