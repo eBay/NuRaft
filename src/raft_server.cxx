@@ -1025,7 +1025,7 @@ void raft_server::become_leader() {
     }
 
     ptr<raft_params> params = ctx_->get_params();
-    {   auto_lock(cli_lock_);
+    {   recur_lock(cli_lock_);
         role_ = srv_role::leader;
         leader_ = id_;
         srv_to_join_.reset();
@@ -1389,7 +1389,7 @@ bool raft_server::request_leadership() {
 void raft_server::become_follower() {
     // stop hb for all peers
     p_in("[BECOME FOLLOWER] term %" PRIu64 "", state_->get_term());
-    {   std::lock_guard<std::mutex> ll(cli_lock_);
+    {   std::lock_guard<std::recursive_mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
         }
@@ -1446,7 +1446,7 @@ bool raft_server::update_term(ulong term) {
             //
             //   To avoid this issue, we acquire `cli_lock_`,
             //   and change `role_` first before setting the term.
-            std::lock_guard<std::mutex> ll(cli_lock_);
+            std::lock_guard<std::recursive_mutex> ll(cli_lock_);
             role_ = srv_role::follower;
             state_->set_term(term);
         }
@@ -1764,6 +1764,7 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
         }
 
         if ( role_ == srv_role::leader ) {
+            recur_lock(cli_lock_);
             // Need to progress precommit index for config.
             try_update_precommit_index(log_index);
         }
