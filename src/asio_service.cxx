@@ -1754,12 +1754,12 @@ private:
 
         // 3) Context.
         assert(remaining_len >= 0);
-        if (remaining_len) {
+        size_t ctx_len = remaining_len;
+        if (flags & INCLUDE_RESULT_CODE) {
+            ctx_len -= sizeof(int32_t);
+        }
+        if (ctx_len) {
             // It has context, read it.
-            size_t ctx_len = remaining_len;
-            if (flags & INCLUDE_RESULT_CODE) {
-                ctx_len -= sizeof(int32_t);
-            }
             ptr<buffer> actual_ctx = buffer::alloc(ctx_len);
             bs.get_buffer(actual_ctx);
             rsp->set_ctx(actual_ctx);
