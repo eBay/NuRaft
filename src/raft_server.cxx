@@ -1030,7 +1030,7 @@ void raft_server::become_leader() {
     }
 
     ptr<raft_params> params = ctx_->get_params();
-    {   auto_lock(cli_lock_);
+    {   recur_lock(cli_lock_);
         role_ = srv_role::leader;
         leader_ = id_;
         srv_to_join_.reset();
@@ -1397,7 +1397,7 @@ bool raft_server::request_leadership() {
 void raft_server::become_follower() {
     // stop hb for all peers
     p_in("[BECOME FOLLOWER] term %" PRIu64 "", state_->get_term());
-    {   std::lock_guard<std::mutex> ll(cli_lock_);
+    {   std::lock_guard<std::recursive_mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
             it->second->reset_stream();
@@ -1455,7 +1455,7 @@ bool raft_server::update_term(ulong term) {
             //
             //   To avoid this issue, we acquire `cli_lock_`,
             //   and change `role_` first before setting the term.
-            std::lock_guard<std::mutex> ll(cli_lock_);
+            std::lock_guard<std::recursive_mutex> ll(cli_lock_);
             role_ = srv_role::follower;
             state_->set_term(term);
         }
@@ -1773,6 +1773,36 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
         }
 
         if ( role_ == srv_role::leader ) {
+            // WARNING:
+            // Configuration changes, such as adding or removing a member,
+            // can run concurrently with normal log appending operations. This
+            // concurrency can lead to an inversion issue between precommit and
+            // commit orders, particularly when there is only one member in the
+            // cluster.
+            //
+            // Let's consider the following scenario: T1 is the thread handling
+            // log appending, T2 is the thread processing configuration changes,
+            // and T3 is the commit thread.
+            // The initial precommit and commit index is 10.
+            //
+            // [T1] Acquires `cli_lock_` and enters `handle_cli_req()`.
+            // [T1] Appends a log at index 11 by calling `store_log_entry()`.
+            // [T2] Appends a log at index 12 by calling `store_log_entry()`.
+            // [T2] Calls `try_update_precommit_index()`,
+            //      updating the precommit index to 12.
+            // [T2] Calls `request_append_entries()` and `commit()`,
+            //      updating the commit index to 12.
+            // [T3] Calls `state_machine::commit()` for logs 11 and 12.
+            // [T1] Calls `state_machine::pre_commit()` for log 11.
+            //      => order inversion happens here.
+            //
+            // To prevent this inversion, T2 should acquire the same `cli_lock_`
+            // before calling `try_update_precommit_index()`. This ensures that T2
+            // cannot update the precommit index between T1's `store_log_entry()`
+            // and `state_machine::pre_commit()` calls, maintaining the correct
+            // order of operations.
+            recur_lock(cli_lock_);
+
             // Need to progress precommit index for config.
             try_update_precommit_index(log_index);
         }
