@@ -1773,7 +1773,36 @@ ulong raft_server::store_log_entry(ptr<log_entry>& entry, ulong index) {
         }
 
         if ( role_ == srv_role::leader ) {
+            // WARNING:
+            // Configuration changes, such as adding or removing a member,
+            // can run concurrently with normal log appending operations. This
+            // concurrency can lead to an inversion issue between precommit and
+            // commit orders, particularly when there is only one member in the
+            // cluster.
+            //
+            // Let's consider the following scenario: T1 is the thread handling
+            // log appending, T2 is the thread processing configuration changes,
+            // and T3 is the commit thread.
+            // The initial precommit and commit index is 10.
+            //
+            // [T1] Acquires `cli_lock_` and enters `handle_cli_req()`.
+            // [T1] Appends a log at index 11 by calling `store_log_entry()`.
+            // [T2] Appends a log at index 12 by calling `store_log_entry()`.
+            // [T2] Calls `try_update_precommit_index()`,
+            //      updating the precommit index to 12.
+            // [T2] Calls `request_append_entries()` and `commit()`,
+            //      updating the commit index to 12.
+            // [T3] Calls `state_machine::commit()` for logs 11 and 12.
+            // [T1] Calls `state_machine::pre_commit()` for log 11.
+            //      => order inversion happens here.
+            //
+            // To prevent this inversion, T2 should acquire the same `cli_lock_`
+            // before calling `try_update_precommit_index()`. This ensures that T2
+            // cannot update the precommit index between T1's `store_log_entry()`
+            // and `state_machine::pre_commit()` calls, maintaining the correct
+            // order of operations.
             recur_lock(cli_lock_);
+
             // Need to progress precommit index for config.
             try_update_precommit_index(log_index);
         }
