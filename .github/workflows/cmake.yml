@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - master
+      - streaming
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
@@ -31,7 +32,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # pin@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v2
 
       - name: Fix kernel mmap rnd bits
         # Asan in llvm 14 provided in ubuntu 22.04 is incompatible with
@@ -52,7 +53,7 @@ jobs:
         run: ./github_action_build.sh
 
       - name: Code Coverage Metrics
-        uses: codecov/codecov-action@e28ff129e5465c2c0dcc6f003fc735cb6ae0c673 # pin@v3
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # pin@v3
         with:
           verbose: true
           files: ./build/raft_cov.info.cleaned
