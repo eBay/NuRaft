@@ -51,7 +51,7 @@ ptr<resp_msg> raft_server::handle_cli_req_prelock(req_msg& req,
         case raft_params::dual_mutex:
         default: {
             // TODO: Use RW lock here.
-            auto_lock(cli_lock_);
+            recur_lock(cli_lock_);
             resp = handle_cli_req(req, ext_params, timestamp_us);
             break;
         }
