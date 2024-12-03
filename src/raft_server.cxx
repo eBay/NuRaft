@@ -393,6 +393,7 @@ void raft_server::apply_and_log_current_params() {
           "max batch %d, backoff %d, snapshot distance %d, "
           "enable randomized snapshot creation %s, "
           "log sync stop gap %d, "
+          "use new joiner type %s, "
           "reserved logs %d, client timeout %d, "
           "auto forwarding %s, API call type %s, "
           "custom commit quorum size %d, "
@@ -411,6 +412,7 @@ void raft_server::apply_and_log_current_params() {
           params->snapshot_distance_,
           params->enable_randomized_snapshot_creation_ ? "YES" : "NO",
           params->log_sync_stop_gap_,
+          params->use_new_joiner_type_ ? "YES" : "NO",
           params->reserved_log_items_,
           params->client_req_timeout_,
           ( params->auto_forwarding_ ? "ON" : "OFF" ),
@@ -545,6 +547,9 @@ bool raft_server::is_regular_member(const ptr<peer>& p) {
 
     // Skip learner.
     if (p->is_learner()) return false;
+
+    // Skip new joiner.
+    if (p->is_new_joiner()) return false;
 
     return true;
 }
@@ -1045,9 +1050,12 @@ void raft_server::become_leader() {
             // Reset RPC client for all peers.
             // NOTE: Now we don't reset client, as we already did it
             //       during pre-vote phase.
+            // NOTE: In the case that this peer takeover the leadership,
+            //       connection will be re-used
             // reconnect_client(*pp);
 
             pp->set_next_log_idx(log_store_->next_slot());
+            pp->reset_stream();
             enable_hb_for_peer(*pp);
             pp->set_recovered();
         }
@@ -1392,6 +1400,7 @@ void raft_server::become_follower() {
     {   std::lock_guard<std::mutex> ll(cli_lock_);
         for (peer_itor it = peers_.begin(); it != peers_.end(); ++it) {
             it->second->enable_hb(false);
+            it->second->reset_stream();
         }
 
         srv_to_join_.reset();

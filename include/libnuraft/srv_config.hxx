@@ -41,6 +41,7 @@ public:
         , dc_id_(0)
         , endpoint_(endpoint)
         , learner_(false)
+        , new_joiner_(false)
         , priority_(INIT_PRIORITY)
         {}
 
@@ -55,6 +56,7 @@ public:
         , endpoint_(endpoint)
         , aux_(aux)
         , learner_(learner)
+        , new_joiner_(false)
         , priority_(priority)
         {}
 
@@ -74,6 +76,10 @@ public:
     const std::string& get_aux() const { return aux_; }
 
     bool is_learner() const { return learner_; }
+
+    bool is_new_joiner() const { return new_joiner_; }
+
+    void set_new_joiner(bool to) { new_joiner_ = to; }
 
     int32 get_priority() const { return priority_; }
 
@@ -110,6 +116,12 @@ private:
      * Learner will not initiate or participate in leader election.
      */
     bool learner_;
+
+    /**
+     * `true` if this node is a new joiner, but not yet fully synced.
+     * New joiner will not initiate or participate in leader election.
+     */
+    bool new_joiner_;
 
     /**
      * Priority of this node.

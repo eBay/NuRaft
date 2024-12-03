@@ -1,4 +1,4 @@
-# === Basic Raft server functionality test ===
+# === Basic Raft server functionality tests without real network stack ===
 add_executable(raft_server_test
                unit/raft_server_test.cxx
                unit/fake_network.cxx
@@ -8,6 +8,17 @@ add_dependencies(raft_server_test
                  static_lib)
 target_link_libraries(raft_server_test
                       ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+
+add_executable(new_joiner_test
+               unit/new_joiner_test.cxx
+               unit/fake_network.cxx
+               ${EXAMPLES_SRC}/logger.cc
+               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+add_dependencies(new_joiner_test
+                 static_lib)
+target_link_libraries(new_joiner_test
+                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+
 
 # === Failure recovery & conflict resolution test ===
 add_executable(failure_test
@@ -29,6 +40,29 @@ add_dependencies(asio_service_test
                  static_lib
                  build_ssl_key)
 target_link_libraries(asio_service_test
+                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
+                      ${LIBRARIES})
+
+add_executable(asio_service_stream_test
+               unit/asio_service_stream_test.cxx
+               ${EXAMPLES_SRC}/logger.cc
+               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+add_dependencies(asio_service_stream_test
+                 static_lib
+                 build_ssl_key)
+target_link_libraries(asio_service_stream_test
+                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
+                      ${LIBRARIES})
+
+add_executable(stream_functional_test
+               unit/stream_functional_test.cxx
+               unit/fake_network.cxx
+               ${EXAMPLES_SRC}/logger.cc
+               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+add_dependencies(stream_functional_test
+                 static_lib
+                 build_ssl_key)
+target_link_libraries(stream_functional_test
                       ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
                       ${LIBRARIES})
 

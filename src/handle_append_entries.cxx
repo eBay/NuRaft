@@ -272,88 +272,78 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         }
     }
 
-    if (p->make_busy()) {
-        p_tr("send request to %d\n", (int)p->get_id());
-
-        // If reserved message exists, process it first.
-        ptr<req_msg> msg = p->get_rsv_msg();
-        rpc_handler m_handler = p->get_rsv_msg_handler();
-        if (msg) {
+    // If reserved message exists, process it first.
+    ptr<req_msg> msg = p->get_rsv_msg();
+    rpc_handler m_handler = p->get_rsv_msg_handler();
+    if (msg) {
+        if (p->make_busy()) {
             // Clear the reserved message.
             p->set_rsv_msg(nullptr, nullptr);
             p_in("found reserved message to peer %d, type %d",
-                 p->get_id(), msg->get_type());
+                    p->get_id(), msg->get_type());
+            return send_request(p, msg, m_handler);
+        }
+    } else {
+        ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
+        int32 max_gap_in_stream = params->max_log_gap_in_stream_;
+        if (last_streamed_log_idx > 0 && max_gap_in_stream == 0) {
+            p_in("disable stream mode for peer %d at runtime, "
+                 "current streamed log: %" PRIu64 "", p->get_id(),
+                 last_streamed_log_idx);
+            last_streamed_log_idx = 0;
+            p->reset_stream();
+        }
+        bool streaming = last_streamed_log_idx > 0;
 
-        } else {
-            // Normal message.
-            msg = create_append_entries_req(p);
+        if (streaming || p->make_busy()) {
+            p_tr("send request to %d, streaming: %d, is_busy: %d\n", (int)p->get_id(),
+                 streaming, p->is_busy());
+            msg = create_append_entries_req(p, last_streamed_log_idx);
             m_handler = resp_handler_;
-        }
 
-        if (!msg) {
-            // Even normal message doesn't exist.
-            p->set_free();
-            if ( params->use_bg_thread_for_snapshot_io_ &&
-                 p->get_snapshot_sync_ctx() ) {
-                // If this is an async snapshot request, invoke IO thread.
-                snapshot_io_mgr::instance().invoke();
-            }
-            return true;
-        }
+            if (msg) {
+                streaming = streaming &&
+                            msg->get_type() == msg_type::append_entries_request;
+                bool make_busy_result = p->is_busy();
+                if (streaming) {
+                    // throttling
+                    int64_t max_stream_bytes =
+                        params->max_bytes_in_flight_in_stream_ > 0
+                        ? params->max_bytes_in_flight_in_stream_ : 0;
 
-        if (!p->is_manual_free()) {
-            // Actual recovery.
-            if ( p->get_long_puase_warnings() >=
-                     raft_server::raft_limits_.warning_limit_ ) {
-                int32 last_ts_ms = p->get_ls_timer_us() / 1000;
-                p->inc_recovery_cnt();
-                p_wn( "recovered from long pause to peer %d, %d warnings, "
-                      "%d ms, %d times",
-                      p->get_id(),
-                      p->get_long_puase_warnings(),
-                      last_ts_ms,
-                      p->get_recovery_cnt() );
-
-                if (p->get_recovery_cnt() >= 10) {
-                    // Re-connect client, just in case.
-                    //reconnect_client(*p);
-                    p->reset_recovery_cnt();
+                    if (max_gap_in_stream + p->get_next_log_idx() <=
+                            (last_streamed_log_idx + 1) ||
+                        (max_stream_bytes &&
+                         p->get_bytes_in_flight() > max_stream_bytes)) {
+                        streaming = false;
+                    } else {
+                        p_tr("send following request to %d in stream mode, "
+                             "start idx: %" PRIu64 "", (int)p->get_id(),
+                             msg->get_last_log_idx());
+                        p->set_last_streamed_log_idx(
+                            last_streamed_log_idx,
+                            last_streamed_log_idx + msg->log_entries().size());
+                    }
+                } else if (!make_busy_result) {
+                    make_busy_result = p->make_busy();
                 }
+
+                if (streaming || make_busy_result) {
+                    return send_request(p, msg, m_handler, streaming);
+                }
+            } else {
+                if (!streaming) {
+                    p->set_free();
+                }
+
+                if ( params->use_bg_thread_for_snapshot_io_ &&
+                     p->get_snapshot_sync_ctx() ) {
+                    // If this is an async snapshot request, invoke IO thread.
+                    snapshot_io_mgr::instance().invoke();
+                }
+                return true;
             }
-            p->reset_long_pause_warnings();
-
-        } else {
-            // FIXME: `manual_free` is deprecated, need to get rid of it.
-
-            // It means that this is not an actual recovery,
-            // but just temporarily freed busy flag.
-            p->reset_manual_free();
         }
-
-        p->send_req(p, msg, m_handler);
-        p->reset_ls_timer();
-
-        cb_func::Param param(id_, leader_, p->get_id(), msg.get());
-        ctx_->cb_func_.call(cb_func::SentAppendEntriesReq, &param);
-
-        if ( srv_to_leave_ &&
-             srv_to_leave_->get_id() == p->get_id() &&
-             msg->get_commit_idx() >= srv_to_leave_target_idx_ &&
-             !srv_to_leave_->is_stepping_down() ) {
-            // If this is the server to leave, AND
-            // current request's commit index includes
-            // the target log index number, step down and remove it
-            // as soon as we get the corresponding response.
-            srv_to_leave_->step_down();
-            p_in("srv_to_leave_ %d is safe to be erased from peer list, "
-                 "log idx %" PRIu64 " commit idx %" PRIu64 ", set flag",
-                 srv_to_leave_->get_id(),
-                 msg->get_last_log_idx(),
-                 msg->get_commit_idx());
-        }
-
-        p_tr("sent\n");
-        return true;
     }
 
     p_db("Server %d is busy, skip the request", p->get_id());
@@ -365,9 +355,12 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         p->inc_long_pause_warnings();
         if (p->get_long_puase_warnings() < raft_server::raft_limits_.warning_limit_) {
             p_wn("skipped sending msg to %d too long time, "
+                 "last streamed idx: %" PRIu64 ""
+                 "next log idx: %" PRIu64 ""
+                 "in-flight: %" PRIu64 " bytes"
                  "last msg sent %d ms ago",
-                 p->get_id(), last_ts_ms);
-
+                 p->get_id(), p->get_last_streamed_log_idx(),
+                 p->get_next_log_idx(), p->get_bytes_in_flight(), last_ts_ms);
         } else if ( p->get_long_puase_warnings() ==
                         raft_server::raft_limits_.warning_limit_ ) {
             p_wn("long pause warning to %d is too verbose, "
@@ -377,7 +370,67 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     return false;
 }
 
-ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
+bool raft_server::send_request(ptr<peer>& p,
+                               ptr<req_msg>& msg,
+                               rpc_handler& m_handler,
+                               bool streaming) {
+    if (!p->is_manual_free()) {
+        // Actual recovery.
+        if ( p->get_long_puase_warnings() >=
+                    raft_server::raft_limits_.warning_limit_ ) {
+            int32 last_ts_ms = p->get_ls_timer_us() / 1000;
+            p->inc_recovery_cnt();
+            p_wn( "recovered from long pause to peer %d, %d warnings, "
+                    "%d ms, %d times",
+                    p->get_id(),
+                    p->get_long_puase_warnings(),
+                    last_ts_ms,
+                    p->get_recovery_cnt() );
+
+            if (p->get_recovery_cnt() >= 10) {
+                // Re-connect client, just in case.
+                //reconnect_client(*p);
+                p->reset_recovery_cnt();
+            }
+        }
+        p->reset_long_pause_warnings();
+
+    } else {
+        // FIXME: `manual_free` is deprecated, need to get rid of it.
+
+        // It means that this is not an actual recovery,
+        // but just temporarily freed busy flag.
+        p->reset_manual_free();
+    }
+
+    p->send_req(p, msg, m_handler, streaming);
+    p->reset_ls_timer();
+
+    cb_func::Param param(id_, leader_, p->get_id(), msg.get());
+    ctx_->cb_func_.call(cb_func::SentAppendEntriesReq, &param);
+
+    if ( srv_to_leave_ &&
+            srv_to_leave_->get_id() == p->get_id() &&
+            msg->get_commit_idx() >= srv_to_leave_target_idx_ &&
+            !srv_to_leave_->is_stepping_down() ) {
+        // If this is the server to leave, AND
+        // current request's commit index includes
+        // the target log index number, step down and remove it
+        // as soon as we get the corresponding response.
+        srv_to_leave_->step_down();
+        p_in("srv_to_leave_ %d is safe to be erased from peer list, "
+                "log idx %" PRIu64 " commit idx %" PRIu64 ", set flag",
+                srv_to_leave_->get_id(),
+                msg->get_last_log_idx(),
+                msg->get_commit_idx());
+    }
+
+    p_tr("sent\n");
+    return true;
+}
+
+ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
+                                                    ulong custom_last_log_idx) {
     peer& p = *pp;
     ulong cur_nxt_idx(0L);
     ulong commit_idx(0L);
@@ -399,7 +452,11 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp) {
             p.set_next_log_idx(cur_nxt_idx);
         }
 
-        last_log_idx = p.get_next_log_idx() - 1;
+        if (custom_last_log_idx > 0) {
+            last_log_idx = custom_last_log_idx;
+        } else {
+            last_log_idx = p.get_next_log_idx() - 1;
+        }
     }
 
     if (last_log_idx >= cur_nxt_idx) {
@@ -564,7 +621,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         //   may cause stepping down of this node.
         ptr<cluster_config> cur_config = get_config();
         ptr<srv_config> my_config = cur_config->get_server(id_);
-        if (my_config) {
+        if (my_config && !my_config->is_new_joiner()) {
             p_in("catch-up process is done, clearing the flag");
             catching_up_ = false;
         }
@@ -1010,7 +1067,8 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
          (int)p->get_id(), resp.get_next_idx());
 
     int64 bs_hint = resp.get_next_batch_size_hint_in_bytes();
-    p_tr("peer %d batch size hint: %" PRId64 " bytes", p->get_id(), bs_hint);
+    p_tr("peer %d batch size hint: %" PRId64 " bytes, in-flight: %" PRId64 " bytes",
+         p->get_id(), bs_hint, p->get_bytes_in_flight());
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {
@@ -1032,11 +1090,37 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                           ( cb_func::GotAppendEntryRespFromPeer, &param );
         (void)rc;
 
+        // Try to enable stream
+        int32 max_gap_in_stream = ctx_->get_params()->max_log_gap_in_stream_;
+        ulong acceptable_precommit_idx = resp.get_next_idx() +
+                                         max_gap_in_stream;
+        ulong last_streamed_log_idx = p->get_last_streamed_log_idx();
+        p_tr("peer %d, max gap: %d, acceptable_precommit_idx: %" PRIu64 ", "
+             "last_streamed_log_idx: %" PRIu64 ", "
+             "last_sent: %" PRIu64 ", next_idx: %" PRIu64 "", p->get_id(),
+             max_gap_in_stream, acceptable_precommit_idx, last_streamed_log_idx,
+             p->get_last_sent_idx(), resp.get_next_idx());
+        if (max_gap_in_stream > 0 &&
+            last_streamed_log_idx == 0 &&
+            resp.get_next_idx() > 0 &&
+            p->get_last_sent_idx() < resp.get_next_idx() &&
+            precommit_index_ < acceptable_precommit_idx) {
+            p_in("start stream mode for peer %d at idx: %" PRIu64 "",
+                 p->get_id(), resp.get_next_idx() - 1);
+            p->set_last_streamed_log_idx(0, resp.get_next_idx() - 1);
+        }
+
         // Try to commit with this response.
         ulong committed_index = get_expected_committed_log_idx();
         commit( committed_index );
+
+        // As commit might send request, so refresh streamed log idx here
+        last_streamed_log_idx = p->get_last_streamed_log_idx();
+        ulong next_idx_to_send = last_streamed_log_idx
+                                 ? last_streamed_log_idx + 1
+                                 : resp.get_next_idx();
         need_to_catchup = p->clear_pending_commit() ||
-                          resp.get_next_idx() < log_store_->next_slot();
+                          next_idx_to_send < log_store_->next_slot();
 
     } else {
         std::lock_guard<std::mutex> guard(p->get_lock());
@@ -1079,6 +1163,48 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
               "resp next %" PRIu64 ", new next log idx %" PRIu64,
               p->get_id(), prev_next_log,
               resp.get_next_idx(), p->get_next_log_idx() );
+
+        // disable stream
+        p->reset_stream();
+    }
+
+    if (!config_changing_ && p->get_config().is_new_joiner()) {
+        auto params = ctx_->get_params();
+        uint64_t log_sync_stop_gap =
+            params->log_sync_stop_gap_ ? params->log_sync_stop_gap_ : 1;
+        uint64_t matched_idx = p->get_matched_idx();
+        uint64_t next_slot = log_store_->next_slot();
+        if (matched_idx + log_sync_stop_gap >= next_slot) {
+            p_in("peer %d is no longer a new joiner, matched index: %" PRIu64 ", "
+                 "next slot: %" PRIu64 ", sync stop gap: %" PRIu64
+                 ", set new joiner flag to false",
+                 p->get_id(), matched_idx, next_slot, log_sync_stop_gap);
+
+            // Clone the current cluster config.
+            ptr<cluster_config> cur_conf = get_config();
+            ptr<buffer> enc_conf_buf = cur_conf->serialize();
+            ptr<cluster_config> new_conf = cluster_config::deserialize(*enc_conf_buf);
+            new_conf->set_log_idx(log_store_->next_slot());
+
+            // Remove new joiner flag.
+            for (auto& ss: new_conf->get_servers()) {
+                if (ss->get_id() == p->get_id()) {
+                    ss->set_new_joiner(false);
+                    break;
+                }
+            }
+
+            ptr<buffer> new_conf_buf(new_conf->serialize());
+            ptr<log_entry> entry( cs_new<log_entry>( state_->get_term(),
+                                                     new_conf_buf,
+                                                     log_val_type::conf,
+                                                     timer_helper::get_timeofday_us() ) );
+            store_log_entry(entry);
+            config_changing_ = true;
+            uncommitted_config_ = new_conf;
+            request_append_entries();
+            return;
+        }
     }
 
     // NOTE:

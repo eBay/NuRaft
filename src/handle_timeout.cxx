@@ -195,6 +195,7 @@ void raft_server::stop_election_timer() {
         return;
     }
 
+    p_tr("stop election timer");
     cancel_task(election_task_);
 }
 
