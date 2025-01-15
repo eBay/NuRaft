@@ -74,6 +74,7 @@ struct raft_params {
         , log_sync_stop_gap_(99999)
         , snapshot_distance_(0)
         , snapshot_block_size_(0)
+        , snapshot_sync_ctx_timeout_(0)
         , enable_randomized_snapshot_creation_(false)
         , max_append_size_(100)
         , reserved_log_items_(100000)
@@ -218,6 +219,17 @@ struct raft_params {
      */
     raft_params& with_snapshot_sync_block_size(int32 size) {
         snapshot_block_size_ = size;
+        return *this;
+    }
+
+    /**
+    * Timeout for syncing the snapshot requests.
+    *
+    * @param timeout_ms
+    * @return self
+    */
+    raft_params& with_snapshot_sync_ctx_timeout(int32 timeout_ms) {
+        snapshot_sync_ctx_timeout_ = timeout_ms;
         return *this;
     }
 
@@ -404,6 +416,13 @@ public:
      * (Deprecated).
      */
     int32 snapshot_block_size_;
+
+    /**
+        * Timeout(ms) for snapshot_sync_ctx, if a single snapshot syncing request exceeds this,
+        * it will be considered as timeout and ctx will be released.
+        * 0 means it will be set to the default value `heart_beat_interval_ * response_limit_`.
+        */
+    int32 snapshot_sync_ctx_timeout_;
 
     /**
      * Enable randomized snapshot creation which will avoid
