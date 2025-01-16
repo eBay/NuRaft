@@ -152,10 +152,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
             destroy_user_snp_ctx(sync_ctx);
         }
 
-        // Timeout: heartbeat * response limit.
-        ulong snp_timeout_ms = ctx_->get_params()->heart_beat_interval_ *
-                               raft_server::raft_limits_.response_limit_;
-        p.set_snapshot_in_sync(snp, snp_timeout_ms);
+        p.set_snapshot_in_sync(snp, ulong(get_snapshot_sync_ctx_timeout()));
     }
 
     if (params->use_bg_thread_for_snapshot_io_) {

@@ -410,6 +410,13 @@ public:
     std::string get_user_ctx() const;
 
     /**
+    * Get timeout for snapshot_sync_ctx
+    *
+    * @return snapshot_sync_ctx_timeout.
+    */
+    int32 get_snapshot_sync_ctx_timeout() const;
+
+    /**
      * Get ID of this server.
      *
      * @return Server ID.

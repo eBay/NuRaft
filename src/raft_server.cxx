@@ -1670,6 +1670,13 @@ std::string raft_server::get_user_ctx() const {
     return c_conf->get_user_ctx();
 }
 
+int32 raft_server::get_snapshot_sync_ctx_timeout() const {
+    if (ctx_->get_params()->snapshot_sync_ctx_timeout_ == 0) {
+        return raft_limits_.response_limit_ * ctx_->get_params()->heart_beat_interval_;
+    }
+    return ctx_->get_params()->snapshot_sync_ctx_timeout_;
+}
+
 int32 raft_server::get_dc_id(int32 srv_id) const {
     ptr<cluster_config> c_conf = get_config();
     ptr<srv_config> s_conf = c_conf->get_server(srv_id);
