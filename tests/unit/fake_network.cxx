@@ -149,19 +149,23 @@ ptr<FakeClient> FakeNetwork::findClient(const std::string& endpoint) {
 bool FakeNetwork::delieverReqTo(const std::string& endpoint,
                                 bool random_order)
 {
+    SimpleLogger* ll = base->getLogger();
+
     // this:                    source (sending request)
     // conn->dstNet (endpoint): destination (sending response)
     ptr<FakeClient> conn = findClient(endpoint);
 
     // If destination is offline, make failure.
-    if (!conn->isDstOnline()) return makeReqFail(endpoint, random_order);
+    if (!conn->isDstOnline()) {
+        _log_info(ll, "destination %s is offline", endpoint.c_str());
+        return makeReqFail(endpoint, random_order);
+    }
 
     auto pkg_entry = conn->pendingReqs.begin();
     if (pkg_entry == conn->pendingReqs.end()) return false;
 
     ReqPkg& pkg = *pkg_entry;
 
-    SimpleLogger* ll = base->getLogger();
     _log_info(ll, "[BEGIN] send/process %s -> %s, %s",
               myEndpoint.c_str(), endpoint.c_str(),
               msg_type_to_string( pkg.req->get_type() ).c_str() );
@@ -232,6 +236,11 @@ bool FakeNetwork::handleRespFrom(const std::string& endpoint,
     // Copy shared pointer for the case of reconnection,
     // as it drops all resps.
     RespPkg pkg = *pkg_entry;
+    if (!pkg.resp) {
+        _log_info(ll, "empty response from %s", endpoint.c_str());
+        return false;
+    }
+
     _log_info(ll, "[BEGIN] deliver response %s -> %s, %s",
               endpoint.c_str(), myEndpoint.c_str(),
               msg_type_to_string( pkg.resp->get_type() ).c_str() );
@@ -277,6 +286,8 @@ void FakeNetwork::stop() {
 }
 
 void FakeNetwork::shutdown() {
+    goesOffline();
+
     std::lock_guard<std::mutex> ll(clientsLock);
     for (auto& entry: clients) {
         ptr<FakeClient>& cc = entry.second;

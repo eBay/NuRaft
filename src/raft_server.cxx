@@ -64,7 +64,6 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , hb_alive_(false)
     , election_completed_(true)
     , config_changing_(false)
-    , catching_up_(false)
     , out_of_log_range_(false)
     , data_fresh_(false)
     , stopping_(false)
@@ -160,6 +159,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
              << "term " << state_->get_term() << "\n"
              << "election timer " << ( state_->is_election_timer_allowed()
                                        ? "allowed" : "not allowed" ) << "\n"
+             << "catching-up " << ( state_->is_catching_up()
+                                    ? "yes" : "no" ) << "\n"
              << "log store start " << log_store_->start_index()
              << ", end " << log_store_->next_slot() - 1 << "\n"
              << "config log idx " << c_conf->get_log_idx()

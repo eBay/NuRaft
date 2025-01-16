@@ -759,7 +759,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
             steps_to_down_ = 0;
             if (!(*it)->is_new_joiner() &&
                 role_ == srv_role::follower &&
-                catching_up_) {
+                state_->is_catching_up()) {
                 // Except for new joiner type, if this server is added
                 // to the cluster config, that means the sync is done.
                 // Start election timer without waiting for
@@ -770,7 +770,8 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
                 // that is also notified by a new cluster config.
                 p_in("now this node is the part of cluster, "
                      "catch-up process is done, clearing the flag");
-                catching_up_ = false;
+                state_->set_catching_up(false);
+                ctx_->state_mgr_->save_state(*state_);
                 restart_election_timer();
             }
         }
@@ -827,7 +828,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
     for ( std::vector<int32>::const_iterator it = srvs_removed.begin();
           it != srvs_removed.end(); ++it ) {
         int32 srv_removed = *it;
-        if (srv_removed == id_ && !catching_up_) {
+        if (srv_removed == id_ && !state_->is_catching_up()) {
             p_in("this server (%d) has been removed from the cluster, "
                  "will step down itself soon. config log idx %" PRIu64,
                  id_,

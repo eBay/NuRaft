@@ -163,7 +163,7 @@ void raft_server::restart_election_timer() {
     // don't start the election timer while this server is still catching up the logs
     // or this server is the leader
     recur_lock(lock_);
-    if (catching_up_ || role_ == srv_role::leader) {
+    if (state_->is_catching_up() || role_ == srv_role::leader) {
         return;
     }
 
@@ -243,7 +243,7 @@ void raft_server::handle_election_timeout() {
         return;
     }
 
-    if (catching_up_) {
+    if (state_->is_catching_up()) {
         // this is a new server for the cluster, will not send out vote req
         // until conf that includes this srv is committed
         p_in("election timeout while joining the cluster, ignore it.");

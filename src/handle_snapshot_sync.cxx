@@ -236,7 +236,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
 }
 
 ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req, std::unique_lock<std::recursive_mutex>& guard) {
-    if (req.get_term() == state_->get_term() && !catching_up_) {
+    if (req.get_term() == state_->get_term() && !state_->is_catching_up()) {
         if (role_ == srv_role::candidate) {
             become_follower();
 
@@ -263,7 +263,7 @@ ptr<resp_msg> raft_server::handle_install_snapshot_req(req_msg& req, std::unique
                            req.get_src(),
                            log_store_->next_slot() );
 
-    if (!catching_up_ && req.get_term() < state_->get_term()) {
+    if (!state_->is_catching_up() && req.get_term() < state_->get_term()) {
         p_wn("received an install snapshot request (%" PRIu64 ") which has lower term "
              "than this server (%" PRIu64 "), decline the request",
              req.get_term(), state_->get_term());
