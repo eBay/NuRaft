@@ -223,11 +223,11 @@ struct raft_params {
     }
 
     /**
-    * Timeout for syncing the snapshot requests.
-    *
-    * @param timeout_ms
-    * @return self
-    */
+     * Timeout for syncing the snapshot requests.
+     *
+     * @param timeout_ms
+     * @return self
+     */
     raft_params& with_snapshot_sync_ctx_timeout(int32 timeout_ms) {
         snapshot_sync_ctx_timeout_ = timeout_ms;
         return *this;
@@ -418,10 +418,11 @@ public:
     int32 snapshot_block_size_;
 
     /**
-        * Timeout(ms) for snapshot_sync_ctx, if a single snapshot syncing request exceeds this,
-        * it will be considered as timeout and ctx will be released.
-        * 0 means it will be set to the default value `heart_beat_interval_ * response_limit_`.
-        */
+     * Timeout(ms) for snapshot_sync_ctx, if a single snapshot syncing request
+     * exceeds this, it will be considered as timeout and ctx will be released.
+     * 0 means it will be set to the default value
+     * `heart_beat_interval_ * response_limit_`.
+     */
     int32 snapshot_sync_ctx_timeout_;
 
     /**

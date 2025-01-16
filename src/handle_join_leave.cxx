@@ -91,8 +91,11 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
              srv_to_join_->get_id(),
              last_active_ms);
 
-        ulong sync_timeout = (ulong)raft_limits_.response_limit_
-                             * ctx_->get_params()->heart_beat_interval_;
+        // NOTE:
+        //   If snapshot transmission was in progress, we will follow the
+        //   snapshot timeout. Otherwise, we will follow the response timeout.
+        ulong sync_timeout = (ulong)raft_limits_.response_limit_ *
+                             ctx_->get_params()->heart_beat_interval_;
         if (srv_to_join_->get_snapshot_sync_ctx()) {
             sync_timeout = (ulong)get_snapshot_sync_ctx_timeout();
         }
