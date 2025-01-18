@@ -91,9 +91,16 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
              srv_to_join_->get_id(),
              last_active_ms);
 
-        if ( last_active_ms <=
-                 (ulong)raft_server::raft_limits_.response_limit_ *
-                 ctx_->get_params()->heart_beat_interval_ ) {
+        // NOTE:
+        //   If snapshot transmission was in progress, we will follow the
+        //   snapshot timeout. Otherwise, we will follow the response timeout.
+        ulong sync_timeout = (ulong)raft_limits_.response_limit_ *
+                             ctx_->get_params()->heart_beat_interval_;
+        if (srv_to_join_->get_snapshot_sync_ctx()) {
+            sync_timeout = (ulong)get_snapshot_sync_ctx_timeout();
+        }
+
+        if (last_active_ms <= sync_timeout) {
             resp->set_result_code(cmd_result_code::SERVER_IS_JOINING);
             return resp;
         }
@@ -169,7 +176,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     //   in progress. It should gracefully handle the new request and should
     //   not ruin the current request.
     bool reset_commit_idx = true;
-    if (catching_up_) {
+    if (state_->is_catching_up()) {
         p_wn("this server is already in log syncing mode, "
              "but let's do it again: sm idx %" PRIu64 ", quick commit idx %" PRIu64 ", "
              "will not reset commit index",
@@ -179,7 +186,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     }
 
     p_in("got join cluster req from leader %d", req.get_src());
-    catching_up_ = true;
+    state_->set_catching_up(true);
     role_ = srv_role::follower;
     index_at_becoming_leader_ = 0;
     leader_ = req.get_src();
@@ -336,7 +343,7 @@ ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {
 
     p_db("entries size %d, type %d, catching_up %s\n",
          (int)entries.size(), (int)entries[0]->get_val_type(),
-         (catching_up_)?"true":"false");
+         state_->is_catching_up() ? "true" : "false");
     if ( entries.size() != 1 ||
          entries[0]->get_val_type() != log_val_type::log_pack ) {
         p_wn("receive an invalid LogSyncRequest as the log entry value "
@@ -345,7 +352,7 @@ ptr<resp_msg> raft_server::handle_log_sync_req(req_msg& req) {
         return resp;
     }
 
-    if (!catching_up_) {
+    if (!state_->is_catching_up()) {
         p_wn("This server is ready for cluster, ignore the request, "
              "my next log idx %" PRIu64 "", resp->get_next_idx());
         return resp;

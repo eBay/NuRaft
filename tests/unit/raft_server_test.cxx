@@ -2071,6 +2071,114 @@ int snapshot_basic_test() {
     return 0;
 }
 
+int snapshot_new_member_restart_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    std::vector<RaftPkg*> pkgs_orig = {&s1, &s2};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs_orig ) );
+
+    // Append a message using separate thread.
+    ExecArgs exec_args(&s1);
+    TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
+
+    for (size_t ii=0; ii<5; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        exec_args.setMsg(msg);
+        exec_args.eaExecuter.invoke();
+
+        // Wait for executer thread.
+        TestSuite::sleep_ms(EXECUTOR_WAIT_MS);
+
+        CHK_NULL( exec_args.getMsg().get() );
+
+        s1.fNet->execReqResp(); // replication.
+        s1.fNet->execReqResp(); // commit.
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+    }
+
+    // Add S3 to S1.
+    s1.raftServer->add_srv(*(s3.getTestMgr()->get_srv_config()));
+
+    // Join req/resp.
+    s1.fNet->execReqResp();
+    // Add new server, notify existing peers.
+    // After getting response, it will make configuration commit.
+    s1.fNet->execReqResp();
+    // Notify new commit, start snapshot transmission.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Shutdown S3.
+    s1.dbgLog(" --- shutting down S3 ---");
+    s3.raftServer->shutdown();
+    s3.fNet->shutdown();
+    s1.dbgLog(" --- shut down S3 ---");
+
+    // Trigger heartbeat, to close connection.
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    s1.fNet->execReqResp();
+
+    // Restart s3.
+    s1.dbgLog(" --- restarting S3 ---");
+    CHK_Z( launch_servers( {&s3},
+                           /* custom_params = */ nullptr,
+                           /* restart = */ true ) );
+    s1.dbgLog(" --- restarted S3 ---");
+
+    // Trigger heartbeat, to resume snapshot transmission.
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+
+    // Send the entire snapshot.
+    do {
+        s1.fNet->execReqResp();
+    } while (s3.raftServer->is_receiving_snapshot());
+
+    // commit.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more heartbeat.
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    fake_executer_killer(&exec_args);
+    hh.join();
+    CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int snapshot_manual_creation_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -3511,6 +3619,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "snapshot basic test",
                snapshot_basic_test );
+
+    ts.doTest( "snapshot new member restart test",
+               snapshot_new_member_restart_test );
 
     ts.doTest( "snapshot manual creation test",
                snapshot_manual_creation_test );

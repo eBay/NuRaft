@@ -64,7 +64,6 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , hb_alive_(false)
     , election_completed_(true)
     , config_changing_(false)
-    , catching_up_(false)
     , out_of_log_range_(false)
     , data_fresh_(false)
     , stopping_(false)
@@ -160,6 +159,8 @@ raft_server::raft_server(context* ctx, const init_options& opt)
              << "term " << state_->get_term() << "\n"
              << "election timer " << ( state_->is_election_timer_allowed()
                                        ? "allowed" : "not allowed" ) << "\n"
+             << "catching-up " << ( state_->is_catching_up()
+                                    ? "yes" : "no" ) << "\n"
              << "log store start " << log_store_->start_index()
              << ", end " << log_store_->next_slot() - 1 << "\n"
              << "config log idx " << c_conf->get_log_idx()
@@ -1668,6 +1669,13 @@ void raft_server::set_user_ctx(const std::string& ctx) {
 std::string raft_server::get_user_ctx() const {
     ptr<cluster_config> c_conf = get_config();
     return c_conf->get_user_ctx();
+}
+
+int32 raft_server::get_snapshot_sync_ctx_timeout() const {
+    if (ctx_->get_params()->snapshot_sync_ctx_timeout_ == 0) {
+        return raft_limits_.response_limit_ * ctx_->get_params()->heart_beat_interval_;
+    }
+    return ctx_->get_params()->snapshot_sync_ctx_timeout_;
 }
 
 int32 raft_server::get_dc_id(int32 srv_id) const {

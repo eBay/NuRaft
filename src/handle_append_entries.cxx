@@ -612,7 +612,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
 ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 {
     bool supp_exp_warning = false;
-    if (catching_up_) {
+    if (state_->is_catching_up()) {
         // WARNING:
         //   We should clear the `catching_up_` flag only after this node's
         //   config has been added to the cluster config. Otherwise, if we
@@ -623,7 +623,8 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         ptr<srv_config> my_config = cur_config->get_server(id_);
         if (my_config && !my_config->is_new_joiner()) {
             p_in("catch-up process is done, clearing the flag");
-            catching_up_ = false;
+            state_->set_catching_up(false);
+            ctx_->state_mgr_->save_state(*state_);
         }
         supp_exp_warning = true;
     }
