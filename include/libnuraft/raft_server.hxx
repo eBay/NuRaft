@@ -198,7 +198,7 @@ public:
      *
      * @return `true` if it is in catch-up mode.
      */
-    bool is_catching_up() const { return catching_up_; }
+    bool is_catching_up() const { return state_->is_catching_up(); }
 
     /**
      * Check if this server is receiving snapshot from leader.
@@ -1181,13 +1181,6 @@ protected:
      * Protected by `lock_`.
      */
     bool config_changing_;
-
-    /**
-     * `true` if this server falls behind leader so that
-     * catching up the latest log. It will not receive
-     * normal `append_entries` request while in catch-up status.
-     */
-    std::atomic<bool> catching_up_;
 
     /**
      * `true` if this server receives out of log range message

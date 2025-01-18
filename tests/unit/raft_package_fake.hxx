@@ -97,6 +97,8 @@ public:
                        const raft_server::init_options& opt =
                            raft_server::init_options(false, true, true))
     {
+        fNet->goesOnline();
+
         if (!given_params) {
             params.with_election_timeout_lower(0);
             params.with_election_timeout_upper(10000);

@@ -323,7 +323,7 @@ ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
         p_in("[VOTE REQ] force vote request, will ignore priority");
         ignore_priority = true;
     }
-    if (catching_up_) {
+    if (state_->is_catching_up()) {
         p_in("[VOTE REQ] this server is catching-up with leader, "
              "will ignore priority");
         ignore_priority = true;
@@ -437,10 +437,10 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
     //   normal append_entries request so that `hb_alive_` may not
     //   be cleared properly. Hence, it should accept any pre-vote
     //   requests.
-    if (catching_up_) {
+    if (state_->is_catching_up()) {
         p_in("this server is catching up, always accept pre-vote");
     }
-    if (!hb_alive_ || catching_up_) {
+    if (!hb_alive_ || state_->is_catching_up()) {
         p_in("pre-vote decision: O (grant)");
         resp->accept(log_store_->next_slot());
     } else {

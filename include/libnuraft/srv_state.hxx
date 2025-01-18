@@ -37,12 +37,14 @@ public:
         : term_(0L)
         , voted_for_(-1)
         , election_timer_allowed_(true)
+        , catching_up_(false)
         {}
 
-    srv_state(ulong term, int voted_for, bool et_allowed)
+    srv_state(ulong term, int voted_for, bool et_allowed, bool catching_up)
         : term_(term)
         , voted_for_(voted_for)
         , election_timer_allowed_(et_allowed)
+        , catching_up_(catching_up)
         {}
 
     /**
@@ -67,17 +69,22 @@ public:
     static ptr<srv_state> deserialize_v0(buffer& buf) {
         ulong term = buf.get_ulong();
         int voted_for = buf.get_int();
-        return cs_new<srv_state>(term, voted_for, true);
+        return cs_new<srv_state>(term, voted_for, true, false);
     }
 
     static ptr<srv_state> deserialize_v1p(buffer& buf) {
         buffer_serializer bs(buf);
         uint8_t ver = bs.get_u8();
-        (void)ver;
+
         ulong term = bs.get_u64();
         int voted_for = bs.get_i32();
         bool et_allowed = (bs.get_u8() == 1);
-        return cs_new<srv_state>(term, voted_for, et_allowed);
+        bool catching_up = false;
+        if (ver >= 2 && bs.pos() < buf.size()) {
+            catching_up = (bs.get_u8() == 1);
+        }
+
+        return cs_new<srv_state>(term, voted_for, et_allowed, catching_up);
     }
 
     void set_inc_term_func(inc_term_func to) {
@@ -114,8 +121,16 @@ public:
         return election_timer_allowed_;
     }
 
+    bool is_catching_up() const {
+        return catching_up_;
+    }
+
     void allow_election_timer(bool to) {
         election_timer_allowed_ = to;
+    }
+
+    void set_catching_up(bool to) {
+        catching_up_ = to;
     }
 
     ptr<buffer> serialize() const {
@@ -135,21 +150,30 @@ public:
         // version          1 byte
         // term             8 bytes
         // voted_for        4 bytes
-        // election timer   1 byte
-        ptr<buffer> buf = buffer::alloc( sizeof(uint8_t) +
-                                         sizeof(uint64_t) +
-                                         sizeof(int32_t) +
-                                         sizeof(uint8_t) );
+        // election timer   1 byte      (since v1)
+        // catching up      1 byte      (since v2)
+
+        size_t buf_len = sizeof(uint8_t) +
+                         sizeof(uint64_t) +
+                         sizeof(int32_t) +
+                         sizeof(uint8_t);
+        if (version >= 2) {
+            buf_len += sizeof(uint8_t);
+        }
+        ptr<buffer> buf = buffer::alloc(buf_len);
         buffer_serializer bs(buf);
         bs.put_u8(version);
         bs.put_u64(term_);
         bs.put_i32(voted_for_);
-        bs.put_u8( election_timer_allowed_ ? 1 : 0 );
+        bs.put_u8(election_timer_allowed_ ? 1 : 0);
+        if (version >= 2) {
+            bs.put_u8(catching_up_ ? 1 : 0);
+        }
         return buf;
     }
 
 private:
-    const uint8_t CURRENT_VERSION = 1;
+    const uint8_t CURRENT_VERSION = 2;
 
     /**
      * Term.
@@ -166,6 +190,14 @@ private:
      * `true` if election timer is allowed.
      */
     std::atomic<bool> election_timer_allowed_;
+
+    /**
+     * true if this server has joined the cluster but has not yet
+     * fully caught up with the latest log. While in the catch-up status,
+     * this server will not receive normal append_entries requests.
+     */
+    std::atomic<bool> catching_up_;
+
 
     /**
      * Custom callback function for increasing term.
