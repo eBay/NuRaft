@@ -147,6 +147,79 @@ int make_group_test() {
     return 0;
 }
 
+int become_follower_test() {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+
+    std::set<int> got_become_follower;
+    raft_server::init_options i_opt;
+    i_opt.raft_callback_ = [&](cb_func::Type type, cb_func::Param* param)
+        -> cb_func::ReturnCode {
+        if (type == cb_func::BecomeFollower) {
+            got_become_follower.insert(param->myId);
+        }
+        return cb_func::ReturnCode::Ok;
+    };
+    CHK_Z( launch_servers(pkgs, false, false, true, i_opt) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s1.raftServer->get_leader());
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+
+    std::unordered_set<int> expected_followers = {2, 3};
+    for (auto& entry: got_become_follower) {
+        CHK_TRUE( expected_followers.find(entry) != expected_followers.end() );
+        _msg("server %d got become_follower callback\n", entry);
+    }
+
+    // Now update leader to use `new_joiner` option.
+    for (auto& entry: pkgs) {
+        raft_params param = entry->raftServer->get_current_params();
+        param.use_new_joiner_type_ = true;
+        entry->raftServer->update_params(param);
+    }
+
+    // Launch S4 and add it to S1.
+    std::string s4_addr = "localhost:20040";
+    RaftAsioPkg s4(4, s4_addr);
+    pkgs.push_back(&s4);
+    CHK_Z( launch_servers({&s4}, false, false, true, i_opt) );
+
+    s1.raftServer->add_srv( *(s4.getTestMgr()->get_srv_config()) );
+    // Wait longer than upper timeout.
+    TestSuite::sleep_sec(1);
+
+    // S4 should be a follower.
+    expected_followers.insert(4);
+    for (auto& entry: got_become_follower) {
+        CHK_TRUE( expected_followers.find(entry) != expected_followers.end() );
+        _msg("server %d got become_follower callback\n", entry);
+    }
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    s4.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 int leader_election_test(bool crc_on_entire_message) {
     reset_log_files();
 
@@ -2752,6 +2825,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "make group test",
                make_group_test );
+
+    ts.doTest( "become_follower_test",
+               become_follower_test );
 
     ts.doTest( "leader election test",
                leader_election_test,
