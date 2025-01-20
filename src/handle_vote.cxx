@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "error_code.hxx"
 #include "raft_server.hxx"
 
 #include "cluster_config.hxx"
@@ -86,7 +87,7 @@ void raft_server::request_prevote() {
     if (pre_vote_.live_ + pre_vote_.dead_ > 0) {
         if (pre_vote_.live_ + pre_vote_.dead_ < quorum_size + 1) {
             // Pre-vote failed due to non-responding voters.
-            pre_vote_.failure_count_++;
+            pre_vote_.no_response_failure_count_++;
             p_wn("total %d nodes (including this node) responded for pre-vote "
                  "(term %" PRIu64 ", live %d, dead %d), at least %d nodes should "
                  "respond. failure count %d",
@@ -95,15 +96,15 @@ void raft_server::request_prevote() {
                  pre_vote_.live_.load(),
                  pre_vote_.dead_.load(),
                  quorum_size + 1,
-                 pre_vote_.failure_count_.load());
+                 pre_vote_.no_response_failure_count_.load());
         } else {
-            pre_vote_.failure_count_ = 0;
+            pre_vote_.no_response_failure_count_ = 0;
         }
     }
     int num_voting_members = get_num_voting_members();
     if ( params->auto_adjust_quorum_for_small_cluster_ &&
          num_voting_members == 2 &&
-         pre_vote_.failure_count_ > raft_server::raft_limits_.vote_limit_ ) {
+         pre_vote_.no_response_failure_count_ > raft_server::raft_limits_.vote_limit_ ) {
         // 2-node cluster's pre-vote failed due to offline node.
         p_wn("2-node cluster's pre-vote is failing long time, "
              "adjust quorum to 1");
@@ -166,8 +167,28 @@ void raft_server::request_prevote() {
         if (pp->make_busy()) {
             pp->send_req(pp, req, resp_handler_);
         } else {
-            p_wn("failed to send prevote request: peer %d (%s) is busy",
-                 pp->get_id(), pp->get_endpoint().c_str());
+            pre_vote_.connection_busy_++;
+            p_wn("failed to send prevote request: peer %d (%s) is busy, count %d",
+                 pp->get_id(), pp->get_endpoint().c_str(),
+                 pre_vote_.connection_busy_.load());
+        }
+    }
+
+    int32 election_quorum_size = get_quorum_for_election() + 1;
+    if (pre_vote_.connection_busy_ >= election_quorum_size) {
+        // Couldn't send pre-vote request to majority of peers,
+        // no hope to get quorum.
+        pre_vote_.busy_connection_failure_count_++;
+        p_wn("failed to send prevote request to majority of peers, "
+             "no hope to get quorum, count: %d",
+             pre_vote_.busy_connection_failure_count_.load());
+        int32_t busy_conn_limit = raft_server::raft_limits_.busy_connection_limit_;
+        if (busy_conn_limit &&
+            pre_vote_.busy_connection_failure_count_ > busy_conn_limit) {
+            // LCOV_EXCL_START
+            p_ft("too many pre-vote failures due to busy connection!");
+            ctx_->state_mgr_->system_exit(N22_unrecoverable_isolation);
+            // LCOV_EXCL_STOP
         }
     }
 }
