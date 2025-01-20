@@ -1102,7 +1102,7 @@ void raft_server::become_leader() {
     next_leader_candidate_ = -1;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
-    pre_vote_.failure_count_ = 0;
+    pre_vote_.no_response_failure_count_ = 0;
     data_fresh_ = true;
 
     request_append_entries();
@@ -1418,7 +1418,7 @@ void raft_server::become_follower() {
         initialized_ = true;
         uncommitted_config_.reset();
         pre_vote_.quorum_reject_count_ = 0;
-        pre_vote_.failure_count_ = 0;
+        pre_vote_.no_response_failure_count_ = 0;
 
         ptr<raft_params> params = ctx_->get_params();
         if ( params->auto_adjust_quorum_for_small_cluster_ &&

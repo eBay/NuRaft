@@ -117,6 +117,7 @@ public:
             , reconnect_limit_(50)
             , leave_limit_(5)
             , vote_limit_(5)
+            , busy_connection_limit_(20)
             {}
 
         limits(const limits& src) {
@@ -176,6 +177,19 @@ public:
          * Active only when `auto_adjust_quorum_for_small_cluster_` is enabled.
          */
         std::atomic<int32> vote_limit_;
+
+        /**
+         * If a connection is stuck due to a network black hole or similar issues,
+         * the sender may not receive either a response to the previous request or
+         * an explicit error, preventing any progress through that connection.
+         * Such situations are unlikely to resolve on their own, and sometimes
+         * restarting the process is the only solution. If the connection remains
+         * busy beyond this threshold, `system_exit` will be invoked with
+         * `N22_unrecoverable_isolation`.
+         *
+         * If zero, this feature is disabled.
+         */
+        std::atomic<int32> busy_connection_limit_;
     };
 
     raft_server(context* ctx, const init_options& opt = init_options());
@@ -841,18 +855,20 @@ protected:
     struct pre_vote_status_t {
         pre_vote_status_t()
             : quorum_reject_count_(0)
-            , failure_count_(0)
+            , no_response_failure_count_(0)
+            , busy_connection_failure_count_(0)
             { reset(0); }
         void reset(ulong _term) {
             term_ = _term;
             done_ = false;
-            live_ = dead_ = abandoned_ = 0;
+            live_ = dead_ = abandoned_ = connection_busy_ = 0;
         }
         ulong term_;
         std::atomic<bool> done_;
         std::atomic<int32> live_;
         std::atomic<int32> dead_;
         std::atomic<int32> abandoned_;
+        std::atomic<int32> connection_busy_;
 
         /**
          * Number of pre-vote rejections by quorum.
@@ -860,9 +876,14 @@ protected:
         std::atomic<int32> quorum_reject_count_;
 
         /**
-         * Number of pre-vote failures due to not-responding peers.
+         * Number of pre-vote failures due to non-responding peers.
          */
-        std::atomic<int32> failure_count_;
+        std::atomic<int32> no_response_failure_count_;
+
+        /**
+         * Number of pre-vote failures due to busy connections.
+         */
+        std::atomic<int32> busy_connection_failure_count_;
     };
 
     /**
