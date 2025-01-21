@@ -815,15 +815,36 @@ public:
     void notify_log_append_completion(bool ok);
 
     /**
+     * Options for manual snapshot creation.
+     */
+    struct create_snapshot_options {
+        create_snapshot_options()
+            : serialize_commit_(false)
+            {}
+        /**
+         * If `true`, the background commit will be blocked until `create_snapshot`
+         * returns. However, it will not block the commit for the entire duration
+         * of the snapshot creation process, as long as your state machine creates
+         * the snapshot asynchronously.
+         *
+         * The purpose of this flag is to ensure that the log index used for
+         * the snapshot creation is the most recent one.
+         */
+        bool serialize_commit_;
+    };
+
+    /**
      * Manually create a snapshot based on the latest committed
      * log index of the state machine.
      *
      * Note that snapshot creation will fail immediately if the previous
      * snapshot task is still running.
      *
+     * @params options Options for snapshot creation.
      * @return Log index number of the created snapshot or`0` if failed.
      */
-    ulong create_snapshot();
+    ulong create_snapshot(const create_snapshot_options& options =
+                              create_snapshot_options());
 
     /**
      * Manually and asynchronously create a snapshot on the next earliest

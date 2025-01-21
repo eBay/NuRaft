@@ -464,10 +464,19 @@ bool raft_server::apply_config_log_entry(ptr<log_entry>& le,
     return true;
 }
 
-ulong raft_server::create_snapshot() {
-    uint64_t committed_idx = sm_commit_index_;
-    p_in("manually create a snapshot on %" PRIu64 "", committed_idx);
-    return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
+ulong raft_server::create_snapshot(const create_snapshot_options& options) {
+    auto exec_internal = [&]() {
+        uint64_t committed_idx = sm_commit_index_;
+        p_in("manually create a snapshot on %" PRIu64 "", committed_idx);
+        return snapshot_and_compact(committed_idx, true) ? committed_idx : 0;
+    };
+
+    if (options.serialize_commit_) {
+        auto_lock(commit_lock_);
+        return exec_internal();
+    } else {
+        return exec_internal();
+    }
 }
 
 ptr< cmd_result<uint64_t> > raft_server::schedule_snapshot_creation() {
