@@ -175,12 +175,15 @@ void raft_server::request_prevote() {
     }
 
     int32 election_quorum_size = get_quorum_for_election() + 1;
-    if (pre_vote_.connection_busy_ >= election_quorum_size) {
+    if (pre_vote_.connection_busy_ + election_quorum_size > num_voting_members) {
         // Couldn't send pre-vote request to majority of peers,
         // no hope to get quorum.
         pre_vote_.busy_connection_failure_count_++;
-        p_wn("failed to send prevote request to majority of peers, "
+        p_wn("too many busy connections: %d, num voting members: %d, quorum size: %d, "
              "no hope to get quorum, count: %d",
+             pre_vote_.connection_busy_.load(),
+             num_voting_members,
+             election_quorum_size,
              pre_vote_.busy_connection_failure_count_.load());
         int32_t busy_conn_limit = raft_server::raft_limits_.busy_connection_limit_;
         if (busy_conn_limit &&
