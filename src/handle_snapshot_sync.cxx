@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "raft_server.hxx"
 
+#include "cluster_config.hxx"
 #include "context.hxx"
 #include "error_code.hxx"
 #include "event_awaiter.hxx"
@@ -565,10 +566,13 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
                 // LCOV_EXCL_STOP
             }
 
-            reconfigure(req.get_snapshot().get_last_config());
-
+            auto snap_conf = req.get_snapshot().get_last_config();
             ptr<cluster_config> c_conf = get_config();
-            ctx_->state_mgr_->save_config(*c_conf);
+            if (snap_conf->get_log_idx() > get_config()->get_log_idx()) {
+                ctx_->state_mgr_->save_config(*snap_conf);
+                reconfigure(req.get_snapshot().get_last_config());
+                c_conf = get_config();
+            }
 
             precommit_index_ = req.get_snapshot().get_last_log_idx();
             sm_commit_index_ = req.get_snapshot().get_last_log_idx();
