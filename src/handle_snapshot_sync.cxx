@@ -568,9 +568,9 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
 
             auto snap_conf = req.get_snapshot().get_last_config();
             ptr<cluster_config> c_conf = get_config();
-            if (snap_conf->get_log_idx() > get_config()->get_log_idx()) {
+            if (snap_conf->get_log_idx() > c_conf->get_log_idx()) {
                 ctx_->state_mgr_->save_config(*snap_conf);
-                reconfigure(req.get_snapshot().get_last_config());
+                reconfigure(snap_conf);
                 c_conf = get_config();
             }
 
