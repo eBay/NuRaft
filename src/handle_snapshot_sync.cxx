@@ -572,6 +572,15 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
                 ctx_->state_mgr_->save_config(*snap_conf);
                 reconfigure(snap_conf);
                 c_conf = get_config();
+            } else {
+                p_in("snapshot config idx %" PRIu64 " prev idx %" PRIu64
+                     " is not newer than "
+                     "current config idx %" PRIu64 " prev idx %" PRIu64
+                     ", will not apply it",
+                     snap_conf->get_log_idx(),
+                     snap_conf->get_prev_log_idx(),
+                     c_conf->get_log_idx(),
+                     c_conf->get_prev_log_idx());
             }
 
             precommit_index_ = req.get_snapshot().get_last_log_idx();
