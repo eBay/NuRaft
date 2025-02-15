@@ -1174,7 +1174,7 @@ public:
                 cs_new<pending_req_pkg>(req, when_done, send_timeout_ms));
             immediate_action_needed = (pending_write_reqs_.size() == 1);
             p_db("start to send msg to peer %d, start_log_idx: %" PRIu64 ", "
-                 "size: %" PRIu64 ", pending write reqs: %" PRIu64 "", 
+                 "size: %" PRIu64 ", pending write reqs: %" PRIu64 "",
                  req->get_dst(), req->get_last_log_idx(),
                  req->log_entries().size(), pending_write_reqs_.size());
         }
@@ -1896,12 +1896,17 @@ private:
         ptr<pending_req_pkg> next_req_pkg{nullptr};
         {
             auto_lock(pending_write_reqs_lock_);
-            pending_write_reqs_.pop_front();
+            // NOTE:
+            //   The queue can be empty even though there was no `pop_front`,
+            //   due to `close_socket()` when connection is suddenly closed.
+            if (pending_write_reqs_.size()) {
+                pending_write_reqs_.pop_front();
+            }
             if (pending_write_reqs_.size() > 0) {
                 next_req_pkg = *pending_write_reqs_.begin();
                 p_db("trigger next write, start_log_idx: %" PRIu64 ", "
                      "pending write reqs: %" PRIu64 "",
-                     next_req_pkg->req_->get_last_log_idx(), 
+                     next_req_pkg->req_->get_last_log_idx(),
                      pending_write_reqs_.size());
             }
         }
@@ -1922,12 +1927,17 @@ private:
         ptr<pending_req_pkg> next_req_pkg{nullptr};
         {
             auto_lock(pending_read_reqs_lock_);
-            pending_read_reqs_.pop_front();
+            // NOTE:
+            //   The queue can be empty even though there was no `pop_front`,
+            //   due to `close_socket()` when connection is suddenly closed.
+            if (pending_read_reqs_.size()) {
+                pending_read_reqs_.pop_front();
+            }
             if (pending_read_reqs_.size() > 0) {
                 next_req_pkg = *pending_read_reqs_.begin();
                 p_db("trigger next read, start_log_idx: %" PRIu64 ", "
                      "pending read reqs: %" PRIu64 "",
-                     next_req_pkg->req_->get_last_log_idx(), 
+                     next_req_pkg->req_->get_last_log_idx(),
                      pending_read_reqs_.size());
             }
         }
