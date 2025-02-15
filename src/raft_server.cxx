@@ -403,7 +403,8 @@ void raft_server::apply_and_log_current_params() {
           "leadership transfer wait time %d, "
           "grace period of lagging state machine %d, "
           "snapshot IO: %s, "
-          "parallel log appending: %s",
+          "parallel log appending: %s, "
+          "streaming mode max log gap %d, max bytes %" PRIu64,
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -425,7 +426,9 @@ void raft_server::apply_and_log_current_params() {
           params->leadership_transfer_min_wait_time_,
           params->grace_period_of_lagging_state_machine_,
           params->use_bg_thread_for_snapshot_io_ ? "ASYNC" : "BLOCKING",
-          params->parallel_log_appending_ ? "ON" : "OFF" );
+          params->parallel_log_appending_ ? "ON" : "OFF",
+          params->max_log_gap_in_stream_,
+          params->max_bytes_in_flight_in_stream_ );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
     status_check_timer_.reset();

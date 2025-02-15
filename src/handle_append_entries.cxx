@@ -1166,7 +1166,12 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
               resp.get_next_idx(), p->get_next_log_idx() );
 
         // disable stream
+        uint64_t last_streamed_log_idx = p->get_last_streamed_log_idx();
         p->reset_stream();
+        if (last_streamed_log_idx) {
+            p_in("stop stream mode for peer %d at idx: %" PRIu64 "",
+                 p->get_id(), last_streamed_log_idx);
+        }
     }
 
     if (!config_changing_ && p->get_config().is_new_joiner()) {

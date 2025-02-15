@@ -66,6 +66,7 @@ public:
         , network_recoveries_(0)
         , manual_free_(false)
         , rpc_errs_(0)
+        , stale_rpc_responses_(0)
         , last_sent_idx_(0)
         , cnt_not_applied_(0)
         , leave_requested_(false)
@@ -259,6 +260,10 @@ public:
     void reset_rpc_errs()   { rpc_errs_ = 0; }
     void inc_rpc_errs()     { rpc_errs_.fetch_add(1); }
     int32 get_rpc_errs()    { return rpc_errs_; }
+
+    void reset_stale_rpc_responses()    { stale_rpc_responses_ = 0; }
+    int32_t inc_stale_rpc_responses()   { return stale_rpc_responses_.fetch_add(1); }
+    int32_t get_stale_rpc_responses()   { return stale_rpc_responses_; }
 
     void set_last_sent_idx(ulong to)    { last_sent_idx_ = to; }
     ulong get_last_sent_idx() const     { return last_sent_idx_.load(); }
@@ -489,6 +494,11 @@ private:
      * For tracking RPC error.
      */
     std::atomic<int32> rpc_errs_;
+
+    /**
+     * For tracking stale RPC responses from the old client.
+     */
+    std::atomic<int32> stale_rpc_responses_;
 
     /**
      * Start log index of the last sent append entries request.

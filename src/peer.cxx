@@ -21,6 +21,7 @@ limitations under the License.
 #include "peer.hxx"
 
 #include "debugging_options.hxx"
+#include "raft_server.hxx"
 #include "tracer.hxx"
 
 #include <unordered_set>
@@ -64,7 +65,7 @@ void peer::send_req( ptr<peer> myself,
             req_size_bytes += entry->get_buf_ptr()->size();
         }
     }
-    
+
     rpc_handler h = (rpc_handler)std::bind
                     ( &peer::handle_rpc_result,
                       this,
@@ -118,18 +119,27 @@ void peer::handle_rpc_result( ptr<peer> myself,
             uint64_t cur_rpc_id = rpc_ ? rpc_->get_id() : 0;
             uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;
             if (cur_rpc_id != given_rpc_id) {
-                p_wn( "[EDGE CASE] got stale RPC response from %d: "
-                      "current %p (%" PRIu64 "), from parameter %p (%" PRIu64 "). "
-                      "will ignore this response",
-                      config_->get_id(),
-                      rpc_.get(),
-                      cur_rpc_id,
-                      my_rpc_client.get(),
-                      given_rpc_id );
+                int32_t stale_resps = inc_stale_rpc_responses();
+                int32_t limit = raft_server::get_raft_limits().response_limit_;
+                if (stale_resps < limit) {
+                    p_wn( "[EDGE CASE] got stale RPC response from %d: "
+                          "current %p (%" PRIu64 "), from parameter %p (%" PRIu64 "). "
+                          "will ignore this response",
+                          config_->get_id(),
+                          rpc_.get(),
+                          cur_rpc_id,
+                          my_rpc_client.get(),
+                          given_rpc_id );
+                } else if (stale_resps == limit) {
+                    p_wn( "[EDGE CASE] too verbose stale RPC response from peer %d, "
+                          "will suppress it from now", config_->get_id() );
+                }
+
             } else {
                 // WARNING:
                 //   `set_free()` should be protected by `rpc_protector_`, otherwise
                 //   it may free the peer even though new RPC client is already created.
+                reset_stale_rpc_responses();
                 bytes_in_flight_sub(req_size_bytes);
                 try_set_free(req->get_type(), streaming);
             }
@@ -167,7 +177,13 @@ void peer::handle_rpc_result( ptr<peer> myself,
             uint64_t given_rpc_id = my_rpc_client ? my_rpc_client->get_id() : 0;
             if (cur_rpc_id == given_rpc_id) {
                 rpc_.reset();
+                uint64_t last_streamed_log_idx = get_last_streamed_log_idx();
                 reset_stream();
+                if (last_streamed_log_idx) {
+                    p_in("stop stream mode for peer %d at idx: %" PRIu64 "",
+                         config_->get_id(), last_streamed_log_idx);
+                }
+                reset_stale_rpc_responses();
                 reset_bytes_in_flight();
                 try_set_free(req->get_type(), streaming);
             } else {
@@ -175,14 +191,25 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 //   RPC client has been reset before this request returns
                 //   error. Those two are different instances and we
                 //   SHOULD NOT reset the new one.
-                p_wn( "[EDGE CASE] RPC for %d has been reset before "
-                      "returning error: current %p (%" PRIu64
-                      "), from parameter %p (%" PRIu64 ")",
-                      config_->get_id(),
-                      rpc_.get(),
-                      cur_rpc_id,
-                      my_rpc_client.get(),
-                      given_rpc_id );
+
+                // NOTE: In streaming mode, there can be lots of below errors
+                //       at the same time. We should avoid verbose logs.
+
+                int32_t stale_resps = inc_stale_rpc_responses();
+                int32_t limit = raft_server::get_raft_limits().response_limit_;
+                if (stale_resps < limit) {
+                    p_wn( "[EDGE CASE] RPC for %d has been reset before "
+                          "returning error: current %p (%" PRIu64
+                          "), from parameter %p (%" PRIu64 ")",
+                          config_->get_id(),
+                          rpc_.get(),
+                          cur_rpc_id,
+                          my_rpc_client.get(),
+                          given_rpc_id );
+                } else if (stale_resps == limit) {
+                    p_wn( "[EDGE CASE] too verbose stale RPC response from peer %d, "
+                          "will suppress it from now", config_->get_id() );
+                }
             }
         }
     }
