@@ -759,7 +759,6 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
 
     } else if (req.get_type() == msg_type::priority_change_request) {
         resp = handle_priority_change_req(req);
-
     } else {
         // extended requests
         resp = handle_ext_msg(req, guard);
