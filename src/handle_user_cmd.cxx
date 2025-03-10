@@ -109,6 +109,22 @@ ptr< cmd_result< ptr<buffer> > > raft_server::append_entries_ext
     return send_msg_to_leader(req, ext_params);
 }
 
+
+ptr< cmd_result< ptr<buffer> > > raft_server::flip_learner_flag(int32 srv_id, bool to)
+{
+    // Serialize the server ID and the flag.
+    ptr<buffer> buf(buffer::alloc(sz_int + sz_byte));
+    buf->put(srv_id);
+    buf->put(static_cast<byte>(to));
+    buf->pos(0);
+    ptr<log_entry> log(cs_new<log_entry>(0, buf, log_val_type::cluster_server));
+    ptr<req_msg> req = cs_new<req_msg>
+                       ( (ulong)0, msg_type::learner_change_request, 0, 0,
+                         (ulong)0, (ulong)0, (ulong)0 );
+    req->log_entries().push_back(log);
+    return send_msg_to_leader(req);
+}
+
 ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader
                                  ( ptr<req_msg>& req,
                                    const req_ext_params& ext_params )

@@ -636,5 +636,87 @@ void raft_server::reset_srv_to_leave() {
     p_in("clearing srv_to_leave_");
 }
 
+
+ptr<resp_msg> raft_server::handle_learner_change_req(req_msg& req) {
+    std::vector< ptr<log_entry> >& entries = req.log_entries();
+    ptr<resp_msg> resp = cs_new<resp_msg>
+                         ( state_->get_term(),
+                           msg_type::learner_change_response,
+                           id_,
+                           leader_ );
+
+    if (entries.size() != 1
+        || entries[0]->get_val_type() != log_val_type::cluster_server) {
+        p_db("bad add server request as we are expecting one log entry "
+             "with value type of ClusterServer");
+        resp->set_result_code(cmd_result_code::BAD_REQUEST);
+        return resp;
+    }
+
+    if (role_ != srv_role::leader || write_paused_) {
+        p_er("this is not a leader, cannot handle LearnerChangeRequest");
+        resp->set_result_code(cmd_result_code::NOT_LEADER);
+        return resp;
+    }
+    if (config_changing_) {
+        p_wn("previous config has not committed yet");
+        resp->set_result_code(cmd_result_code::CONFIG_CHANGING);
+        return resp;
+    }
+    buffer& buf = entries[0]->get_buf();
+    buf.pos(0);
+    int32 srv_id = buf.get_int();
+    bool is_learner = static_cast<bool>(buf.get_byte());
+
+    ptr<cluster_config> cur_conf = get_config();
+    ptr<buffer> enc_conf_buf = cur_conf->serialize();
+    ptr<cluster_config> new_conf = cluster_config::deserialize(*enc_conf_buf);
+    new_conf->set_log_idx(log_store_->next_slot());
+
+    bool found = false;
+    for (auto& ss: new_conf->get_servers()) {
+        if (ss->get_id() != srv_id) {
+            continue;
+        }
+        found = true;
+        if (ss->is_learner() == is_learner) {
+            p_in("server %d already has learner flag set to %s\n",
+                 srv_id,
+                 is_learner ? "true" : "false");
+            resp->set_result_code(cmd_result_code::OK);
+            resp->accept(log_store_->next_slot());
+            return resp;
+        }
+        p_in("set learner flag to %s for server %d",
+                 is_learner ? "true" : "false", srv_id);
+        ss->set_learner(is_learner);
+        break;
+    }
+    if (!found) {
+        p_er("server %d not found", srv_id);
+        resp->set_result_code(SERVER_NOT_FOUND);
+        return resp;
+    }
+
+    ptr<buffer> new_conf_buf(new_conf->serialize());
+    ptr<log_entry> entry(cs_new<log_entry>(state_->get_term(),
+                                           new_conf_buf,
+                                           log_val_type::conf,
+                                           timer_helper::get_timeofday_us()));
+    store_log_entry(entry);
+    config_changing_ = true;
+    uncommitted_config_ = new_conf;
+    request_append_entries();
+    resp->set_result_code(OK);
+    resp->accept(log_store_->next_slot());
+    return resp;
+}
+
+void raft_server::handle_learner_change_resp(resp_msg& resp) {
+    p_in("got response from peer %d: %s",
+         resp.get_src(),
+         resp.get_accepted() ? "success" : "fail");
+}
+
 } // namespace nuraft;
 

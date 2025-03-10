@@ -77,6 +77,8 @@ public:
 
     bool is_learner() const { return learner_; }
 
+    void set_learner(bool to) { learner_ = to; }
+
     bool is_new_joiner() const { return new_joiner_; }
 
     void set_new_joiner(bool to) { new_joiner_ = to; }
