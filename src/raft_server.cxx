@@ -759,7 +759,8 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
 
     } else if (req.get_type() == msg_type::priority_change_request) {
         resp = handle_priority_change_req(req);
-
+    } else if (req.get_type() == msg_type::learner_change_request) {
+        resp = handle_learner_change_req(req);
     } else {
         // extended requests
         resp = handle_ext_msg(req, guard);
@@ -924,6 +925,10 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
 
     case msg_type::custom_notification_response:
         handle_custom_notification_resp(*resp);
+        break;
+
+    case msg_type::learner_change_response:
+        handle_learner_change_resp(*resp);
         break;
 
     default:

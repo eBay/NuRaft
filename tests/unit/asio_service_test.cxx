@@ -2409,6 +2409,58 @@ int full_consensus_test() {
     return 0;
 }
 
+
+int flip_learner_flag_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false) );
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+    // Set async.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+    // Set to learner.
+    ptr<cmd_result<ptr<buffer>>> result = s1.raftServer->flip_learner_flag(s3.myId, true);
+    CHK_EQ(cmd_result_code::OK, result->get_result_code());
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 5, "wait for replication");
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        ptr<cluster_config> conf = pp->raftServer->get_config();
+        CHK_TRUE(conf->get_server(s3.myId)->is_learner());
+    }
+    // Clear leaner.
+    result = s1.raftServer->flip_learner_flag(s3.myId, false);
+    CHK_EQ(cmd_result_code::OK, result->get_result_code());
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 5, "wait for replication");
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        ptr<cluster_config> conf = pp->raftServer->get_config();
+        CHK_FALSE(conf->get_server(s3.myId)->is_learner());
+    }
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 int custom_commit_condition_test() {
     reset_log_files();
 
@@ -2915,6 +2967,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "full consensus test",
                full_consensus_test );
+
+    ts.doTest("flip learner flag test",
+           flip_learner_flag_test);
 
     ts.doTest( "custom commit condition test",
                custom_commit_condition_test );

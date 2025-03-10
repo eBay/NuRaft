@@ -261,6 +261,18 @@ public:
         append_entries(const std::vector< ptr<buffer> >& logs);
 
     /**
+     * Flip learner flag of given server.
+     * Learner will be excluded from the quorum.
+     * Only leader will accept this operation.
+     * This is also an asynchronous task.
+     *
+     * @param srv_id ID of the server to set as a learner.
+     * @param to If `true`, set the server as a learner, otherwise, clear learner flag.
+     * @return `get_accepted()` will be true on success.
+     */
+    ptr<cmd_result<ptr<buffer>>> flip_learner_flag(int32 srv_id, bool to);
+
+    /**
      * Parameters for `req_ext_cb` callback function.
      */
     struct req_ext_cb_params {
@@ -965,6 +977,7 @@ protected:
     ptr<resp_msg> handle_priority_change_req(req_msg& req);
     ptr<resp_msg> handle_reconnect_req(req_msg& req);
     ptr<resp_msg> handle_custom_notification_req(req_msg& req);
+    ptr<resp_msg> handle_learner_change_req(req_msg& req);
 
     void handle_join_cluster_resp(resp_msg& resp);
     void handle_log_sync_resp(resp_msg& resp);
@@ -988,6 +1001,7 @@ protected:
     void handle_priority_change_resp(resp_msg& resp);
     void handle_reconnect_resp(resp_msg& resp);
     void handle_custom_notification_resp(resp_msg& resp);
+    void handle_learner_change_resp(resp_msg& resp);
 
     bool try_update_precommit_index(ulong desired, const size_t MAX_ATTEMPTS = 10);
 
