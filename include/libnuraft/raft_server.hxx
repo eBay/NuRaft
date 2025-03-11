@@ -261,6 +261,18 @@ public:
         append_entries(const std::vector< ptr<buffer> >& logs);
 
     /**
+     * Flip learner flag of given server.
+     * Learner will be excluded from the quorum.
+     * Only leader will accept this operation.
+     * This is also an asynchronous task.
+     *
+     * @param srv_id ID of the server to set as a learner.
+     * @param to If `true`, set the server as a learner, otherwise, clear learner flag.
+     * @return `ret->get_result_code()` will be OK on success.
+     */
+    ptr<cmd_result<ptr<buffer>>> flip_learner_flag(int32 srv_id, bool to);
+
+    /**
      * Parameters for `req_ext_cb` callback function.
      */
     struct req_ext_cb_params {
