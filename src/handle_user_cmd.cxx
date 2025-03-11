@@ -143,7 +143,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::flip_learner_flag(int32 srv_id, bo
             return ret;
         }
         p_in("set learner flag to %s for server %d",
-                 to ? "true" : "false", srv_id);
+             to ? "true" : "false", srv_id);
         ss->set_learner(to);
         break;
     }

@@ -2968,8 +2968,8 @@ int main(int argc, char** argv) {
     ts.doTest( "full consensus test",
                full_consensus_test );
 
-    ts.doTest("flip learner flag test",
-           flip_learner_flag_test);
+    ts.doTest( "flip learner flag test",
+               flip_learner_flag_test);
 
     ts.doTest( "custom commit condition test",
                custom_commit_condition_test );
