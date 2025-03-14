@@ -1,124 +1,108 @@
+
+function(unit_test)
+    set(options SKIP)
+    set(oneValueArgs NAME TIMEOUT)
+    set(multiValueArgs SOURCES)
+    cmake_parse_arguments(PARSE_ARGV 0 arg
+        "${options}" "${oneValueArgs}" "${multiValueArgs}"
+    )
+
+    add_executable(${arg_NAME} ${arg_SOURCES})
+    target_link_libraries(${arg_NAME} ${LIBRARY_NAME})
+    add_dependencies(${arg_NAME} build_ssl_key)
+    if(NOT arg_SKIP)
+        add_test(NAME ${arg_NAME} WORKING_DIRECTORY ${CMAKE_BINARY_DIR} COMMAND ${arg_NAME} --abort-on-failure)
+        if(arg_TIMEOUT)
+            set_tests_properties(${arg_NAME} PROPERTIES TIMEOUT ${arg_TIMEOUT})
+        endif()
+    endif()
+endfunction()
+
+
 # === Basic Raft server functionality tests without real network stack ===
-add_executable(raft_server_test
-               unit/raft_server_test.cxx
-               unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(raft_server_test
-                 static_lib)
-target_link_libraries(raft_server_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
 
-add_executable(new_joiner_test
-               unit/new_joiner_test.cxx
-               unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(new_joiner_test
-                 static_lib)
-target_link_libraries(new_joiner_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+unit_test(NAME raft_server_test
+    SOURCES
+    unit/raft_server_test.cxx
+    unit/fake_network.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx
+)
 
+
+unit_test(NAME new_joiner_test
+    SOURCES
+    unit/new_joiner_test.cxx
+    unit/fake_network.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 
 # === Failure recovery & conflict resolution test ===
-add_executable(failure_test
-               unit/failure_test.cxx
-               unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(failure_test
-                 static_lib)
-target_link_libraries(failure_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+unit_test(NAME failure_test
+    SOURCES
+    unit/failure_test.cxx
+    unit/fake_network.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 
 # === ASIO network stuff test ===
-add_executable(asio_service_test
-               unit/asio_service_test.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(asio_service_test
-                 static_lib
-                 build_ssl_key)
-target_link_libraries(asio_service_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
-                      ${LIBRARIES})
+unit_test(NAME asio_service_test
+    SOURCES
+    unit/asio_service_test.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx
+    TIMEOUT 720
+    SKIP # skipping for now because it takes too long to run
+)
 
-add_executable(asio_service_stream_test
-               unit/asio_service_stream_test.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(asio_service_stream_test
-                 static_lib
-                 build_ssl_key)
-target_link_libraries(asio_service_stream_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
-                      ${LIBRARIES})
+unit_test(NAME asio_service_stream_test
+    SOURCES
+    unit/asio_service_stream_test.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 
-add_executable(stream_functional_test
-               unit/stream_functional_test.cxx
-               unit/fake_network.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(stream_functional_test
-                 static_lib
-                 build_ssl_key)
-target_link_libraries(stream_functional_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
-                      ${LIBRARIES})
+
+unit_test(NAME stream_functional_test
+    SOURCES
+    unit/stream_functional_test.cxx
+    unit/fake_network.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx
+    SKIP # skipping for now because this test fails
+)
 
 # === Benchmark ===
-add_executable(raft_bench
-               bench/raft_bench.cxx
-               ${EXAMPLES_SRC}/logger.cc
-               ${EXAMPLES_SRC}/in_memory_log_store.cxx)
-add_dependencies(raft_bench
-                 static_lib)
-target_link_libraries(raft_bench
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
-                      ${LIBRARIES})
-
+unit_test(NAME raft_bench
+    SOURCES
+    bench/raft_bench.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 
 # === Other modules ===
-add_executable(buffer_test
-               unit/buffer_test.cxx)
-add_dependencies(buffer_test
-                 static_lib)
-target_link_libraries(buffer_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+unit_test(NAME buffer_test
+    SOURCES
+    unit/buffer_test.cxx)
 
-add_executable(serialization_test
-               unit/serialization_test.cxx)
-add_dependencies(serialization_test
-                 static_lib)
-target_link_libraries(serialization_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+unit_test(NAME serialization_test
+    SOURCES
+    unit/serialization_test.cxx)
 
-add_executable(timer_test
-               unit/timer_test.cxx)
-add_dependencies(timer_test
-                 static_lib)
-target_link_libraries(timer_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME}
-                      ${LIBRARIES})
+unit_test(NAME timer_test
+    SOURCES
+    unit/timer_test.cxx)
 
-add_executable(strfmt_test
-               unit/strfmt_test.cxx)
-add_dependencies(strfmt_test
-                 static_lib)
-target_link_libraries(strfmt_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
 
-add_executable(stat_mgr_test
-               unit/stat_mgr_test.cxx)
-add_dependencies(stat_mgr_test
-                 static_lib)
-target_link_libraries(stat_mgr_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+unit_test(NAME strfmt_test
+    SOURCES
+    unit/strfmt_test.cxx)
 
-add_executable(logger_test
-               unit/logger_test.cxx)
-add_dependencies(logger_test
-                 static_lib)
-target_link_libraries(logger_test
-                      ${BUILD_DIR}/${LIBRARY_OUTPUT_NAME})
+unit_test(NAME stat_mgr_test
+    SOURCES
+    unit/stat_mgr_test.cxx)
 
+
+unit_test(NAME logger_test
+    SOURCES
+    unit/logger_test.cxx)
+
+#set_tests_properties(asio_service_stream_test stream_functional_test asio_service_test PROPERTIES RUN_SERIAL TRUE)

@@ -1,7 +1,7 @@
 import os
 
 from conan import ConanFile
-from conan.tools.cmake import cmake_layout, CMake, CMakeToolchain
+from conan.tools.cmake import cmake_layout, CMake, CMakeToolchain, CMakeDeps
 from conan.tools.files import copy, rmdir
 from conan.tools.scm import Git
 
@@ -15,7 +15,7 @@ class NuRaftConan(ConanFile):
     description = "RAFT protocol library."
     homepage = "https://github.com/ebay/NuRaft.git"
 
-    generators = "CMakeDeps"
+    # generators = "CMakeDeps"
 
     settings = "os", "compiler", "build_type", "arch"
 
@@ -32,8 +32,8 @@ class NuRaftConan(ConanFile):
         "fPIC": True, 
         "coverage": False, 
         "boost_asio": True, 
-        "build_tests": False, 
-        "build_examples":False
+        "build_tests": True, 
+        "build_examples":True
     }
 
     exports_sources = "CMakeLists.txt", "NuRaftConfig.cmake.in", "src/*", "include/*", "cmake/*", "LICENSE"
@@ -62,14 +62,20 @@ class NuRaftConan(ConanFile):
 
     def generate(self):
         tc = CMakeToolchain(self)
+        tc.variables["WITH_CONAN"] = True
         tc.variables["CONAN_BUILD_COVERAGE"] = False
+
         tc.variables["CODE_COVERAGE"] = self.options.coverage
-        tc.variables["CMAKE_EXPORT_COMPILE_COMMANDS"] = True
-        tc.variables["ENABLE_RAFT_STATS"] = True
         tc.variables["BOOST_ASIO"] = self.options.boost_asio
         tc.variables["BUILD_TESTING"] = self.options.build_tests
         tc.variables["BUILD_EXAMPLES"] = self.options.build_examples
+        tc.variables["ENABLE_RAFT_STATS"] = True
+        tc.variables["CMAKE_EXPORT_COMPILE_COMMANDS"] = True
         tc.generate()
+        
+        deps=CMakeDeps(self)
+        # deps.build_context_activated = ["boost", "openssl"]
+        deps.generate()
 
     def build(self):
         cmake = CMake(self)
