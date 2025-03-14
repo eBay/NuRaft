@@ -344,7 +344,7 @@ target_include_directories(shared_lib
 )
 
 # if (APPLE)
-# There is no hard in adding libraries; this is required when building with Conan
+# There is no harm in adding libraries; this is required when building with Conan
     target_link_libraries(shared_lib ${LIBRARIES})
     target_link_libraries(static_lib ${LIBRARIES})
 # endif ()
@@ -360,12 +360,12 @@ message(STATUS "Output library file name: ${LIBRARY_OUTPUT_NAME}")
 set(LIBRARY_NAME static_lib)
 # === Examples ===
 if(BUILD_EXAMPLES)
-    add_subdirectory("${PROJECT_SOURCE_DIR}/examples")
+    add_subdirectory(examples)
 endif()
 
 # === Tests ===
 if(BUILD_TESTING)
-    add_subdirectory("${PROJECT_SOURCE_DIR}/tests")
+    add_subdirectory(tests)
 endif()
 
 if (CODE_COVERAGE GREATER 0)
