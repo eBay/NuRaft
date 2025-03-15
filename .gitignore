@@ -15,3 +15,9 @@ nbproject/
 *.lib
 .idea
 cmake-build*
+
+CMakeLists copy.txt
+CMakeUserPresets.json
+compile_commands.json
+.cache
+.build_success*

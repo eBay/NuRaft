@@ -102,6 +102,17 @@ You may need to run `vcvars` script first in your `build` directory. For example
 C:\NuRaft\build> c:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat
 ```
 
+Alternative build method - with Conan
+----------
+If you project needs to integrate with NuRaft and you build your project with Conan you might want 
+to have NuRaft built with Conan too. This is now supported: this project has conanfile.py which can be used
+to build locally and export the package to conan cache/repository or use it in **editable** mode locally.
+
+1. Install conan using one of the methods desribed here: https://conan.io/downloads
+1. `conan build .` - builds Release configuration
+1. `conan build . -s build_type=Debug` builds an alternative configuration supported by CMake
+1. You can control supported build options via command line as well, ex:
+    `conan build . -o build_tests=True`
 
 How to Use
 ----------
