@@ -20,3 +20,4 @@ CMakeLists copy.txt
 CMakeUserPresets.json
 compile_commands.json
 .cache
+.build_success*
