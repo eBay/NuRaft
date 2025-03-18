@@ -12,6 +12,11 @@ option(ADDRESS_SANITIZER "Enable address sanitizer" OFF)
 option(THREAD_SANITIZER "Enable thread sanitizer" OFF)
 option(BUILD_EXAMPLES "Build examples" ON)
 
+if(NOT CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 11)
+endif()
+message(STATUS "C++ Standard: " ${CMAKE_CXX_STANDARD})
+
 # === Build type (default: RelWithDebInfo, O2) ===========
 if (NOT CMAKE_BUILD_TYPE)
     set(DEFAULT_BUILD_TYPE "RelWithDebInfo")
@@ -182,7 +187,6 @@ if (NOT WIN32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
     if (APPLE)
@@ -209,7 +213,7 @@ else ()
     endif()
 endif ()
 
-include_directories(BEFORE 
+include_directories(BEFORE
     ./
     include
     include/libnuraft
