@@ -39,9 +39,19 @@ limitations under the License.
 #include "tracer.hxx"
 
 #ifdef USE_BOOST_ASIO
-#include <boost/asio.hpp>
+    #include <boost/asio.hpp>
+    namespace boost::asio {
+        using io_service = io_context;
+    }
+    using namespace boost;
+    #define ERROR_CODE system::error_code
+
 #else
-#include <asio.hpp>
+    #include <asio.hpp>
+    namespace asio {
+        using io_service = io_context;
+    }
+    #define ERROR_CODE asio::error_code
 #endif
 
 #include <atomic>
@@ -50,12 +60,6 @@ limitations under the License.
 #include <list>
 #include <thread>
 
-#ifdef USE_BOOST_ASIO
-    using namespace boost;
-    #define ERROR_CODE system::error_code
-#else
-    #define ERROR_CODE asio::error_code
-#endif
 
 //#define SSL_LIBRARY_NOT_FOUND (1)
 #ifdef SSL_LIBRARY_NOT_FOUND
@@ -1452,14 +1456,15 @@ private:
                           const std::string& port,
                           rpc_handler when_done,
                           uint64_t send_timeout_ms) {
-        asio::ip::tcp::resolver::query q
-            ( host, port, asio::ip::tcp::resolver::query::all_matching );
 
         resolver_.async_resolve
-        ( q,
-          [self, this, req, when_done, host, port, send_timeout_ms]
-          ( std::error_code err,
-            asio::ip::tcp::resolver::iterator itor ) -> void
+        ( 
+            host, 
+            port, 
+            asio::ip::tcp::resolver::flags::all_matching,
+            [self, this, req, when_done, host, port, send_timeout_ms]( 
+                const std::error_code& err,
+                asio::ip::tcp::resolver::results_type endpoints ) -> void
         {
             if (!err) {
                 if (send_timeout_ms != 0) {
@@ -1473,7 +1478,7 @@ private:
                 }
                 asio::async_connect
                     ( socket(),
-                      itor,
+                      endpoints,
                       std::bind( &asio_rpc_client::connected,
                                  self,
                                  req,
@@ -1579,8 +1584,8 @@ private:
     void connected(ptr<req_msg>& req,
                    rpc_handler& when_done,
                    uint64_t send_timeout_ms,
-                   std::error_code err,
-                   asio::ip::tcp::resolver::iterator itor)
+                   const std::error_code& err,
+                   const asio::ip::tcp::endpoint&)
     {
         operation_timer_.cancel();
         if (!err) {

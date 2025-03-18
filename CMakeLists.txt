@@ -1,5 +1,21 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.26)
+
 project(NuRaft VERSION 1.0.0 LANGUAGES CXX)
+
+include(CTest) # automatically defines BUILD_TESTING option = ON
+
+option(WITH_CONAN "Use dependences provide by Conan" OFF)
+option(CODE_COVERAGE "Enable Coverage" OFF)
+option(BOOST_ASIO "Use ASIO the comes with Boost" OFF)
+option(USE_PTHREAD_EXIT "Call pthread_exit on server threads" OFF)
+option(ADDRESS_SANITIZER "Enable address sanitizer" OFF)
+option(THREAD_SANITIZER "Enable thread sanitizer" OFF)
+option(BUILD_EXAMPLES "Build examples" ON)
+
+if(NOT CMAKE_CXX_STANDARD)
+    set(CMAKE_CXX_STANDARD 11)
+endif()
+message(STATUS "C++ Standard: " ${CMAKE_CXX_STANDARD})
 
 # === Build type (default: RelWithDebInfo, O2) ===========
 if (NOT CMAKE_BUILD_TYPE)
@@ -18,12 +34,36 @@ message(STATUS "Build Install Prefix : " ${CMAKE_INSTALL_PREFIX})
 
 set(BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR})
 
-if (CODE_COVERAGE GREATER 0)
+if (CODE_COVERAGE)
     set(CMAKE_BUILD_TYPE "Debug")
     include(cmake/CodeCoverage.cmake)
     message(STATUS "---- CODE COVERAGE DETECTION MODE ----")
 endif()
 
+
+if(WITH_CONAN)
+    if(BOOST_ASIO)
+        find_package(Boost REQUIRED COMPONENTS Boost::system)
+        add_compile_definitions(USE_BOOST_ASIO)
+        set(LIBBOOST_SYSTEM Boost::system)
+    else()
+        find_package(Asio REQUIRED)
+        add_compile_definitions(ASIO_STANDALONE)
+        set(LIBBOOST_SYSTEM asio::asio)
+    endif()
+
+    find_package(OpenSSL)
+    if(OPENSSL_FOUND)
+        set(LIBSSL OpenSSL::SSL)
+        set(LIBCRYPTO OpenSSL::Crypto)
+    else()
+        add_compile_definitions(SSL_LIBRARY_NOT_FOUND=1)
+    endif()
+
+    find_package(ZLIB REQUIRED)
+    set(LIBZ ZLIB::ZLIB)
+
+else()
 
 # === Find ASIO ===
 if (BOOST_INCLUDE_PATH AND BOOST_LIBRARY_PATH)
@@ -32,14 +72,14 @@ if (BOOST_INCLUDE_PATH AND BOOST_LIBRARY_PATH)
     message(STATUS "Boost include path: " ${BOOST_INCLUDE_PATH})
     message(STATUS "Boost library path: " ${BOOST_LIBRARY_PATH})
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_BOOST_ASIO")
+    add_compile_definitions(USE_BOOST_ASIO)
 
     set(ASIO_INCLUDE_DIR ${BOOST_INCLUDE_PATH})
     set(LIBBOOST_SYSTEM "${BOOST_LIBRARY_PATH}/libboost_system.a")
 
 else ()
     # If not, ASIO standalone mode.
-    FIND_PATH(ASIO_INCLUDE_DIR
+    find_path(ASIO_INCLUDE_DIR
               NAME asio.hpp
               HINTS ${PROJECT_SOURCE_DIR}/asio/asio/include
                     $ENV{HOME}/local/include
@@ -47,7 +87,7 @@ else ()
                     /usr/local/include
                     /usr/include)
 
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DASIO_STANDALONE")
+    add_compile_definitions(ASIO_STANDALONE)
 
 endif ()
 
@@ -59,16 +99,7 @@ endif ()
 
 
 # === Includes ===
-include_directories(BEFORE ./)
 include_directories(BEFORE ${ASIO_INCLUDE_DIR})
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include/libnuraft)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples/calculator)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/examples/echo)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/src)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/tests)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/tests/unit)
 if (DEPS_PREFIX)
     message(STATUS "deps prefix: " ${DEPS_PREFIX})
     include_directories(AFTER ${DEPS_PREFIX}/include)
@@ -76,41 +107,9 @@ else()
     message(STATUS "deps prefix is not given")
 endif()
 
-
-# === Compiler flags ===
-option(USE_PTHREAD_EXIT "Call pthread_exit on server threads" OFF)
-if (NOT WIN32)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-    if (APPLE)
-#        include_directories(BEFORE
-#                /usr/local/opt/openssl/include
-#                )
-#        link_directories(
-#                /usr/local/opt/openssl/lib
-#                )
-    else()
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-    endif ()
-    if (USE_PTHREAD_EXIT)
-        message(STATUS "Using ::pthread_exit for termination")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_PTHREAD_EXIT")
-    endif()
-
-else ()
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5045 /wd4571 /wd4774 /wd4820 /wd5039 /wd4626 /wd4625 /wd5026 /wd5027 /wd4623 /wd4996 /wd4530 /wd4267 /wd4244 /W3")
-    message(STATUS "---- WIN32 ----")
-    set(DISABLE_SSL 1)
-
-    if (USE_PTHREAD_EXIT)
-        message(FATAL_ERROR "Using ::pthread_exit not supported on Windows")
-    endif()
-endif ()
-
+if (WIN32)
+set(DISABLE_SSL 1)
+endif()
 # === Disable SSL ===
 if (DISABLE_SSL)
     add_definitions(-DSSL_LIBRARY_NOT_FOUND=1)
@@ -167,20 +166,79 @@ if (NOT DISABLE_SSL)
 
     include_directories(BEFORE ${OPENSSL_INCLUDE_DIR})
 endif()
+# === Other shared libraries ===
+if (NOT WIN32)
+    set(LIBDL dl)
+    set(LIBZ z)
+endif()
 
+endif(WITH_CONAN)
+
+set(LIBRARIES
+    ${LIBSSL}
+    ${LIBCRYPTO}
+    ${LIBBOOST_SYSTEM}
+    ${LIBDL}
+    ${LIBZ})
+
+# === Compiler flags ===
+option(USE_PTHREAD_EXIT "Call pthread_exit on server threads" OFF)
+if (NOT WIN32)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-pessimizing-move")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+    if (APPLE)
+#        include_directories(BEFORE
+#                /usr/local/opt/openssl/include
+#                )
+#        link_directories(
+#                /usr/local/opt/openssl/lib
+#                )
+    else()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
+    endif ()
+    if (USE_PTHREAD_EXIT)
+        message(STATUS "Using ::pthread_exit for termination")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_PTHREAD_EXIT")
+    endif()
+
+else ()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd5045 /wd4571 /wd4774 /wd4820 /wd5039 /wd4626 /wd4625 /wd5026 /wd5027 /wd4623 /wd4996 /wd4530 /wd4267 /wd4244 /W3")
+    message(STATUS "---- WIN32 ----")
+
+    if (USE_PTHREAD_EXIT)
+        message(FATAL_ERROR "Using ::pthread_exit not supported on Windows")
+    endif()
+endif ()
+
+include_directories(BEFORE
+    ./
+    include
+    include/libnuraft
+    examples
+    examples/calculator
+    examples/echo
+    src
+    tests
+    tests/unit
+)
 # === Compiler options ===
-if (ADDRESS_SANITIZER GREATER 0)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fuse-ld=gold")
+if (ADDRESS_SANITIZER)
+    add_compile_options(-fsanitize=address -fuse-ld=gold)
+    add_link_options(-fsanitize=address -fuse-ld=gold)
     message(STATUS "---- ADDRESS SANITIZER IS ON ----")
 endif()
 
-if (THREAD_SANITIZER GREATER 0)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread -fuse-ld=gold")
-    add_definitions(-DSUPPRESS_TSAN_FALSE_ALARMS=1)
+if (THREAD_SANITIZER)
+    add_compile_options(-fsanitize=thread -fuse-ld=gold)
+    add_link_options(-fsanitize=thread -fuse-ld=gold)
+    add_compile_definitions(SUPPRESS_TSAN_FALSE_ALARMS=1)
     message(STATUS "---- THREAD SANITIZER IS ON ----")
 endif()
 
-if (CODE_COVERAGE GREATER 0)
+if (CODE_COVERAGE)
     APPEND_COVERAGE_COMPILER_FLAGS()
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-inline")
     set(COVERAGE_EXCLUDES
@@ -201,19 +259,6 @@ if (ENABLE_RAFT_STATS GREATER 0)
     add_definitions(-DENABLE_RAFT_STATS=1)
     message(STATUS "---- ENABLED RAFT STATS ----")
 endif()
-
-# === Other shared libraries ===
-if (NOT WIN32)
-    set(LIBDL dl)
-    set(LIBZ z)
-endif()
-set(LIBRARIES
-    ${LIBSSL}
-    ${LIBCRYPTO}
-    ${LIBBOOST_SYSTEM}
-    ${LIBDL}
-    ${LIBZ})
-
 
 # === Paths ===
 set(ROOT_SRC ${PROJECT_SOURCE_DIR}/src)
@@ -273,6 +318,7 @@ set(RAFT_CORE
     ${ROOT_SRC}/stat_mgr.cxx
     )
 add_library(RAFT_CORE_OBJ OBJECT ${RAFT_CORE})
+target_link_libraries(RAFT_CORE_OBJ ${LIBRARIES})
 
 set(STATIC_LIB_SRC
     $<TARGET_OBJECTS:RAFT_CORE_OBJ>)
@@ -295,15 +341,17 @@ target_include_directories(static_lib
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
 )
 
-target_include_directories(static_lib
+target_include_directories(shared_lib
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include>
 )
 
-if (APPLE)
+# if (APPLE)
+# There is no harm in adding libraries; this is required when building with Conan
     target_link_libraries(shared_lib ${LIBRARIES})
-endif ()
+    target_link_libraries(static_lib ${LIBRARIES})
+# endif ()
 
 if (WIN32)
     set(LIBRARY_OUTPUT_NAME "${LIBRARY_NAME}.lib")
@@ -312,13 +360,17 @@ else ()
 endif ()
 message(STATUS "Output library file name: ${LIBRARY_OUTPUT_NAME}")
 
+# overwrite to set it to target name instead which passes all lib dependencies to tests and examples
+set(LIBRARY_NAME static_lib)
 # === Examples ===
-add_subdirectory("${PROJECT_SOURCE_DIR}/examples")
-
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # === Tests ===
-add_subdirectory("${PROJECT_SOURCE_DIR}/tests")
-
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
 
 if (CODE_COVERAGE GREATER 0)
     set(CODE_COVERAGE_DEPS
@@ -368,3 +420,6 @@ configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/NuRaftConfig.cmake.in
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/NuRaftConfig.cmake"
     DESTINATION lib/cmake/NuRaft
 )
+
+install(FILES examples/in_memory_log_store.hxx DESTINATION include/libnuraft)
+install(FILES LICENSE DESTINATION licenses/)

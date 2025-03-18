@@ -109,6 +109,64 @@ ptr< cmd_result< ptr<buffer> > > raft_server::append_entries_ext
     return send_msg_to_leader(req, ext_params);
 }
 
+
+ptr< cmd_result< ptr<buffer> > > raft_server::flip_learner_flag(int32 srv_id, bool to)
+{
+    ptr<cmd_result<ptr<buffer>>> ret = cs_new<cmd_result<ptr<buffer>>>(nullptr);
+    if (role_ != srv_role::leader || write_paused_) {
+        p_er("this is not a leader, cannot handle flip_learner_flag");
+        ret->set_result_code(cmd_result_code::NOT_LEADER);
+        return ret;
+    }
+    if (config_changing_) {
+        p_wn("previous config has not committed yet");
+        ret->set_result_code(cmd_result_code::CONFIG_CHANGING);
+        return ret;
+    }
+
+    ptr<cluster_config> cur_conf = get_config();
+    ptr<buffer> enc_conf_buf = cur_conf->serialize();
+    ptr<cluster_config> new_conf = cluster_config::deserialize(*enc_conf_buf);
+    new_conf->set_log_idx(log_store_->next_slot());
+
+    bool found = false;
+    for (auto& ss: new_conf->get_servers()) {
+        if (ss->get_id() != srv_id) {
+            continue;
+        }
+        found = true;
+        if (ss->is_learner() == to) {
+            p_in("server %d already has learner flag set to %s\n",
+                 srv_id,
+                 to ? "true" : "false");
+            ret->set_result_code(cmd_result_code::OK);
+            return ret;
+        }
+        p_in("set learner flag to %s for server %d",
+             to ? "true" : "false", srv_id);
+        ss->set_learner(to);
+        break;
+    }
+    if (!found) {
+        p_er("server %d not found", srv_id);
+        ret->set_result_code(SERVER_NOT_FOUND);
+        return ret;
+    }
+    p_in("copy new conf buf");
+    ptr<buffer> new_conf_buf(new_conf->serialize());
+    ptr<log_entry> entry(cs_new<log_entry>(state_->get_term(),
+                                           new_conf_buf,
+                                           log_val_type::conf,
+                                           timer_helper::get_timeofday_us()));
+    store_log_entry(entry);
+    config_changing_ = true;
+    uncommitted_config_ = new_conf;
+    p_in("request append entries");
+    request_append_entries();
+    ret->set_result_code(OK);
+    return ret;
+}
+
 ptr< cmd_result< ptr<buffer> > > raft_server::send_msg_to_leader
                                  ( ptr<req_msg>& req,
                                    const req_ext_params& ext_params )
