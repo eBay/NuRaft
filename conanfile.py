@@ -79,10 +79,6 @@ class NuRaftConan(ConanFile):
     def layout(self):
         cmake_layout(self, generator="CMakeDeps")
         self.cpp.package.libs = [f"lib{self.name}.so" if self.options.shared else f"lib{self.name}.a"]
-
-        # For “editable” packages, self.cpp.source describes the artifacts under self.source_folder.
-        self.cpp.source.includedirs = ["include", "include/libnuraft"]
-
         self.cpp.package.defines = self.cpp.build.defines = ["_RAFT_COMMIT_HASH=%s" % self._computeCommitHash()]
 
     def generate(self):
