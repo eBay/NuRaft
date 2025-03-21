@@ -2,7 +2,7 @@ import os
 
 from conan import ConanFile
 from conan.tools.cmake import cmake_layout, CMake, CMakeToolchain, CMakeDeps
-from conan.tools.files import copy, rmdir
+from conan.tools.files import copy, rmdir, save, load
 from conan.tools.scm import Git
 
 required_conan_version = ">=2.12.2"
@@ -15,7 +15,7 @@ class NuRaftConan(ConanFile):
     description = "RAFT protocol library."
     homepage = "https://github.com/ebay/NuRaft.git"
 
-    # generators = "CMakeDeps"
+    generators = "CMakeDeps"
 
     settings = "os", "compiler", "build_type", "arch"
 
@@ -36,7 +36,16 @@ class NuRaftConan(ConanFile):
         "build_examples":True
     }
 
-    exports_sources = "CMakeLists.txt", "NuRaftConfig.cmake.in", "src/*", "include/*", "cmake/*", "LICENSE"
+    exports_sources = "CMakeLists.txt", "NuRaftConfig.cmake.in", "src/*", "include/*", "cmake/*", "scripts/*", "tests/*", "examples/*", "LICENSE"
+
+    def set_version(self):
+        if self.version:
+            return
+        
+        git = Git(self, folder=self.recipe_folder)
+        self.version = git.run(cmd="describe --tags --long")
+        if self.version.startswith("v"):
+            self.version = self.version[1:]
 
     def configure(self):
         if self.options.shared:
@@ -50,15 +59,27 @@ class NuRaftConan(ConanFile):
 
         self.requires("openssl/[~3]")
 
+    def _computeCommitHash(self):
+        hash_file = os.path.join(self.recipe_folder, "COMMIT_HASH")
+        if (os.path.exists(hash_file)):
+            hash = load(self,path=hash_file)
+            self.output.info(f"Fetched commit hash from {hash_file}")
+        else: # we are building from local source, i.e. in editable mode
+            git = Git(self, folder=self.recipe_folder)
+            hash = git.get_commit()
+            diff = git.run(cmd="diff --stat")
+            if diff:
+                hash +="-dirty"
+            self.output.info(f"Fetched commit hash {hash} from local Git in {self.recipe_folder}")
+        return hash
+
+    def export(self):
+        save(self, path=os.path.join(self.export_folder, "COMMIT_HASH"), content=self._computeCommitHash())
+
     def layout(self):
         cmake_layout(self, generator="CMakeDeps")
         self.cpp.package.libs = [f"lib{self.name}.so" if self.options.shared else f"lib{self.name}.a"]
-
-        # For “editable” packages, self.cpp.source describes the artifacts under self.source_folder.
-        self.cpp.source.includedirs = ["include", "include/libnuraft"]
-
-        hash = Git(self).get_commit()
-        self.cpp.package.defines = self.cpp.build.defines = ["_RAFT_COMMIT_HASH=%s" % hash]
+        self.cpp.package.defines = self.cpp.build.defines = ["_RAFT_COMMIT_HASH=%s" % self._computeCommitHash()]
 
     def generate(self):
         tc = CMakeToolchain(self)
@@ -72,10 +93,6 @@ class NuRaftConan(ConanFile):
         tc.variables["ENABLE_RAFT_STATS"] = True
         tc.variables["CMAKE_EXPORT_COMPILE_COMMANDS"] = True
         tc.generate()
-        
-        deps=CMakeDeps(self)
-        # deps.build_context_activated = ["boost", "openssl"]
-        deps.generate()
 
     def build(self):
         cmake = CMake(self)
@@ -89,5 +106,7 @@ class NuRaftConan(ConanFile):
     def package(self):
         cmake = CMake(self)
         cmake.install()
+        assert copy(self, "LICENSE", src=self.source_folder, dst=os.path.join(self.package_folder, "licenses")), "LICENSE Copy failed"
+
         rmdir(self, os.path.join(self.package_folder, "lib", "cmake"))
 
