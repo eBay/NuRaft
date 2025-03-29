@@ -82,3 +82,17 @@ Note
 * If the priorities of all nodes are even, leader election is exactly the same as the original algorithm.
 * If all highest priority nodes are gone at the same time, the overall leader election time gets longer, as we waste at least one election time slot for reducing target priority.
 
+
+Allowing a Zero-Priority Leader
+-------------------------------
+As aforementioned, a zero-priority member can never be a leader. However, there are scenarios where it might be the only viable candidate for leadership. Consider the following sequence of events:
+
+* 5 nodes (priority): S1 (100), S2 (50), S3 (50), S4 (50), S5 (0)
+* Initial leader: S1
+* S1 replicates the latest log to S2 and S5.
+* Before replicating the log to S3 and S4, S1 and S2 go offline.
+* Now S5 is the only member with the latest log, but S5 does not initiate the vote due to its priority.
+* Consequently, the entire Raft group is stuck.
+
+To prevent this situation, there is an option called `allow_temporary_zero_priority_leader_`, which is enabled by default. If a zero-priority member is the only candidate, it will initiate the vote and become the temporary leader. Once in leadership, it replicates the latest log to the other members, then automatically resigns and yields leadership to another member. This process allows the Raft group to elect a new leader and continue functioning smoothly.
+

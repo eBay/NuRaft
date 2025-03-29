@@ -32,6 +32,7 @@ Features
 * [SSL/TLS support](docs/enabling_ssl.md)
 * [Parallel Log Appending](docs/parallel_log_appending.md)
 * [Custom Commit Policy](docs/custom_commit_policy.md)
+* [Streaming Mode](docs/streaming_mode.md)
 
 How to Build
 ------------
@@ -102,9 +103,9 @@ You may need to run `vcvars` script first in your `build` directory. For example
 C:\NuRaft\build> c:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat
 ```
 
-Alternative build method - with Conan
+Alternative Build Method (with Conan)
 ----------
-If you project needs to integrate with NuRaft and you build your project with Conan you might want 
+If you project needs to integrate with NuRaft and you build your project with Conan you might want
 to have NuRaft built with Conan too. This is now supported: this project has conanfile.py which can be used
 to build locally and export the package to conan cache/repository or use it in **editable** mode locally.
 
@@ -133,10 +134,8 @@ Please refer to [tests/bench](./tests/bench).
 
 Supported Platforms
 -------------------
-* Ubuntu (tested on 14.04 -- 20.04)
-* Centos (tested on 7)
-* OSX (tested on 10.13 -- 12.3)
-* Windows (built using MSVC 2019, not thoroughly tested)
+* Linux, OSX (extensively tested and widely used)
+* Windows (built with MSVC 2019, limited testing)
 
 
 Contributing to This Project
