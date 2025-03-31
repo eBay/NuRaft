@@ -200,7 +200,12 @@ public:
     ~asio_service_impl();
 
     const asio_service::options& get_options() const { return my_opt_; }
-    asio::io_service& get_io_svc() { return io_svc_; }
+    asio::io_service& get_io_svc() {
+        if (my_opt_.custom_io_context_) {
+            return *my_opt_.custom_io_context_;
+        }
+        return *io_svc_;
+    }
     uint64_t assign_client_id() { return client_id_counter_.fetch_add(1); }
 
 private:
@@ -213,10 +218,9 @@ private:
     void timer_handler(ERROR_CODE err);
 
 private:
-    asio::io_service io_svc_;
+    std::unique_ptr<asio::io_service> io_svc_;
     ssl_context ssl_server_ctx_;
     ssl_context ssl_client_ctx_;
-    asio::steady_timer asio_timer_;
     std::atomic_int continue_;
     std::atomic<uint8_t> stopping_status_;
     std::mutex stopping_lock_;
@@ -225,6 +229,7 @@ private:
     std::atomic<uint32_t> worker_id_;
     std::list< ptr<std::thread> > worker_handles_;
     asio_service::options my_opt_;
+    asio::steady_timer asio_timer_;
     std::atomic<uint64_t> client_id_counter_;
     ptr<logger> l_;
     friend asio_service;
@@ -1458,11 +1463,11 @@ private:
                           uint64_t send_timeout_ms) {
 
         resolver_.async_resolve
-        ( 
-            host, 
-            port, 
+        (
+            host,
+            port,
             asio::ip::tcp::resolver::flags::all_matching,
-            [self, this, req, when_done, host, port, send_timeout_ms]( 
+            [self, this, req, when_done, host, port, send_timeout_ms](
                 const std::error_code& err,
                 asio::ip::tcp::resolver::results_type endpoints ) -> void
         {
@@ -2036,28 +2041,28 @@ ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provide
 
 #endif
 
-asio_service_impl::asio_service_impl(const asio_service::options& _opt,
+asio_service_impl::asio_service_impl(const asio_service::options& opt,
                                      ptr<logger> l)
-    : io_svc_()
+    : io_svc_(opt.custom_io_context_ ? nullptr : (new asio::io_context()))
 #if (ASIO_VERSION >= 101601) && \
     (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
     !defined(LIBRESSL_VERSION_NUMBER)
-    , ssl_server_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_server_,
+    , ssl_server_ctx_(get_or_create_ssl_context(opt.ssl_context_provider_server_,
                                                 DEFAULT_SERVER_CTX))
-    , ssl_client_ctx_(get_or_create_ssl_context(_opt.ssl_context_provider_client_,
+    , ssl_client_ctx_(get_or_create_ssl_context(opt.ssl_context_provider_client_,
                                                 DEFAULT_CLIENT_CTX))
 #else
     , ssl_server_ctx_(DEFAULT_SERVER_CTX)  // Any version
     , ssl_client_ctx_(DEFAULT_CLIENT_CTX)
 #endif
-    , asio_timer_(io_svc_)
     , continue_(1)
     , stopping_status_(0)
     , stopping_lock_()
     , stopping_cv_()
     , num_active_workers_(0)
     , worker_id_(0)
-    , my_opt_(_opt)
+    , my_opt_(opt)
+    , asio_timer_(get_io_svc())
     , client_id_counter_(1)
     , l_(l)
 {
@@ -2067,7 +2072,7 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
 #else
 
         // Provider gives properly configured server contex
-        if (!_opt.ssl_context_provider_server_) {
+        if (!my_opt_.ssl_context_provider_server_) {
             p_in("server SSL context method %d", DEFAULT_SERVER_CTX);
 
             // For server (listener)
@@ -2080,23 +2085,30 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                                          std::placeholders::_1,
                                          std::placeholders::_2 ) );
             ssl_server_ctx_.use_certificate_chain_file
-                            ( _opt.server_cert_file_ );
-            ssl_server_ctx_.use_private_key_file( _opt.server_key_file_,
+                            ( my_opt_.server_cert_file_ );
+            ssl_server_ctx_.use_private_key_file( my_opt_.server_key_file_,
                                                   ssl_context::pem );
         } else {
             p_in("custom server SSL context is given");
         }
 
         // Provider gives properly configured client contex
-        if (!_opt.ssl_context_provider_client_) {
+        if (!my_opt_.ssl_context_provider_client_) {
             p_in("client SSL context method %d", DEFAULT_CLIENT_CTX);
 
             // For client
-            ssl_client_ctx_.load_verify_file(_opt.root_cert_file_);
+            ssl_client_ctx_.load_verify_file(my_opt_.root_cert_file_);
         } else {
             p_in("custom client SSL context is given");
         }
 #endif
+    }
+
+    if (my_opt_.custom_io_context_) {
+        // If the external io_context is provided, we should not create
+        // internal threads.
+        p_in("custom io_context is provided, thread pool will not be created");
+        return;
     }
 
     // set expires_after to a very large value so that
@@ -2109,7 +2121,7 @@ asio_service_impl::asio_service_impl(const asio_service::options& _opt,
                      this,
                      std::placeholders::_1 ) );
 
-    unsigned int cpu_cnt = _opt.thread_pool_size_;
+    unsigned int cpu_cnt = my_opt_.thread_pool_size_;
     if (!cpu_cnt) {
         cpu_cnt = std::thread::hardware_concurrency();
     }
@@ -2153,6 +2165,10 @@ void asio_service_impl::worker_entry() {
     pthread_setname_np(thread_name.c_str());
 #endif
 
+    p_in("spawned asio worker thread %s, current threads: %u",
+         thread_name.c_str(),
+         num_active_workers_.load());
+
     if (my_opt_.worker_start_) {
         my_opt_.worker_start_(worker_id);
     }
@@ -2164,7 +2180,7 @@ void asio_service_impl::worker_entry() {
     do {
         try {
             num_active_workers_.fetch_add(1);
-            io_svc_.run();
+            get_io_svc().run();
             num_active_workers_.fetch_sub(1);
 
         } catch (std::exception& ee) {
@@ -2199,7 +2215,8 @@ void asio_service_impl::worker_entry() {
         my_opt_.worker_stop_(worker_id);
     }
 
-    p_in("end of asio worker thread, remaining threads: %u",
+    p_in("end of asio worker thread %s, remaining threads: %u",
+         thread_name.c_str(),
          num_active_workers_.load());
 }
 
@@ -2225,6 +2242,13 @@ void asio_service_impl::timer_handler(ERROR_CODE err) {
 }
 
 void asio_service_impl::stop() {
+    if (my_opt_.custom_io_context_) {
+        // If custom io_context is provided, nothing to do here.
+        p_in("custom io_context is provided, no need to stop the asio service "
+             "and worker threads");
+        return;
+    }
+
     int running = 1;
     if (continue_.compare_exchange_strong(running, 0)) {
         std::unique_lock<std::mutex> lock(stopping_lock_);
@@ -2241,8 +2265,8 @@ void asio_service_impl::stop() {
     // Stop all workers.
     stopping_status_ = 1;
 
-    io_svc_.stop();
-    while (!io_svc_.stopped()) {
+    get_io_svc().stop();
+    while (!get_io_svc().stopped()) {
         std::this_thread::yield();
     }
 
@@ -2264,7 +2288,7 @@ asio_service::~asio_service() {
 
 void asio_service::schedule(ptr<delayed_task>& task, int32 milliseconds) {
     if (task->get_impl_context() == nilptr) {
-        task->set_impl_context( new asio::steady_timer(impl_->io_svc_),
+        task->set_impl_context( new asio::steady_timer(impl_->get_io_svc()),
                                 &_free_timer_ );
     }
     // ensure it's not in cancelled state
@@ -2335,7 +2359,7 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
 
     return cs_new< asio_rpc_client >
                  ( impl_,
-                   impl_->io_svc_,
+                   impl_->get_io_svc(),
                    impl_->ssl_client_ctx_,
                    hostname,
                    port,
@@ -2349,7 +2373,7 @@ ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
     try {
         return cs_new< asio_rpc_listener >
                      ( impl_,
-                       impl_->io_svc_,
+                       impl_->get_io_svc(),
                        impl_->ssl_server_ctx_,
                        listening_port,
                        impl_->my_opt_.enable_ssl_,
