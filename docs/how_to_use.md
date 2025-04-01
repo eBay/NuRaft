@@ -49,3 +49,4 @@ Contents
 * [Parellel Log Appending](parallel_log_appending.md)
 * [Custom Commit Policy](custom_commit_policy.md)
 * [Streaming Mode](streaming_mode.md)
+* [Customizing Asio (Network Layer, Thread Pool, Timer)](customizing_asio.md)
