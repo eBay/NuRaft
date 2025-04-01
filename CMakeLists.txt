@@ -41,15 +41,24 @@ if(CODE_COVERAGE)
     message(STATUS "---- CODE COVERAGE DETECTION MODE ----")
 endif()
 
+# === Paths ===
+set(ROOT_SRC ${PROJECT_SOURCE_DIR}/src)
+set(EXAMPLES_SRC ${PROJECT_SOURCE_DIR}/examples)
+
 if(WITH_CONAN)
-    if(BOOST_ASIO)
-        find_package(Boost REQUIRED COMPONENTS Boost::system)
-        add_compile_definitions(USE_BOOST_ASIO)
-        set(LIBBOOST_SYSTEM Boost::system)
+    if(NOT DISABLE_ASIO)
+        if(BOOST_ASIO)
+            find_package(Boost REQUIRED COMPONENTS Boost::system)
+            add_compile_definitions(USE_BOOST_ASIO)
+            set(LIBBOOST_SYSTEM Boost::system)
+        else()
+            find_package(Asio REQUIRED)
+            add_compile_definitions(ASIO_STANDALONE)
+            set(LIBBOOST_SYSTEM asio::asio)
+        endif()
+        set(ASIO_SERVICE_SRC "${ROOT_SRC}/asio_service.cxx")
     else()
-        find_package(Asio REQUIRED)
-        add_compile_definitions(ASIO_STANDALONE)
-        set(LIBBOOST_SYSTEM asio::asio)
+        message(STATUS "ASIO is disabled and will not be included")
     endif()
 
     find_package(OpenSSL)
@@ -65,29 +74,34 @@ if(WITH_CONAN)
     set(LIBZ ZLIB::ZLIB)
 
 else()
-    # === Find ASIO ===
-    if(BOOST_INCLUDE_PATH AND BOOST_LIBRARY_PATH)
-        # If Boost path (both include and library) is given,
-        # use Boost's ASIO.
-        message(STATUS "Boost include path: " ${BOOST_INCLUDE_PATH})
-        message(STATUS "Boost library path: " ${BOOST_LIBRARY_PATH})
+    if(NOT DISABLE_ASIO)
+        # === Find ASIO ===
+        if(BOOST_INCLUDE_PATH AND BOOST_LIBRARY_PATH)
+            # If Boost path (both include and library) is given,
+            # use Boost's ASIO.
+            message(STATUS "Boost include path: " ${BOOST_INCLUDE_PATH})
+            message(STATUS "Boost library path: " ${BOOST_LIBRARY_PATH})
 
-        add_compile_definitions(USE_BOOST_ASIO)
+            add_compile_definitions(USE_BOOST_ASIO)
 
-        set(ASIO_INCLUDE_DIR ${BOOST_INCLUDE_PATH})
-        set(LIBBOOST_SYSTEM "${BOOST_LIBRARY_PATH}/libboost_system.a")
+            set(ASIO_INCLUDE_DIR ${BOOST_INCLUDE_PATH})
+            set(LIBBOOST_SYSTEM "${BOOST_LIBRARY_PATH}/libboost_system.a")
 
+        else()
+            # If not, ASIO standalone mode.
+            find_path(ASIO_INCLUDE_DIR
+                NAME asio.hpp
+                HINTS ${PROJECT_SOURCE_DIR}/asio/asio/include
+                $ENV{HOME}/local/include
+                /opt/local/include
+                /usr/local/include
+                /usr/include)
+
+            add_compile_definitions(ASIO_STANDALONE)
+        endif()
+        set(ASIO_SERVICE_SRC "${ROOT_SRC}/asio_service.cxx")
     else()
-        # If not, ASIO standalone mode.
-        find_path(ASIO_INCLUDE_DIR
-            NAME asio.hpp
-            HINTS ${PROJECT_SOURCE_DIR}/asio/asio/include
-            $ENV{HOME}/local/include
-            /opt/local/include
-            /usr/local/include
-            /usr/include)
-
-        add_compile_definitions(ASIO_STANDALONE)
+        message(STATUS "ASIO is disabled and will not be included")
     endif()
 
     if(NOT ASIO_INCLUDE_DIR)
@@ -264,10 +278,6 @@ if(ENABLE_RAFT_STATS GREATER 0)
     message(STATUS "---- ENABLED RAFT STATS ----")
 endif()
 
-# === Paths ===
-set(ROOT_SRC ${PROJECT_SOURCE_DIR}/src)
-set(EXAMPLES_SRC ${PROJECT_SOURCE_DIR}/examples)
-
 # === Copy script files ===
 file(COPY ${PROJECT_SOURCE_DIR}/scripts/test/runtests.sh
     DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -295,7 +305,7 @@ endif()
 
 # === Source files ===
 set(RAFT_CORE
-    ${ROOT_SRC}/asio_service.cxx
+    ${ASIO_SERVICE_SRC}
     ${ROOT_SRC}/buffer.cxx
     ${ROOT_SRC}/buffer_serializer.cxx
     ${ROOT_SRC}/cluster_config.cxx
@@ -370,7 +380,7 @@ message(STATUS "Output library file name: ${LIBRARY_OUTPUT_NAME}")
 set(LIBRARY_NAME static_lib)
 
 # === Examples ===
-if(BUILD_EXAMPLES)
+if(BUILD_EXAMPLES AND NOT DISABLE_ASIO)
     add_subdirectory(examples)
 endif()
 

@@ -45,38 +45,40 @@ unit_test(NAME failure_test
     ${EXAMPLES_SRC}/logger.cc
     ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 
-# === ASIO network stuff test ===
-unit_test(NAME asio_service_test
-    SOURCES
-    unit/asio_service_test.cxx
-    ${EXAMPLES_SRC}/logger.cc
-    ${EXAMPLES_SRC}/in_memory_log_store.cxx
-    TIMEOUT 720
-    SKIP # skipping for now because it takes too long to run
-)
+# === ASIO network stuff test, only when ASIO is enabled ===
+if(NOT DISABLE_ASIO)
+    unit_test(NAME asio_service_test
+        SOURCES
+        unit/asio_service_test.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        TIMEOUT 720
+        SKIP # skipping for now because it takes too long to run
+    )
 
-unit_test(NAME asio_service_stream_test
-    SOURCES
-    unit/asio_service_stream_test.cxx
-    ${EXAMPLES_SRC}/logger.cc
-    ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+    unit_test(NAME asio_service_stream_test
+        SOURCES
+        unit/asio_service_stream_test.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 
 
-unit_test(NAME stream_functional_test
-    SOURCES
-    unit/stream_functional_test.cxx
-    unit/fake_network.cxx
-    ${EXAMPLES_SRC}/logger.cc
-    ${EXAMPLES_SRC}/in_memory_log_store.cxx
-    SKIP # skipping for now because this test fails
-)
+    unit_test(NAME stream_functional_test
+        SOURCES
+        unit/stream_functional_test.cxx
+        unit/fake_network.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        SKIP # skipping for now because this test fails
+    )
 
-# === Benchmark ===
-unit_test(NAME raft_bench
-    SOURCES
-    bench/raft_bench.cxx
-    ${EXAMPLES_SRC}/logger.cc
-    ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+    # === Benchmark ===
+    unit_test(NAME raft_bench
+        SOURCES
+        bench/raft_bench.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+endif()
 
 # === Other modules ===
 unit_test(NAME buffer_test
@@ -87,10 +89,11 @@ unit_test(NAME serialization_test
     SOURCES
     unit/serialization_test.cxx)
 
-unit_test(NAME timer_test
-    SOURCES
-    unit/timer_test.cxx)
-
+if (NOT DISABLE_ASIO)
+    unit_test(NAME timer_test
+        SOURCES
+        unit/timer_test.cxx)
+endif()
 
 unit_test(NAME strfmt_test
     SOURCES
