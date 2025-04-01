@@ -26,6 +26,16 @@ limitations under the License.
 
 typedef struct ssl_ctx_st SSL_CTX;
 
+#ifdef USE_BOOST_ASIO
+namespace boost { namespace asio {
+    class io_context;
+} }
+#else
+namespace asio {
+    class io_context;
+}
+#endif
+
 namespace nuraft {
 
 class buffer;
@@ -126,6 +136,7 @@ struct asio_service_options {
         , crc_on_payload_(false)
         , corrupted_msg_handler_(nullptr)
         , streaming_mode_(false)
+        , custom_io_context_(nullptr)
         {}
 
     /**
@@ -284,6 +295,17 @@ struct asio_service_options {
      * The order of responses will be identical to the order of requests.
      */
     bool streaming_mode_;
+
+    /**
+     * If given, it will disable the internal thread pool but instead
+     * rely on the external thread pool. The user is responsible for
+     * managing the thread pool, as well as handling the async tasks and timers.
+     */
+#ifdef USE_BOOST_ASIO
+    boost::asio::io_context* custom_io_context_;
+#else
+    asio::io_context* custom_io_context_;
+#endif
 };
 
 }
