@@ -40,9 +40,9 @@ Streamed Replication
 --------------------
 Our proposed solution involves allowing the leader to send messages in a streaming fashion, without the need to wait for acknowledgments from the previous message. However, we are committed to maintaining the core principles of the Raft algorithm, ensuring the continuity of log entries without permitting any gaps. To achieve this, the logic on the follower's side (i.e., the receiver) will remain as it is. All followers will continue to verify that the log entries they receive are sequential. For any discontinuity, the followers will reject the message in the same manner that the original Raft protocol does.
 
-There are two parameters for operating in streaming mode, in [`raft_params`](../include/libnuraft/raft_params.hxx).
+To enable streaming mode, ensure `streaming_mode_` in [`asio_service_options`](../include/libnuraft/asio_service_options.hxx) is set to `true`. Additionally, there are two parameters for operating in streaming mode, in [`raft_params`](../include/libnuraft/raft_params.hxx).
 
-* `max_log_gap_in_stream_`: If non-zero, streaming mode is enabled and `append_entries` requests are dispatched instantly without awaiting the response from the prior request. The count of logs in-flight will be capped by this value, allowing it to function as a throttling mechanism, in conjunction with `max_bytes_in_flight_in_stream_` below.
+* `max_log_gap_in_stream_`: If set to a non-zero value combined with `streaming_mode_` being set to `true`, streaming mode is enabled and `append_entries` requests are dispatched instantly without awaiting the response from the prior request. The count of logs in-flight will be capped by this value, allowing it to function as a throttling mechanism, in conjunction with `max_bytes_in_flight_in_stream_` below.
 
 * `max_bytes_in_flight_in_stream_`: If non-zero, the volume of data in-flight will be restricted to this specified byte limit. This limitation is effective only in streaming mode.
 
