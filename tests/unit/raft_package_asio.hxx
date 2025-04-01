@@ -287,7 +287,11 @@ public:
 
     bool useCrcOnEntireMessage;
 
+#ifdef USE_BOOST_ASIO
+    boost::asio::io_context* customIoContext;
+#else
     asio::io_context* customIoContext;
+#endif
 
     ptr<logger_wrapper> myLogWrapper;
     ptr<logger> myLog;

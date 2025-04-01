@@ -26,8 +26,10 @@ limitations under the License.
 #ifdef USE_BOOST_ASIO
     #include <boost/asio.hpp>
     using namespace boost;
+    using asio_error_code = system::error_code;
 #else
     #include <asio.hpp>
+    using asio_error_code = asio::error_code;
 #endif
 
 #include <unordered_map>
@@ -2884,7 +2886,7 @@ int custom_io_context_test() {
     asio::io_context custom_io_context;
     asio::steady_timer custom_timer(custom_io_context);
     custom_timer.expires_after(std::chrono::seconds(3600));
-    custom_timer.async_wait([](const asio::error_code& ec) {
+    custom_timer.async_wait([](const asio_error_code& ec) {
         if (ec) {
             TestSuite::_msg("custom timer error: %s\n", ec.message().c_str());
         } else {

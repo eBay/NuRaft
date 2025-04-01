@@ -40,9 +40,9 @@ limitations under the License.
 
 #ifdef USE_BOOST_ASIO
     #include <boost/asio.hpp>
-    namespace boost::asio {
+    namespace boost { namespace asio {
         using io_service = io_context;
-    }
+    } }
     using namespace boost;
     #define ERROR_CODE system::error_code
 

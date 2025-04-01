@@ -27,9 +27,9 @@ limitations under the License.
 typedef struct ssl_ctx_st SSL_CTX;
 
 #ifdef USE_BOOST_ASIO
-namespace boost::asio {
+namespace boost { namespace asio {
     class io_context;
-}
+} }
 #else
 namespace asio {
     class io_context;
