@@ -43,9 +43,26 @@ class NuRaftConan(ConanFile):
             return
         
         git = Git(self, folder=self.recipe_folder)
-        self.version = git.run(cmd="describe --tags --long")
-        if self.version.startswith("v"):
-            self.version = self.version[1:]
+        version = git.run(cmd="describe --tags --long")
+        # the string returned by the git command above looks like this:
+        # v1.2.3-4-g5bfa09b
+
+        # if the tag starts with "v" - strip it
+        version = version[1:] if version.startswith("v") else version
+
+        # replace the second dash with "." in order to ensure proper semantic version comparison
+        items = version.split("-", 2)
+        assert len(items) == 3, f"Unexpected version format: {version}"
+        version = items[0] + "-" + items[1] + "." + items[2]
+            
+        # the final version string will look like this:
+        # "1.2.3-4.g5bfa09b"
+        # 1 is the major version
+        # 2 is the minor version
+        # 3 is the patch version
+        # 4.g5bfa09b is the pre-release version wich will also be parsed 
+        #  and 4 will be the major version of the pre-release version
+        self.version = version
 
     def configure(self):
         if self.options.shared:
