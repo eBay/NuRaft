@@ -132,6 +132,7 @@ public:
             reconnect_limit_ = src.reconnect_limit_.load();
             leave_limit_ = src.leave_limit_.load();
             vote_limit_ = src.vote_limit_.load();
+            busy_connection_limit_ = src.busy_connection_limit_.load();
             return *this;
         }
 
