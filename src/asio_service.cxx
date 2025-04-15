@@ -131,6 +131,14 @@ limitations under the License.
 // If set, RPC message (response) includes result code
 #define INCLUDE_RESULT_CODE (0x20)
 
+// If set, and
+//   - If it is used in a request (leader -> follower),
+//     the follower has been excluded from the quorum,
+//     determined by the leader (i.e., sender).
+//   - If it is used in a response (follower -> leader),
+//     the follower is marked down by itself.
+#define MARK_DOWN (0x40)
+
 // =======================
 
 namespace nuraft {
@@ -616,6 +624,11 @@ private:
         std::string meta_str;
         ptr<req_msg> req = cs_new<req_msg>
                            ( term, t, src, dst, last_term, last_idx, commit_idx );
+        if (flags_ & MARK_DOWN) {
+            req->set_extra_flags(
+                req->get_extra_flags() | req_msg::EXCLUDED_FROM_THE_QUORUM);
+        }
+
         if (log_data_size > 0 && log_ctx) {
             buffer_serializer ss(log_ctx);
             size_t log_ctx_size = log_ctx->size();
@@ -781,6 +794,11 @@ private:
             flags |= INCLUDE_HINT;
             // For future extension, we will put 2-byte version and 2-byte length.
             resp_hint_size += sizeof(uint16_t) * 2 + sizeof(int64);
+        }
+
+        if (resp->get_extra_flags() & resp_msg::SELF_MARK_DOWN) {
+            // The follower marks itself down.
+            flags |= MARK_DOWN;
         }
 
         size_t carried_data_size = resp_meta_size + resp_hint_size + resp_ctx_size;
@@ -1322,6 +1340,11 @@ public:
             flags |= CRC_ON_PAYLOAD;
         }
 
+        if (req->get_extra_flags() & req_msg::EXCLUDED_FROM_THE_QUORUM) {
+            // If the request is excluded from the quorum, set the flag.
+            flags |= MARK_DOWN;
+        }
+
         for (auto& entry: req->log_entries()) {
             ptr<log_entry>& le = entry;
             ptr<buffer> entry_buf = buffer::alloc
@@ -1739,6 +1762,11 @@ private:
             bool meta_ok = handle_custom_resp_meta
                            ( req, rsp, when_done, std::string() );
             if (!meta_ok) return;
+        }
+
+        if (flags & MARK_DOWN) {
+            // Mark down flag is set in the response.
+            rsp->set_extra_flags(rsp->get_extra_flags() | resp_msg::SELF_MARK_DOWN);
         }
 
         if (carried_data_size) {

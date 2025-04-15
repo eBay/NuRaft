@@ -490,8 +490,9 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
     // Read log entries. The underlying log store may have removed some log entries
     // causing some of the requested entries to be unavailable. The log store should
     // return nullptr to indicate such errors.
+    ptr<raft_params> params = ctx_->get_params();
     ulong end_idx = std::min( cur_nxt_idx,
-                              last_log_idx + 1 + ctx_->get_params()->max_append_size_ );
+                              last_log_idx + 1 + params->max_append_size_ );
 
     // NOTE: If this is a retry, probably the follower is down.
     //       Send just one log until it comes back
@@ -614,6 +615,21 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
         v.insert(v.end(), log_entries->begin(), log_entries->end());
     }
     p.set_last_sent_idx(last_log_idx + 1);
+
+    if (params->use_full_consensus_among_healthy_members_) {
+        // Full consensus mode: set flag indicating the member is excluded.
+        uint64_t last_resp_time_ms = p.get_resp_timer_us() / 1000;
+        uint64_t expiry = params->heart_beat_interval_ *
+                          raft_server::raft_limits_.full_consensus_leader_limit_;
+        uint64_t required_log_idx =
+            quick_commit_index_ > (uint64_t)params->max_append_size_
+            ? quick_commit_index_ - params->max_append_size_ : 0;
+        if (last_resp_time_ms > expiry ||
+            p.get_matched_idx() < required_log_idx) {
+            req->set_extra_flags(
+                req->get_extra_flags() | req_msg::EXCLUDED_FROM_THE_QUORUM);
+        }
+    }
 
     return req;
 }
@@ -766,6 +782,16 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     // set initialized flag
     if (!initialized_) initialized_ = true;
 
+    bool old_excluded_from_the_quorum_ = excluded_from_the_quorum_;
+    bool new_excluded_from_the_quorum_ =
+        req.get_extra_flags() & req_msg::EXCLUDED_FROM_THE_QUORUM;
+    if (old_excluded_from_the_quorum_ != new_excluded_from_the_quorum_) {
+        p_in("excluded from the quorum changed from %s to %s",
+             old_excluded_from_the_quorum_ ? "true" : "false",
+             new_excluded_from_the_quorum_ ? "true" : "false");
+        excluded_from_the_quorum_ = new_excluded_from_the_quorum_;
+    }
+
     // Callback if necessary.
     cb_func::Param param(id_, leader_, -1, &req);
     cb_func::ReturnCode cb_ret =
@@ -793,6 +819,9 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
         return resp;
     }
+
+    // Reset timer.
+    last_rcvd_append_entries_req_.reset();
 
     if (req.log_entries().size() > 0) {
         // Write logs to store, start from overlapped logs
@@ -1029,7 +1058,13 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 
     int64 bs_hint = state_machine_->get_next_batch_size_hint_in_bytes();
     resp->set_next_batch_size_hint_in_bytes(bs_hint);
-    p_tr("batch size hint: %" PRId64 " bytes", bs_hint);
+    if (self_mark_down_) {
+        resp->set_extra_flags(
+            resp->get_extra_flags() | resp_msg::SELF_MARK_DOWN
+        );
+    }
+    p_tr("batch size hint: %" PRId64 " bytes, flags: %" PRIx64,
+         bs_hint, resp->get_extra_flags());
 
     out_of_log_range_ = false;
 
@@ -1095,6 +1130,15 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
     p->set_next_batch_size_hint_in_bytes(bs_hint);
 
     if (resp.get_accepted()) {
+        bool new_mark_down_status = (resp.get_extra_flags() & resp_msg::SELF_MARK_DOWN);
+        bool old_mark_down_status = p->set_self_mark_down(new_mark_down_status);
+        if (old_mark_down_status != new_mark_down_status) {
+            p_in("peer %d self mark down status changed from %s to %s",
+                 p->get_id(),
+                 (old_mark_down_status ? "true" : "false"),
+                 (new_mark_down_status ? "true" : "false"));
+        }
+
         uint64_t prev_matched_idx = 0;
         uint64_t new_matched_idx = 0;
         {
@@ -1135,9 +1179,16 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
         // Try to commit with this response.
         ulong committed_index = get_expected_committed_log_idx();
+
+        // NOTE:
+        //   In full consensus mode, `committed_index` can move back when
+        //   a non-responding peer is re-included in the quorum.
+        //   However, such decreased `committed_index` should not
+        //   cause any problem, as it will be gracefully handled in
+        //   `commit()` function below.
         commit( committed_index );
 
-        // As commit might send request, so refresh streamed log idx here
+        // As commit might send requests, so refresh streamed log idx here
         last_streamed_log_idx = p->get_last_streamed_log_idx();
         ulong next_idx_to_send = last_streamed_log_idx
                                  ? last_streamed_log_idx + 1
@@ -1364,7 +1415,22 @@ ulong raft_server::get_expected_committed_log_idx() {
 
     size_t quorum_idx = get_quorum_for_commit();
     if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
-        size_t not_responding_peers = get_not_responding_peers_count();
+        ptr<raft_params> params = ctx_->get_params();
+        // In full consensus mode, a peer is considered unhealthy when
+        //   1) it is not responding for 3 times of heartbeat interval, or
+        //   2) its last log index is smaller (older) than
+        //      the current committed log index - max batch size.
+        int32_t allowed_interval =
+            params->heart_beat_interval_ *
+            raft_server::raft_limits_.full_consensus_leader_limit_;;
+        uint64_t allowed_log_index =
+            quick_commit_index_ > (uint64_t)params->max_append_size_
+            ? quick_commit_index_ - params->max_append_size_
+            : 0;
+
+        size_t not_responding_peers =
+            get_not_responding_peers_count(allowed_interval, allowed_log_index);
+
         if (not_responding_peers < voting_members - quorum_idx) {
             // If full consensus option is on, commit should be
             // agreed by all healthy members, and the number of
@@ -1372,10 +1438,12 @@ ulong raft_server::get_expected_committed_log_idx() {
             size_t prev_quorum_idx = quorum_idx;
             quorum_idx = voting_members - not_responding_peers - 1;
             p_tr( "full consensus mode: %zu peers are not responding out of %d, "
-                  "adjust quorum %zu -> %zu",
+                  "adjust quorum idx %zu -> %zu",
                   not_responding_peers, voting_members,
                   prev_quorum_idx, quorum_idx );
         } else {
+            // Majority of voting members are not responding.
+            // We should not commit anything (regardless of full consensus mode).
             p_tr( "full consensus mode, but %zu peers are not responding, "
                   "required quorum size %zu/%d",
                   not_responding_peers, quorum_idx + 1, voting_members );
@@ -1383,9 +1451,14 @@ ulong raft_server::get_expected_committed_log_idx() {
     }
 
     if (l_ && l_->get_level() >= 6) {
-        std::string tmp_str;
-        for (ulong m_idx: matched_indexes) {
-            tmp_str += std::to_string(m_idx) + " ";
+        std::string tmp_str = "[";
+        for (size_t ii = 0; ii < matched_indexes.size(); ++ii) {
+            tmp_str += std::to_string(matched_indexes[ii]);
+            if (ii == quorum_idx) {
+                tmp_str += "] ";
+            } else {
+                tmp_str += " ";
+            }
         }
         p_tr("quorum idx %zu, %s", quorum_idx, tmp_str.c_str());
     }
