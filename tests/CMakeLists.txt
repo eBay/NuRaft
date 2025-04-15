@@ -29,6 +29,21 @@ unit_test(NAME raft_server_test
     ${EXAMPLES_SRC}/in_memory_log_store.cxx
 )
 
+unit_test(NAME snapshot_test
+    SOURCES
+    unit/snapshot_test.cxx
+    unit/fake_network.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx
+)
+
+unit_test(NAME leader_election_test
+    SOURCES
+    unit/leader_election_test.cxx
+    unit/fake_network.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx
+)
 
 unit_test(NAME new_joiner_test
     SOURCES
@@ -49,23 +64,43 @@ unit_test(NAME failure_test
 if(NOT DISABLE_ASIO)
     unit_test(NAME asio_service_test
         SOURCES
-        unit/asio_service_test.cxx
+        asio/asio_service_test.cxx
         ${EXAMPLES_SRC}/logger.cc
         ${EXAMPLES_SRC}/in_memory_log_store.cxx
         TIMEOUT 720
         SKIP # skipping for now because it takes too long to run
     )
 
-    unit_test(NAME asio_service_stream_test
+    unit_test(NAME req_resp_meta_test
         SOURCES
-        unit/asio_service_stream_test.cxx
+        asio/req_resp_meta_test.cxx
         ${EXAMPLES_SRC}/logger.cc
-        ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        TIMEOUT 720
+        SKIP
+    )
 
-
-    unit_test(NAME stream_functional_test
+    unit_test(NAME custom_quorum_test
         SOURCES
-        unit/stream_functional_test.cxx
+        asio/custom_quorum_test.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        TIMEOUT 720
+        SKIP
+    )
+
+    unit_test(NAME stream_transport_layer_test
+        SOURCES
+        asio/stream_transport_layer_test.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        TIMEOUT 720
+        SKIP
+    )
+
+    unit_test(NAME raft_stream_mode_test
+        SOURCES
+        asio/raft_stream_mode_test.cxx
         unit/fake_network.cxx
         ${EXAMPLES_SRC}/logger.cc
         ${EXAMPLES_SRC}/in_memory_log_store.cxx
@@ -77,7 +112,9 @@ if(NOT DISABLE_ASIO)
         SOURCES
         bench/raft_bench.cxx
         ${EXAMPLES_SRC}/logger.cc
-        ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        SKIP
+    )
 endif()
 
 # === Other modules ===

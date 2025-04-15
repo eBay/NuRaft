@@ -144,8 +144,10 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
 
         if (snp->get_last_log_idx() != prev_sync_snp_log_idx) {
             p_in( "trying to sync snapshot with last index %" PRIu64 " to peer %d, "
-                  "its last log idx %" PRIu64 "",
-                  snp->get_last_log_idx(), p.get_id(), last_log_idx );
+                  "its last log idx %" PRIu64 ", my start index %" PRIu64
+                  ", my last log idx %" PRIu64,
+                  snp->get_last_log_idx(), p.get_id(), last_log_idx,
+                  log_store_->start_index(), log_store_->next_slot() - 1 );
         }
         if (sync_ctx) {
             // If previous user context exists, should free it
@@ -531,7 +533,6 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
             ~ExecAutoResume() { clean_func_(); }
             std::function<void()> clean_func_;
         } exec_auto_resume([this](){ resume_state_machine_execution(); });
-
 
         receiving_snapshot_ = false;
 

@@ -15,6 +15,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#pragma once
+
 #include "asio_service_options.hxx"
 #include "raft_functional_common.hxx"
 #include "internal_timer.hxx"

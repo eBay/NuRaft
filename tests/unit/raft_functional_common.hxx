@@ -39,6 +39,16 @@ using namespace nuraft;
 
 namespace raft_functional_common {
 
+inline std::ostream& operator<<(std::ostream& os, raft_server::PrioritySetResult res) {
+    if (res == raft_server::PrioritySetResult::SET)
+        os << "SET";
+    else if (res == raft_server::PrioritySetResult::IGNORED)
+        os << "IGNORED";
+    else
+        os << "BROADCAST";
+    return os;
+}
+
 class TestSm : public state_machine {
 public:
     TestSm(SimpleLogger* logger = nullptr)
