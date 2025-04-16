@@ -46,6 +46,7 @@ struct resp_appendix {
     enum extra_order : uint8_t {
         NONE = 0,
         DO_NOT_REWIND = 1,
+        RECEIVING_SNAPSHOT = 2,
     };
 
     resp_appendix() : extra_order_(NONE) {}
@@ -86,6 +87,8 @@ struct resp_appendix {
             return "NONE";
         case DO_NOT_REWIND:
             return "DO_NOT_REWIND";
+        case RECEIVING_SNAPSHOT:
+            return "RECEIVING_SNAPSHOT";
         default:
             return "UNKNOWN";
         }
@@ -480,6 +483,9 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
 
     // Verify log index range.
     bool entries_valid = (last_log_idx + 1 >= starting_idx);
+    if (entries_valid && pp->is_snapshot_sync_needed()) {
+        entries_valid = false;
+    }
 
     // Read log entries. The underlying log store may have removed some log entries
     // causing some of the requested entries to be unavailable. The log store should
@@ -529,14 +535,17 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
         // As `reserved_log` has been newly added, need to check snapshot
         // in addition to `starting_idx`.
         if ( snp_local &&
-             last_log_idx < starting_idx &&
-             last_log_idx < snp_local->get_last_log_idx() ) {
+             ( pp->is_snapshot_sync_needed() ||
+               ( last_log_idx < starting_idx &&
+                last_log_idx < snp_local->get_last_log_idx() ) ) ) {
             p_db( "send snapshot peer %d, peer log idx: %" PRIu64
                   ", my starting idx: %" PRIu64 ", "
-                  "my log idx: %" PRIu64 ", last_snapshot_log_idx: %" PRIu64,
+                  "my log idx: %" PRIu64 ", last_snapshot_log_idx: %" PRIu64
+                  ", snapshot sync needed: %d",
                   p.get_id(),
                   last_log_idx, starting_idx, cur_nxt_idx,
-                  snp_local->get_last_log_idx() );
+                  snp_local->get_last_log_idx(),
+                  pp->is_snapshot_sync_needed() );
 
             bool succeeded_out = false;
             return create_sync_snapshot_req( pp, last_log_idx, term,
@@ -723,19 +732,32 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
           log_term );
 
     if ( req.get_term() < state_->get_term() ||
-         log_okay == false ) {
+         log_okay == false ||
+         state_->is_receiving_snapshot() ) {
         p_lv( log_lv,
               "deny, req term %" PRIu64 ", my term %" PRIu64
-              ", req log idx %" PRIu64 ", my log idx %" PRIu64,
+              ", req log idx %" PRIu64 ", my log idx %" PRIu64
+              ", receiving snapshot %s",
               req.get_term(), state_->get_term(),
-              req.get_last_log_idx(), log_store_->next_slot() - 1 );
+              req.get_last_log_idx(), log_store_->next_slot() - 1,
+              ( state_->is_receiving_snapshot() ? "TRUE" : "FALSE" ) );
         if (local_snp) {
             p_lv( log_lv, "snp idx %" PRIu64 " term %" PRIu64,
                   local_snp->get_last_log_idx(),
                   local_snp->get_last_log_term() );
         }
+        if (state_->is_receiving_snapshot()) {
+            // If it is in `receiving_snapshot` status but received a normal
+            // `append_entries` request, that means the leader is not aware of
+            // this node's status. We should send an additional hint.
+            resp_appendix appendix;
+            appendix.extra_order_ = resp_appendix::RECEIVING_SNAPSHOT;
+            resp->set_ctx( appendix.serialize() );
+            p_lv(log_lv, "appended extra order %s",
+                 resp_appendix::extra_order_msg(appendix.extra_order_));
+        }
         resp->set_next_batch_size_hint_in_bytes(
-                state_machine_->get_next_batch_size_hint_in_bytes() );
+            state_machine_->get_next_batch_size_hint_in_bytes());
         return resp;
     }
 
@@ -1136,6 +1158,10 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                 ptr<resp_appendix> appendix = resp_appendix::deserialize(*resp.get_ctx());
                 if (appendix->extra_order_ == resp_appendix::DO_NOT_REWIND) {
                     do_log_rewind = false;
+                } else if (appendix->extra_order_ == resp_appendix::RECEIVING_SNAPSHOT) {
+                    p->set_snapshot_sync_is_needed(true);
+                    p_in("peer %d was in snapshot sync mode, re-sending a snapshot",
+                         p->get_id());
                 }
 
                 static timer_helper extra_order_timer(1000 * 1000, true);

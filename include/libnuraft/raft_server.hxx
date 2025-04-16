@@ -220,7 +220,7 @@ public:
      *
      * @return `true` if it is receiving snapshot.
      */
-    bool is_receiving_snapshot() const { return receiving_snapshot_; }
+    bool is_receiving_snapshot() const { return state_->is_receiving_snapshot(); }
 
     /**
      * Add a new server to the current cluster.
@@ -1424,11 +1424,6 @@ protected:
      * State machine instance.
      */
     ptr<state_machine> state_machine_;
-
-    /**
-     * `true` if this server is receiving a snapshot.
-     */
-    std::atomic<bool> receiving_snapshot_;
 
     /**
      * Election timeout count while receiving snapshot.

@@ -38,13 +38,19 @@ public:
         , voted_for_(-1)
         , election_timer_allowed_(true)
         , catching_up_(false)
+        , receiving_snapshot_(false)
         {}
 
-    srv_state(ulong term, int voted_for, bool et_allowed, bool catching_up)
+    srv_state(ulong term,
+              int voted_for,
+              bool et_allowed,
+              bool catching_up,
+              bool receiving_snapshot)
         : term_(term)
         , voted_for_(voted_for)
         , election_timer_allowed_(et_allowed)
         , catching_up_(catching_up)
+        , receiving_snapshot_(receiving_snapshot)
         {}
 
     /**
@@ -69,7 +75,7 @@ public:
     static ptr<srv_state> deserialize_v0(buffer& buf) {
         ulong term = buf.get_ulong();
         int voted_for = buf.get_int();
-        return cs_new<srv_state>(term, voted_for, true, false);
+        return cs_new<srv_state>(term, voted_for, true, false, false);
     }
 
     static ptr<srv_state> deserialize_v1p(buffer& buf) {
@@ -79,12 +85,22 @@ public:
         ulong term = bs.get_u64();
         int voted_for = bs.get_i32();
         bool et_allowed = (bs.get_u8() == 1);
+
         bool catching_up = false;
         if (ver >= 2 && bs.pos() < buf.size()) {
             catching_up = (bs.get_u8() == 1);
         }
 
-        return cs_new<srv_state>(term, voted_for, et_allowed, catching_up);
+        bool receiving_snapshot = false;
+        if (ver >= 2 && bs.pos() < buf.size()) {
+            receiving_snapshot = (bs.get_u8() == 1);
+        }
+
+        return cs_new<srv_state>(term,
+                                 voted_for,
+                                 et_allowed,
+                                 catching_up,
+                                 receiving_snapshot);
     }
 
     void set_inc_term_func(inc_term_func to) {
@@ -125,12 +141,20 @@ public:
         return catching_up_;
     }
 
+    bool is_receiving_snapshot() const {
+        return receiving_snapshot_;
+    }
+
     void allow_election_timer(bool to) {
         election_timer_allowed_ = to;
     }
 
     void set_catching_up(bool to) {
         catching_up_ = to;
+    }
+
+    void set_receiving_snapshot(bool to) {
+        receiving_snapshot_ = to;
     }
 
     ptr<buffer> serialize() const {
@@ -147,17 +171,19 @@ public:
 
     ptr<buffer> serialize_v1p(uint8_t version) const {
         //   << Format >>
-        // version          1 byte
-        // term             8 bytes
-        // voted_for        4 bytes
-        // election timer   1 byte      (since v1)
-        // catching up      1 byte      (since v2)
+        // version              1 byte
+        // term                 8 bytes
+        // voted_for            4 bytes
+        // election timer       1 byte      (since v1)
+        // catching up          1 byte      (since v2)
+        // receiving snapshot   1 byte      (since v2)
 
         size_t buf_len = sizeof(uint8_t) +
                          sizeof(uint64_t) +
                          sizeof(int32_t) +
                          sizeof(uint8_t);
         if (version >= 2) {
+            buf_len += sizeof(uint8_t);
             buf_len += sizeof(uint8_t);
         }
         ptr<buffer> buf = buffer::alloc(buf_len);
@@ -168,6 +194,7 @@ public:
         bs.put_u8(election_timer_allowed_ ? 1 : 0);
         if (version >= 2) {
             bs.put_u8(catching_up_ ? 1 : 0);
+            bs.put_u8(receiving_snapshot_ ? 1 : 0);
         }
         return buf;
     }
@@ -198,6 +225,13 @@ private:
      */
     std::atomic<bool> catching_up_;
 
+    /**
+     * `true` if this server is receiving a snapshot.
+     * Same as `catching_up_`, it must be a durable flag so as not to be
+     * reset after restart. While this flag is set, this server will neither
+     * receive normal append_entries requests nor initiate election.
+     */
+    std::atomic<bool> receiving_snapshot_;
 
     /**
      * Custom callback function for increasing term.
