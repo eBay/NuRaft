@@ -363,6 +363,12 @@ void raft_server::handle_install_snapshot_resp(resp_msg& resp) {
                 p->set_matched_idx(sync_ctx->get_snapshot()->get_last_log_idx());
                 clear_snapshot_sync_ctx(*p);
 
+                if (p->is_snapshot_sync_needed()) {
+                    p->set_snapshot_sync_is_needed(false);
+                    p_in("peer %d is no longer in snapshot sync mode",
+                         p->get_id());
+                }
+
                 need_to_catchup = p->clear_pending_commit() ||
                                   p->get_next_log_idx() < log_store_->next_slot();
                 p_in("snapshot done %" PRIu64 ", %" PRIu64 ", %d",
@@ -489,7 +495,11 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
     }
 
     // Set flag to avoid initiating election by this node.
-    receiving_snapshot_ = true;
+    if (!state_->is_receiving_snapshot()) {
+        state_->set_receiving_snapshot(true);
+        ctx_->state_mgr_->save_state(*state_);
+        p_in("set receiving snapshot flag");
+    }
     et_cnt_receiving_snapshot_ = 0;
 
     // Set initialized flag
@@ -534,7 +544,9 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
             std::function<void()> clean_func_;
         } exec_auto_resume([this](){ resume_state_machine_execution(); });
 
-        receiving_snapshot_ = false;
+        state_->set_receiving_snapshot(false);
+        ctx_->state_mgr_->save_state(*state_);
+        p_in("clear receiving snapshot flag");
 
         // Only follower will run this piece of code, but let's check it again
         if (role_ != srv_role::follower) {

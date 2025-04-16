@@ -664,6 +664,159 @@ int snapshot_close_for_removed_peer_test() {
     return 0;
 }
 
+int snapshot_leader_switch_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Append a message using separate thread.
+    ExecArgs exec_args(&s1);
+    TestSuite::ThreadHolder hh(&exec_args, fake_executer, fake_executer_killer);
+
+    for (auto& entry: pkgs) {
+        RaftPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.snapshot_distance_ = 5;
+        if (pp->raftServer->get_id() == 2) {
+            // S2: reserve more logs.
+            param.reserved_log_items_ = 100;
+        }
+        pp->raftServer->update_params(param);
+    }
+
+    const size_t NUM = 10;
+
+    // Append messages asynchronously.
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    for (size_t ii = 0; ii < NUM; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s1.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+
+    // NOTE: Send it to S2 only, S3 will be lagging behind.
+    s1.fNet->execReqResp("S2"); // replication.
+    s1.fNet->execReqResp("S2"); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // One more time to make sure.
+    s1.fNet->execReqResp("S2");
+    s1.fNet->execReqResp("S2");
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Make req to S3 failed.
+    s1.fNet->makeReqFail("S3");
+
+    // Trigger heartbeat to S3, it will initiate snapshot transmission.
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    // Send a couple of messages.
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+
+    // Remember the last log index of S3.
+    uint64_t last_log_idx = s3.raftServer->get_last_log_idx();
+
+    // Leader switch from S1 to S2.
+    s2.raftServer->request_leadership();
+    s2.fNet->execReqResp();
+
+    // Send heartbeat.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    // After getting response of heartbeat, S1 will resign.
+    s1.fNet->execReqResp();
+
+    // Now S2 should have received takeover request.
+    // Send vote requests.
+    s2.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Send new config as a new leader.
+    s2.fNet->execReqResp();
+    // Follow-up: commit.
+    s2.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Send heartbeat twice.
+    for (size_t ii = 0; ii < 2; ++ii) {
+        s2.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s2.fNet->execReqResp();
+        s2.fNet->execReqResp();
+    }
+
+    // S3 was in the middle of receiving snapshot, should reject the normal
+    // append_entries request. That means, the last log index should remain the same.
+    // Instead, S2 should re-initiate snapshot transmission.
+    CHK_EQ( last_log_idx, s3.raftServer->get_last_log_idx() );
+
+    // S3 should be in receiving snapshot state.
+    CHK_TRUE( s3.raftServer->is_receiving_snapshot() );
+
+    // Send the entire snapshot.
+    do {
+        s2.fNet->execReqResp();
+    } while (s3.raftServer->is_receiving_snapshot());
+
+    s2.fNet->execReqResp(); // Rest of logs and commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // There shouldn't be any open snapshot ctx.
+    CHK_Z( s2.getTestSm()->getNumOpenedUserCtxs() );
+
+    // Append one more log.
+    for (size_t ii = NUM; ii < NUM + 1; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr< cmd_result< ptr<buffer> > > ret =
+            s2.raftServer->append_entries( {msg} );
+
+        CHK_TRUE( ret->get_accepted() );
+
+        handlers.push_back(ret);
+    }
+    s2.fNet->execReqResp(); // replication.
+    s2.fNet->execReqResp(); // commit.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) ); // commit execution.
+
+    // State machine should be identical.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    fake_executer_killer(&exec_args);
+    hh.join();
+    CHK_Z( hh.getResult() );
+
+    f_base->destroy();
+
+    return 0;
+}
+
 } // namespace snapshot_test
 using namespace snapshot_test;
 
@@ -695,6 +848,9 @@ int main(int argc, char* argv[]) {
 
     ts.doTest( "snapshot close for removed peer test",
                snapshot_close_for_removed_peer_test );
+
+    ts.doTest( "snapshot leader switch test",
+               snapshot_leader_switch_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");

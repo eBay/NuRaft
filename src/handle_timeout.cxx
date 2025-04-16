@@ -256,9 +256,8 @@ void raft_server::handle_election_timeout() {
         return;
     }
 
-    if (receiving_snapshot_ && et_cnt_receiving_snapshot_ < 20) {
-        // If this node is receiving snapshot,
-        // ignore election timeout 20 times.
+    if (state_->is_receiving_snapshot()) {
+        // If this node is receiving snapshot, it should never initiate election.
         et_cnt_receiving_snapshot_.fetch_add(1);
         p_wn("election timeout while receiving snapshot, count %" PRIu64 ", "
              "ignore it.", et_cnt_receiving_snapshot_.load());
