@@ -391,18 +391,20 @@ endif()
 
 if(CODE_COVERAGE GREATER 0)
     set(CODE_COVERAGE_DEPS
-        raft_server_test
-        failure_test
-        asio_service_test
         buffer_test
         serialization_test
-        timer_test
         strfmt_test
         stat_mgr_test
-        logger_test
+        raft_server_test
+        snapshot_test
+        leader_election_test
         new_joiner_test
-        asio_service_stream_test
-        stream_functional_test
+        failure_test
+        timer_test
+        asio_service_test
+        req_resp_meta_test
+        stream_transport_layer_test
+        raft_stream_mode_test
     )
 
     # lcov
