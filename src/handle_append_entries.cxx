@@ -355,9 +355,9 @@ bool raft_server::request_append_entries(ptr<peer> p) {
         p->inc_long_pause_warnings();
         if (p->get_long_puase_warnings() < raft_server::raft_limits_.warning_limit_) {
             p_wn("skipped sending msg to %d too long time, "
-                 "last streamed idx: %" PRIu64 ""
-                 "next log idx: %" PRIu64 ""
-                 "in-flight: %" PRIu64 " bytes"
+                 "last streamed idx: %" PRIu64 ", "
+                 "next log idx: %" PRIu64 ", "
+                 "in-flight: %" PRIu64 " bytes, "
                  "last msg sent %d ms ago",
                  p->get_id(), p->get_last_streamed_log_idx(),
                  p->get_next_log_idx(), p->get_bytes_in_flight(), last_ts_ms);
@@ -1161,9 +1161,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         }
         p_lv( log_lv,
               "declined append: peer %d, prev next log idx %" PRIu64 ", "
-              "resp next %" PRIu64 ", new next log idx %" PRIu64,
+              "resp next %" PRIu64 ", new next log idx %" PRIu64
+              ", my start idx: %" PRIu64 ", my last idx: %" PRIu64,
               p->get_id(), prev_next_log,
-              resp.get_next_idx(), p->get_next_log_idx() );
+              resp.get_next_idx(), p->get_next_log_idx(),
+              log_store_->start_index(), log_store_->next_slot() - 1 );
 
         // disable stream
         uint64_t last_streamed_log_idx = p->get_last_streamed_log_idx();

@@ -15,6 +15,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#pragma once
+
 #include "fake_network.hxx"
 #include "raft_functional_common.hxx"
 
