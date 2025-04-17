@@ -1060,6 +1060,7 @@ void raft_server::become_leader() {
             pp->reset_stream();
             enable_hb_for_peer(*pp);
             pp->set_recovered();
+            pp->set_snapshot_sync_is_needed(false);
         }
 
         // If there are uncommitted logs, search if conf log exists.
