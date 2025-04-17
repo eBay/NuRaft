@@ -771,6 +771,12 @@ int snapshot_leader_switch_test() {
     // S3 should be in receiving snapshot state.
     CHK_TRUE( s3.raftServer->is_receiving_snapshot() );
 
+    // Make req to S3 failed, and invoke heartbeat.
+    // This will re-check the snapshot condition,
+    // and should resume the previous snapshot transmission.
+    s2.fNet->makeReqFail("S3");
+    s2.fTimer->invoke( timer_task_type::heartbeat_timer );
+
     // Send the entire snapshot.
     do {
         s2.fNet->execReqResp();

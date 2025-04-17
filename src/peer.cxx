@@ -186,6 +186,12 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 reset_stale_rpc_responses();
                 reset_bytes_in_flight();
                 try_set_free(req->get_type(), streaming);
+
+                // On disconnection, reset `snapshot_sync_is_needed` flag.
+                // The first request on the next connection will re-check
+                // the flag.
+                set_snapshot_sync_is_needed(false);
+
             } else {
                 // WARNING (MONSTOR-9378):
                 //   RPC client has been reset before this request returns
