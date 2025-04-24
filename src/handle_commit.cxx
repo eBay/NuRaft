@@ -981,7 +981,7 @@ void raft_server::remove_peer_from_peers(const ptr<peer>& pp) {
     peers_.erase(pp->get_id());
 }
 
-void raft_server::pause_state_machine_exeuction(size_t timeout_ms) {
+void raft_server::pause_state_machine_execution(size_t timeout_ms) {
     p_in( "pause state machine execution, previously %s, state machine %s, "
           "timeout %zu ms",
           sm_commit_paused_ ? "PAUSED" : "ACTIVE",

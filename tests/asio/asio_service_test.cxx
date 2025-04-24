@@ -1427,7 +1427,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
         }
         if (type == cb_func::Type::StateMachineExecution) {
             std::thread pause_thread([&]() {
-                s3.raftServer->pause_state_machine_exeuction(1);
+                s3.raftServer->pause_state_machine_execution(1);
                 _msg("state machine of S3 is paused\n");
                 ea_commit_thread.invoke();
             });
@@ -1483,7 +1483,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     };
 
     // Pause S3's state machine.
-    s3.raftServer->pause_state_machine_exeuction(1000);
+    s3.raftServer->pause_state_machine_execution(1000);
     CHK_TRUE( s3.raftServer->is_state_machine_execution_paused() );
 
     do_async_append();
@@ -1507,7 +1507,7 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
     // Pause again.
-    s3.raftServer->pause_state_machine_exeuction(1000);
+    s3.raftServer->pause_state_machine_execution(1000);
 
     // Do append again.
     do_async_append();
