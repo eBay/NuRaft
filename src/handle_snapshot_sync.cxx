@@ -530,7 +530,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
         // let's pause committing in backgroud so it doesn't access logs
         // while they are being compacted
         guard.unlock();
-        pause_state_machine_exeuction();
+        pause_state_machine_execution();
         size_t wait_count = 0;
         while (!wait_for_state_machine_pause(500)) {
             p_in("waiting for state machine pause before applying snapshot: count %zu",

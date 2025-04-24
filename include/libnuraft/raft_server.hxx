@@ -791,7 +791,7 @@ public:
      *                   there is a possibility that the state machine execution
      *                   is still happening.
      */
-    void pause_state_machine_exeuction(size_t timeout_ms = 0);
+    void pause_state_machine_execution(size_t timeout_ms = 0);
 
     /**
      * Resume the background execution of state machine.
