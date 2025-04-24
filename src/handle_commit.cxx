@@ -106,8 +106,12 @@ void raft_server::commit_in_bg() {
 
     while (true) {
      try {
+        // WARNING:
+        //   If `sm_commit_paused_` is set, we shouldn't enter
+        //   `commit_in_bg_exec()`, as it will cause an infinite loop.
         while ( quick_commit_index_ <= sm_commit_index_ ||
-                sm_commit_index_ >= log_store_->next_slot() - 1 ) {
+                sm_commit_index_ >= log_store_->next_slot() - 1 ||
+                sm_commit_paused_ ) {
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
 
             auto wait_check = [this]() {

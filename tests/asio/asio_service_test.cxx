@@ -1419,8 +1419,30 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     RaftAsioPkg s3(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
 
+    bool block_commit_thread = false;
+    EventAwaiter ea_commit_thread;
+    auto raft_cb_func = [&](cb_func::Type type, cb_func::Param* param) {
+        if (!block_commit_thread || param->myId != 3) {
+            return cb_func::ReturnCode::Ok;
+        }
+        if (type == cb_func::Type::StateMachineExecution) {
+            std::thread pause_thread([&]() {
+                s3.raftServer->pause_state_machine_exeuction(1);
+                _msg("state machine of S3 is paused\n");
+                ea_commit_thread.invoke();
+            });
+            _msg("got callback, pause state machine of S3\n");
+            pause_thread.detach();
+            block_commit_thread = false;
+            ea_commit_thread.wait();
+        }
+        return cb_func::ReturnCode::Ok;
+    };
+    raft_server::init_options opt;
+    opt.raft_callback_ = raft_cb_func;
+
     _msg("launching asio-raft servers\n");
-    CHK_Z( launch_servers(pkgs, false) );
+    CHK_Z( launch_servers(pkgs, false, false, true, opt) );
 
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
@@ -1459,12 +1481,12 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
             handlers.push_back(ret);
         }
     };
-    do_async_append();
 
     // Pause S3's state machine.
     s3.raftServer->pause_state_machine_exeuction(1000);
-
     CHK_TRUE( s3.raftServer->is_state_machine_execution_paused() );
+
+    do_async_append();
 
     // Now all async handlers should have result.
     TestSuite::sleep_sec(1, "replication");
@@ -1506,12 +1528,30 @@ int pause_state_machine_execution_test(bool use_global_mgr) {
     TestSuite::sleep_sec(1, "stop S1");
 
     // (Pause flag will be reset upon restart.)
-    s3.restartServer();
+    s3.restartServer(nullptr, false, false, opt);
     TestSuite::sleep_sec(1, "restarting S3");
 
     // It should have the same data.
     CHK_OK( s3.getTestSm()->isSame( *s1.getTestSm() ) );
 
+    // Block the commit thread of S3.
+    block_commit_thread = true;
+
+    // Do append again.
+    do_async_append();
+    TestSuite::sleep_sec(1, "replication");
+    {
+        std::lock_guard<std::mutex> l(idx_list_lock);
+        CHK_EQ(NUM, idx_list.size());
+    }
+
+    // S3 will be paused while it SM is lagging behind.
+
+    // S2 should have the same data, but not S3.
+    CHK_OK( s2.getTestSm()->isSame( *s1.getTestSm() ) );
+    CHK_FALSE( s3.getTestSm()->isSame( *s1.getTestSm() ) );
+
+    // Even with lagging state machine, shutdown should work.
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
     s3.raftServer->shutdown();
