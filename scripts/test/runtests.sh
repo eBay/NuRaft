@@ -8,7 +8,7 @@ set -e
 ./tests/raft_server_test --abort-on-failure
 ./tests/snapshot_test --abort-on-failure
 ./tests/leader_election_test --abort-on-failure
-./tests/new_joiner_test --abort-on-failure
+./tests/learner_new_joiner_test --abort-on-failure
 ./tests/failure_test --abort-on-failure
 
 ASIO_TESTS=(

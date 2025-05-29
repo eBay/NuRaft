@@ -398,7 +398,7 @@ if(CODE_COVERAGE GREATER 0)
         raft_server_test
         snapshot_test
         leader_election_test
-        new_joiner_test
+        learner_new_joiner_test
         failure_test
         timer_test
         asio_service_test

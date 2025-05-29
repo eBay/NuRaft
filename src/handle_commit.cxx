@@ -769,6 +769,7 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
         }
         if (id_ == (*it)->get_id()) {
             my_priority_ = (*it)->get_priority();
+            im_learner_ = (*it)->is_learner();
             steps_to_down_ = 0;
             if (!(*it)->is_new_joiner() &&
                 role_ == srv_role::follower &&

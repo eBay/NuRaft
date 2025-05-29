@@ -424,6 +424,7 @@ public:
 
     /**
      * Set custom context to Raft cluster config.
+     * It will create a new configuration log and replicate it.
      *
      * @param ctx Custom context.
      */
@@ -610,6 +611,23 @@ public:
      * @param[out] configs_out Set of server configurations.
      */
     void get_srv_config_all(std::vector< ptr<srv_config> >& configs_out) const;
+
+    /**
+     * Update the server configuration, only leader will accept this operation.
+     * This function will update the current cluster config
+     * and replicate it to all peers.
+     *
+     * We don't allow changing multiple server configurations at once,
+     * due to safety reason.
+     *
+     * Change on endpoint will not be accepted (should be removed and then re-added).
+     * If the server is in new joiner state, it will be rejected.
+     * If the server ID does not exist, it will also be rejected.
+     *
+     * @param new_config Server configuration to update.
+     * @return `true` on success, `false` if rejected.
+     */
+    bool update_srv_config(const srv_config& new_config);
 
     /**
      * Peer info structure.
