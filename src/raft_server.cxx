@@ -1709,6 +1709,71 @@ void raft_server::get_srv_config_all
     for (auto& entry: servers) configs_out.push_back(entry);
 }
 
+bool raft_server::update_srv_config(const srv_config& new_config) {
+    if (!is_leader()) {
+        p_er("cannot update server config: this node is not a leader");
+        return false;
+    }
+
+    // Clone current cluster config.
+    ptr<cluster_config> c_conf = get_config();
+    ptr<buffer> enc_conf = c_conf->serialize();
+    ptr<cluster_config> cloned_config = cluster_config::deserialize(*enc_conf);
+
+    // Create a log for new configuration, it should be replicated.
+    cloned_config->set_log_idx(log_store_->next_slot());
+
+    // If server ID does not exist, do nothing.
+    ptr<srv_config> prev_srv_config = cloned_config->get_server(new_config.get_id());
+
+    if (!prev_srv_config) {
+        p_er("cannot update server config: server %d does not exist",
+             new_config.get_id());
+        return false;
+    }
+
+    if (prev_srv_config->is_new_joiner()) {
+        // If this server is a new joiner, we cannot update it.
+        p_er("cannot update server config: server %d is a new joiner",
+             new_config.get_id());
+        return false;
+    }
+
+    if (prev_srv_config->get_endpoint() != new_config.get_endpoint()) {
+        // Endpoint change will not be accepted.
+        p_er("cannot update server config: endpoint change is not allowed, "
+             "server %d endpoint %s -> %s",
+             new_config.get_id(),
+             prev_srv_config->get_endpoint().c_str(),
+             new_config.get_endpoint().c_str());
+        return false;
+    }
+
+    auto enc_new_config = new_config.serialize();
+    auto& servers = cloned_config->get_servers();
+    for (auto& entry: servers) {
+        if (entry->get_id() == new_config.get_id()) {
+            // Update the server config.
+            entry = srv_config::deserialize(*enc_new_config);
+            break;
+        }
+    }
+
+    ptr<buffer> new_conf_buf = cloned_config->serialize();
+    ptr<log_entry> entry = cs_new<log_entry>
+                           ( state_->get_term(),
+                             new_conf_buf,
+                             log_val_type::conf,
+                             timer_helper::get_timeofday_us() );
+    store_log_entry(entry);
+    request_append_entries();
+
+    p_in("appended new server config for server %d",
+         new_config.get_id());
+
+    return true;
+}
+
 raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
     if (!is_leader()) return peer_info();
 

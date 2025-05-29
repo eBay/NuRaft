@@ -45,9 +45,9 @@ unit_test(NAME leader_election_test
     ${EXAMPLES_SRC}/in_memory_log_store.cxx
 )
 
-unit_test(NAME new_joiner_test
+unit_test(NAME learner_new_joiner_test
     SOURCES
-    unit/new_joiner_test.cxx
+    unit/learner_new_joiner_test.cxx
     unit/fake_network.cxx
     ${EXAMPLES_SRC}/logger.cc
     ${EXAMPLES_SRC}/in_memory_log_store.cxx)
