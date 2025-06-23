@@ -243,7 +243,7 @@ static INT_UNUSED launch_servers(const std::vector<RaftPkg*>& pkgs,
                                  raft_params* custom_params = nullptr,
                                  bool restart = false,
                                  cb_func::func_type callback = cb_default,
-                                std::function<void(RaftPkg*)> init_cb = nullptr)
+                                 std::function<void(RaftPkg*)> init_cb = nullptr)
 {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
