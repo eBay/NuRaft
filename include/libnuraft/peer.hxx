@@ -82,6 +82,7 @@ public:
         , last_streamed_log_idx_(0)
         , bytes_in_flight_(0)
         , snapshot_sync_is_needed_(false)
+        , self_mark_down_(false)
         , l_(logger)
     {
         reset_ls_timer();
@@ -359,6 +360,17 @@ public:
         return snapshot_sync_is_needed_;
     }
 
+    bool is_self_mark_down() const {
+        return self_mark_down_;
+    }
+    bool set_self_mark_down(bool to) {
+        bool old = self_mark_down_;
+        if (old != to) {
+            self_mark_down_ = to;
+        }
+        return old;
+    }
+
 private:
     void handle_rpc_result(ptr<peer> myself,
                            ptr<rpc_client> my_rpc_client,
@@ -594,6 +606,11 @@ private:
      * `next_log_idx_` is within the range, we should send a snapshot.
      */
     std::atomic<bool> snapshot_sync_is_needed_;
+
+    /**
+     * If `true`, this peer marks itself down.
+     */
+    std::atomic<bool> self_mark_down_;
 
     /**
      * Logger instance.

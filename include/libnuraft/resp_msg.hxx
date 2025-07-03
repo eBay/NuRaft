@@ -37,6 +37,11 @@ using resp_async_cb =
 
 class resp_msg : public msg_base {
 public:
+    // If set, the follower is marked down itself,
+    // usually when the follower is in the middle of termination.
+    // This is the hint for the leader.
+    static constexpr uint64_t SELF_MARK_DOWN = 0x1;
+
     resp_msg(ulong term,
              msg_type type,
              int32 src,
@@ -51,6 +56,7 @@ public:
         , cb_func_(nullptr)
         , async_cb_func_(nullptr)
         , result_code_(cmd_result_code::OK)
+        , extra_flags_(0x0)
         {}
 
     __nocopy__(resp_msg);
@@ -127,8 +133,18 @@ public:
         return result_code_;
     }
 
+    void set_extra_flags(uint64_t flags) {
+        extra_flags_ = flags;
+    }
+
+    uint64_t get_extra_flags() const {
+        return extra_flags_;
+    }
+
 private:
     ulong next_idx_;
+
+    // Hint for the leader about the next batch size (only when non-zero).
     int64 next_batch_size_hint_in_bytes_;
     bool accepted_;
     ptr<buffer> ctx_;
@@ -136,6 +152,7 @@ private:
     resp_cb cb_func_;
     resp_async_cb async_cb_func_;
     cmd_result_code result_code_;
+    uint64_t extra_flags_;
 };
 
 }

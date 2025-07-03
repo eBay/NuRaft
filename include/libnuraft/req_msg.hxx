@@ -30,6 +30,10 @@ namespace nuraft {
 
 class req_msg : public msg_base {
 public:
+    // If set, the receiver of this request is not in the quorum.
+    // This flag is used only when full consensus mode is enabled.
+    static constexpr uint64_t EXCLUDED_FROM_THE_QUORUM = 0x1;
+
     req_msg(ulong term,
             msg_type type,
             int32 src,
@@ -42,6 +46,7 @@ public:
         , last_log_idx_(last_log_idx)
         , commit_idx_(commit_idx)
         , log_entries_()
+        , extra_flags_(0)
         { }
 
     virtual ~req_msg() __override__ { }
@@ -65,6 +70,14 @@ public:
         return log_entries_;
     }
 
+    void set_extra_flags(uint64_t flags) {
+        extra_flags_ = flags;
+    }
+
+    uint64_t get_extra_flags() const {
+        return extra_flags_;
+    }
+
 private:
     // Term of last log below.
     ulong last_log_term_;
@@ -81,6 +94,9 @@ private:
 
     // Logs. Can be empty.
     std::vector<ptr<log_entry>> log_entries_;
+
+    // Optional extra flags to pass additional information.
+    uint64_t extra_flags_;
 };
 
 }
