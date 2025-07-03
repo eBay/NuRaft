@@ -878,6 +878,7 @@ void raft_server::handle_peer_resp(ptr<resp_msg>& resp, ptr<rpc_exception>& err)
                 }
                 cb_func::Param param(id_, leader_, peer_id);
                 const auto rc = ctx_->cb_func_.call(cb_func::FollowerLost, &param);
+                (void)rc;
                 assert(rc == cb_func::ReturnCode::Ok);
             }
         }
@@ -1200,6 +1201,7 @@ bool raft_server::check_leadership_validity() {
             peer->set_lost();
             cb_func::Param param(id_, leader_, peer->get_id());
             const auto rc = ctx_->cb_func_.call(cb_func::FollowerLost, &param);
+            (void)rc;
             assert(rc == cb_func::ReturnCode::Ok);
         }
 
