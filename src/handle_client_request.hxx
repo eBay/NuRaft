@@ -48,5 +48,18 @@ struct raft_server::commit_ret_elem {
     bool callback_invoked_;
 };
 
+struct raft_server::sm_watcher_elem {
+    sm_watcher_elem()
+        : idx_(0)
+        {}
+
+    uint64_t idx_;
+
+    /**
+     * Watchers subscribing to the state machine commit of `idx_`.
+     */
+    std::list<ptr<cmd_result<bool>>> watchers_;
+};
+
 } // namespace nuraft;
 

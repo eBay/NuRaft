@@ -932,10 +932,21 @@ public:
      */
     bool is_part_of_full_consensus();
 
+    /**
+     * Wait for the state machine to commit the log at the given index.
+     * This function will return immediately, and the commit results will be
+     * set to the returned `cmd_result` instance later.
+     *
+     * @return `cmd_result` instance. It will contain `true` if the commit
+     *         has been invoked, and `false` if not.
+     */
+    ptr<cmd_result<bool>> wait_for_state_machine_commit(uint64_t target_idx);
+
 protected:
     typedef std::unordered_map<int32, ptr<peer>>::const_iterator peer_itor;
 
     struct commit_ret_elem;
+    struct sm_watcher_elem;
 
     struct pre_vote_status_t {
         pre_vote_status_t()
@@ -1019,6 +1030,7 @@ protected:
         handle_cli_req_callback_async(ptr< cmd_result< ptr<buffer> > > async_res);
 
     void drop_all_pending_commit_elems();
+    void drop_all_sm_watcher_elems();
 
     ptr<resp_msg> handle_ext_msg(req_msg& req,
                                  std::unique_lock<std::recursive_mutex>& guard);
@@ -1595,12 +1607,22 @@ protected:
      * Client requests waiting for replication.
      * Only used in blocking mode.
      */
-    std::map<ulong, ptr<commit_ret_elem>> commit_ret_elems_;
+    std::map<uint64_t, ptr<commit_ret_elem>> commit_ret_elems_;
 
     /**
      * Lock for `commit_ret_elems_`.
      */
     std::mutex commit_ret_elems_lock_;
+
+    /**
+     * Map of state machine watchers.
+     */
+    std::map<uint64_t, sm_watcher_elem> sm_watchers_;
+
+    /**
+     * Lock for `sm_watchers_`.
+     */
+    std::mutex sm_watchers_lock_;
 
     /**
      * Condition variable to invoke Raft server for

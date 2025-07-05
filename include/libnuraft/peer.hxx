@@ -50,6 +50,7 @@ public:
         , max_hb_interval_( ctx.get_params()->max_hb_interval() )
         , next_log_idx_(0)
         , last_accepted_log_idx_(0)
+        , sm_committed_idx_(0)
         , next_batch_size_hint_in_bytes_(0)
         , matched_idx_(0)
         , busy_flag_(false)
@@ -169,6 +170,14 @@ public:
 
     void set_last_accepted_log_idx(uint64_t to) {
         last_accepted_log_idx_ = to;
+    }
+
+    uint64_t get_sm_committed_idx() const {
+        return sm_committed_idx_;
+    }
+
+    void set_sm_committed_idx(uint64_t to) {
+        sm_committed_idx_ = to;
     }
 
     int64 get_next_batch_size_hint_in_bytes() const {
@@ -430,6 +439,11 @@ private:
      * The last log index accepted by this server.
      */
     std::atomic<uint64_t> last_accepted_log_idx_;
+
+    /**
+     * The committed log index of the state machine of this peer.
+     */
+    std::atomic<uint64_t> sm_committed_idx_;
 
     /**
      * Hint of the next log batch size in bytes.
