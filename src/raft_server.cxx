@@ -448,6 +448,9 @@ void raft_server::stop_server() {
 
     // Cancel all awaiting client requests.
     drop_all_pending_commit_elems();
+
+    // Cancel all sm watchers.
+    drop_all_sm_watcher_elems();
 }
 
 void raft_server::cancel_global_requests() {
@@ -498,6 +501,10 @@ void raft_server::shutdown() {
     drop_all_pending_commit_elems();
 
     p_in("all pending commit elements dropped.");
+
+    drop_all_sm_watcher_elems();
+
+    p_in("all state machine watchers dropped.");
 
     // Clear shared_ptrs that the current server is holding.
     {   std::lock_guard<std::mutex> l(ctx_->ctx_lock_);
@@ -1481,6 +1488,9 @@ void raft_server::become_follower() {
 
         // Drain all pending callback functions.
         drop_all_pending_commit_elems();
+
+        // NOTE: sm watchers are not reset here, as state machine commit can be
+        //       executed regardless of the role.
     }
 
     restart_election_timer();

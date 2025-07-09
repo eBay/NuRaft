@@ -47,22 +47,37 @@ struct resp_appendix {
         NONE = 0,
         DO_NOT_REWIND = 1,
         RECEIVING_SNAPSHOT = 2,
+        NOTIFYING_SM_COMMITTED_INDEX = 3,
     };
 
-    resp_appendix() : extra_order_(NONE) {}
+    resp_appendix()
+        : extra_order_(NONE)
+        , sm_committed_idx_(0)
+        {}
 
     ptr<buffer> serialize() const {
         const static uint8_t CUR_VERSION = 0;
         size_t buf_len = sizeof(CUR_VERSION) + sizeof(extra_order_);
+        if (extra_order_ == NOTIFYING_SM_COMMITTED_INDEX) {
+            buf_len += sizeof(sm_committed_idx_);
+        }
 
         //  << Format >>
         // Format version       1 byte
         // Extra order          1 byte
 
+        //  << Format (if order == NOTIFYING_SM_COMMITTED_INDEX) >>
+        // Format version       1 byte
+        // Extra order          1 byte
+        // SM committed index   8 bytes
+
         ptr<buffer> result = buffer::alloc(buf_len);
         buffer_serializer bs(*result);
         bs.put_u8(CUR_VERSION);
         bs.put_u8(extra_order_);
+        if (extra_order_ == NOTIFYING_SM_COMMITTED_INDEX) {
+            bs.put_u64(sm_committed_idx_);
+        }
 
         return result;
     }
@@ -78,6 +93,10 @@ struct resp_appendix {
         }
 
         res->extra_order_ = static_cast<extra_order>(bs.get_u8());
+        if (res->extra_order_ == NOTIFYING_SM_COMMITTED_INDEX &&
+            bs.pos() + sizeof(uint64_t) <= buf.size()) {
+            res->sm_committed_idx_ = bs.get_u64();
+        }
         return res;
     }
 
@@ -89,12 +108,23 @@ struct resp_appendix {
             return "DO_NOT_REWIND";
         case RECEIVING_SNAPSHOT:
             return "RECEIVING_SNAPSHOT";
+        case NOTIFYING_SM_COMMITTED_INDEX:
+            return "NOTIFYING_SM_COMMITTED_INDEX";
         default:
             return "UNKNOWN";
         }
     };
 
+    /**
+     * Extra order for the response.
+     */
     extra_order extra_order_;
+
+    /**
+     * If non-zero, it indicates the committed log index of
+     * the state machine of the follower who sent this response.
+     */
+    uint64_t sm_committed_idx_;
 };
 
 void raft_server::append_entries_in_bg() {
@@ -1063,6 +1093,19 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
             resp->get_extra_flags() | resp_msg::SELF_MARK_DOWN
         );
     }
+
+    if (ctx_->get_params()->track_peers_sm_commit_idx_) {
+        // If peer track mode is enabled, we should send
+        // the current SM committed index to the leader.
+        resp_appendix appendix;
+        appendix.extra_order_ = resp_appendix::NOTIFYING_SM_COMMITTED_INDEX;
+        appendix.sm_committed_idx_ = sm_commit_index_.load();
+        resp->set_ctx( appendix.serialize() );
+        p_tr("appended extra order %s, sm committed index: %" PRIu64,
+             resp_appendix::extra_order_msg(appendix.extra_order_),
+             appendix.sm_committed_idx_);
+    }
+
     p_tr("batch size hint: %" PRId64 " bytes, flags: %" PRIx64,
          bs_hint, resp->get_extra_flags());
 
@@ -1141,6 +1184,22 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
 
         uint64_t prev_matched_idx = 0;
         uint64_t new_matched_idx = 0;
+        uint64_t prev_sm_committed_idx = p->get_sm_committed_idx();
+        uint64_t new_sm_committed_idx = 0;
+
+        if (resp.get_ctx() &&
+            ctx_->get_params()->track_peers_sm_commit_idx_) {
+            // If the response contains appendix, it should be
+            // `resp_appendix` type.
+            ptr<resp_appendix> appendix = resp_appendix::deserialize(*resp.get_ctx());
+            if (appendix->extra_order_ == resp_appendix::NOTIFYING_SM_COMMITTED_INDEX) {
+                new_sm_committed_idx = appendix->sm_committed_idx_;
+                p_tr("sm committed index of peer %d: %" PRIu64 " -> %" PRIu64,
+                     p->get_id(), prev_sm_committed_idx, new_sm_committed_idx);
+                p->set_sm_committed_idx(new_sm_committed_idx);
+            }
+        }
+
         {
             std::lock_guard<std::mutex> l(p->get_lock());
             p->set_next_log_idx(resp.get_next_idx());

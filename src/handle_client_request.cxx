@@ -313,5 +313,65 @@ void raft_server::drop_all_pending_commit_elems() {
     }
 }
 
+void raft_server::drop_all_sm_watcher_elems() {
+    // Drop all state machine watchers.
+    std::list<sm_watcher_elem> elems;
+
+    {
+        auto_lock(sm_watchers_lock_);
+        for (auto& entry: sm_watchers_) {
+            elems.push_back(entry.second);
+        }
+        sm_watchers_.clear();
+    }
+
+    // Calling handler should be done outside the mutex.
+    for (auto& entry: elems) {
+        sm_watcher_elem& ee = entry;
+        p_wn("cancelled state machine watcher for idx %" PRIu64, ee.idx_);
+
+        for (auto& watcher: ee.watchers_) {
+            bool ret_bool = false;
+            ptr<std::exception> exp =
+                cs_new<std::runtime_error>("watcher has been cancelled.");
+            watcher->set_result(ret_bool, exp, cmd_result_code::CANCELLED);
+        }
+    }
+}
+
+ptr<cmd_result<bool>> raft_server::wait_for_state_machine_commit(uint64_t target_idx) {
+    auto ret = cs_new<cmd_result<bool>>();
+
+    std::lock_guard<std::mutex> l(sm_watchers_lock_);
+    uint64_t sm_commit_index = sm_commit_index_;
+    if (target_idx <= sm_commit_index) {
+        // If the target index is already committed, return immediately.
+        p_tr("sm watcher for idx %" PRIu64 " already committed, return true",
+             target_idx);
+        bool ret_bool = true;
+        ptr<std::exception> exp = nullptr;
+        ret->set_result(ret_bool, exp, cmd_result_code::OK);
+        return ret;
+    }
+
+    auto entry = sm_watchers_.find(target_idx);
+    if (entry != sm_watchers_.end()) {
+        // If watcher already exists, add it to the list.
+        p_tr("sm watcher for idx %" PRIu64 " already exists, add to the list",
+             target_idx);
+        entry->second.watchers_.push_back(ret);
+    } else {
+        // If watcher does not exist, create a new one.
+        p_tr("sm watcher for idx %" PRIu64 " does not exist, create a new one",
+             target_idx);
+        sm_watcher_elem elem;
+        elem.idx_ = target_idx;
+        elem.watchers_.push_back(ret);
+        sm_watchers_.insert(std::make_pair(target_idx, elem));
+    }
+
+    return ret;
+}
+
 } // namespace nuraft;
 

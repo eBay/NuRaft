@@ -271,7 +271,33 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
                  exp_idx,
                  index_to_commit);
         }
+
+        std::list<sm_watcher_elem> watcher_elems_to_notify;
+        {
+            // Notify watchers for the state machine commit.
+            std::unique_lock<std::mutex> lock(sm_watchers_lock_);
+            p_tr("total watchers: %zu", sm_watchers_.size());
+            auto entry = sm_watchers_.find(index_to_commit);
+            if (entry != sm_watchers_.end()) {
+                // If found, notify the watcher.
+                sm_watcher_elem& watcher = entry->second;
+                watcher_elems_to_notify.push_back(watcher);
+                sm_watchers_.erase(entry);
+            }
+        }
+        // Notify the watchers outside the lock.
+        for (auto& w_elem: watcher_elems_to_notify) {
+            p_tr("notify sm watcher for idx %" PRIu64 ", %zu watchers",
+                 w_elem.idx_, w_elem.watchers_.size());
+            for (auto& watcher: w_elem.watchers_) {
+                // Notify the watcher.
+                bool ret_bool = true;
+                ptr<std::exception> exp = nullptr;
+                watcher->set_result(ret_bool, exp);
+            }
+        }
     }
+
     p_db( "DONE: commit upto %" PRIu64 ", current idx %" PRIu64,
           quick_commit_index_.load(), sm_commit_index_.load() );
     if (role_ == srv_role::follower) {

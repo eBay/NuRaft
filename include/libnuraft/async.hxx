@@ -296,7 +296,7 @@ public:
             return empty_result_;
         }
 
-        cv_.wait(lock);
+        cv_.wait(lock, [this]{ return (err_ != nullptr || has_result_); } );
         if (err_ == nullptr) {
             return result_;
         }
