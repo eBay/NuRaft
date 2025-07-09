@@ -567,7 +567,7 @@ int sm_commit_watcher_test() {
     uint64_t msg_idx = 0;
     _msg("appending and verifying state machine data\n");
     while (!tt.timeout()) {
-        std::string test_msg = "test" + std::to_string(msg_idx);
+        std::string test_msg = "test" + std::to_string(msg_idx++);
         ptr<buffer> msg = buffer::alloc(test_msg.size() + 4);
         buffer_serializer bs(msg);
         bs.put_str(test_msg);
@@ -593,6 +593,46 @@ int sm_commit_watcher_test() {
             std::string data_str = bs2.get_str();
             CHK_EQ(test_msg, data_str);
         }
+    }
+
+    // Wait for future commit.
+    {
+        uint64_t target_idx = s1.raftServer->get_committed_log_idx() + 1;
+
+        // Test multiple watchers for the same index.
+        auto ret1 = s3.raftServer->wait_for_state_machine_commit(target_idx);
+        auto ret2 = s3.raftServer->wait_for_state_machine_commit(target_idx);
+
+        EventAwaiter ea1, ea2;
+        bool is_ready1 = false, is_ready2 = false;
+        ret1->when_ready([&](cmd_result<bool, ptr<std::exception>>& cmd_res,
+                            ptr<std::exception>& err)
+            {
+                ea1.invoke();
+                is_ready1 = true;
+            });
+        ret2->when_ready([&](cmd_result<bool, ptr<std::exception>>& cmd_res,
+                            ptr<std::exception>& err)
+            {
+                ea2.invoke();
+                is_ready2 = true;
+            });
+
+        std::string test_msg = "test" + std::to_string(msg_idx++);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 4);
+        buffer_serializer bs(msg);
+        bs.put_str(test_msg);
+        s1.raftServer->append_entries( {msg} );
+
+        ea1.wait_ms(1000);
+        ea2.wait_ms(1000);
+        CHK_TRUE(is_ready1);
+        CHK_TRUE(is_ready2);
+
+        auto data_buf = s3.getTestSm()->getData(target_idx);
+        buffer_serializer bs2(data_buf);
+        std::string data_str = bs2.get_str();
+        CHK_EQ(test_msg, data_str);
     }
 
     s1.raftServer->shutdown();
