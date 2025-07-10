@@ -314,7 +314,7 @@ void raft_server::start_server(bool skip_initial_election_timeout)
     priority_change_timer_.reset();
     vote_init_timer_.set_duration_ms(params->grace_period_of_lagging_state_machine_);
     vote_init_timer_.reset();
-    self_mark_down_ = excluded_from_the_quorum_ = false;
+    self_mark_down_ = excluded_from_the_quorum_ = stopping_ = false;
     p_db("server %d started", id_);
 }
 
@@ -663,26 +663,32 @@ size_t raft_server::get_not_responding_peers_count(
     auto cb = [&num_not_resp_nodes, required_log_idx, expiry]
         (const ptr<peer>& pp, int32_t resp_elapsed_ms)
     {
-        bool conditions_met = false;
+        bool non_responding_peer = false;
         if (resp_elapsed_ms <= expiry) {
             // Response time is within the expiry time.
 
-            if (required_log_idx && pp->get_matched_idx() < required_log_idx) {
+            if (required_log_idx &&
+                pp->get_matched_idx() &&
+                pp->get_matched_idx() < required_log_idx) {
                 // If the peer's matched index is less than the required log index,
                 // it is considered as not responding for full consensus.
-                conditions_met = true;
+                //
+                // WARNING: Should exclude matched_idx = 0,
+                //          which means the peer has not responded yet right after
+                //          the new connection.
+                non_responding_peer = true;
             }
 
             if (pp->is_self_mark_down()) {
                 // If the peer marks itself down, count it too.
-                conditions_met = true;
+                non_responding_peer = true;
             }
 
         } else {
-            conditions_met = true;
+            non_responding_peer = true;
         }
 
-        if (conditions_met) {
+        if (non_responding_peer) {
             ++num_not_resp_nodes;
         }
     };
@@ -782,7 +788,11 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
     if (req.get_type() == msg_type::append_entries_request) {
         {
             cb_func::Param param(id_, leader_, req.get_src(), &req);
-            ctx_->cb_func_.call(cb_func::ReceivedAppendEntriesReq, &param);
+            cb_func::ReturnCode rc =
+                ctx_->cb_func_.call(cb_func::ReceivedAppendEntriesReq, &param);
+            if (rc != cb_func::ReturnCode::Ok) {
+                return nullptr;
+            }
         }
         resp = handle_append_entries(req);
         {
@@ -1112,6 +1122,11 @@ void raft_server::become_leader() {
             enable_hb_for_peer(*pp);
             pp->set_recovered();
             pp->set_snapshot_sync_is_needed(false);
+            if (params->use_full_consensus_among_healthy_members_) {
+                // We should reset response timer here
+                // so as not to disrupt full consensus.
+                pp->reset_resp_timer();
+            }
         }
 
         // If there are uncommitted logs, search if conf log exists.
@@ -1990,10 +2005,38 @@ bool raft_server::set_self_mark_down(bool to) {
 }
 
 bool raft_server::is_part_of_full_consensus() {
-    if (self_mark_down_ || excluded_from_the_quorum_) {
+    if (self_mark_down_ ||
+        excluded_from_the_quorum_ ||
+        !initialized_ ||
+        stopping_) {
         return false;
     }
     const auto& params = get_current_params();
+
+    if (is_leader()) {
+        // If it is a leader, check if responding peers are enough
+        // to form a full consensus.
+        recur_lock(lock_);
+        int32_t num_voting_members = get_num_voting_members();
+        int32_t nr_peers = (int32_t)get_not_responding_peers_count(
+            params.heart_beat_interval_ * raft_limits_.full_consensus_follower_limit_);
+        int32_t min_quorum_size = get_quorum_for_commit() + 1;
+        if (num_voting_members - nr_peers < min_quorum_size) {
+            // It means this leader couldn't reach a majority of the cluster members
+            // for the duration of follower's markdown interval.
+            //
+            // In that case, there can be a chance that a new leader has been elected.
+            // But that new leader may not reach a full consensus yet,
+            // because leader's markdown interval is longer than
+            // follower's markdown interval.
+            return false;
+        }
+
+        // Valid leadership, we are part of full consensus.
+        return true;
+    }
+
+    // Follower.
     if (last_rcvd_append_entries_req_.get_ms() >
             (uint64_t)params.heart_beat_interval_ *
             raft_limits_.full_consensus_follower_limit_) {
