@@ -448,7 +448,15 @@ int mark_down_by_log_index_test() {
     };
 
     _msg("launching asio-raft servers\n");
-    CHK_Z( launch_servers(pkgs, false, false, true, i_opt) );
+    // Do not sleep.
+    CHK_Z( launch_servers(pkgs, false, false, true, i_opt, 0) );
+
+    for (auto& pp: pkgs) {
+        // Before initialization, this should return false.
+        CHK_FALSE(pp->raftServer->is_part_of_full_consensus());
+    }
+
+    TestSuite::sleep_sec(1);
 
     _msg("organizing raft group\n");
     CHK_Z( make_group(pkgs) );
@@ -495,8 +503,8 @@ int mark_down_by_log_index_test() {
 
     // They should be committed immediately.
     uint64_t commit_idx = s1.raftServer->get_committed_log_idx();
-    CHK_EQ(commit_idx, s2.raftServer->get_last_log_idx());
-    CHK_EQ(commit_idx, s3.raftServer->get_last_log_idx());
+    CHK_EQ(commit_idx, s2.raftServer->get_committed_log_idx());
+    CHK_EQ(commit_idx, s3.raftServer->get_committed_log_idx());
 
     // Let S3 refuse requests.
     _msg("S3 will refuse requests\n");
@@ -511,8 +519,8 @@ int mark_down_by_log_index_test() {
 
     // S1 and S2 should have the same commit index, but S3 should not.
     commit_idx = s1.raftServer->get_committed_log_idx();
-    CHK_EQ(commit_idx, s2.raftServer->get_last_log_idx());
-    CHK_GT(commit_idx, s3.raftServer->get_last_log_idx());
+    CHK_EQ(commit_idx, s2.raftServer->get_committed_log_idx());
+    CHK_GT(commit_idx, s3.raftServer->get_committed_log_idx());
 
     // S3 should perceive that it is not the part of quorum.
     CHK_FALSE(s3.raftServer->is_part_of_full_consensus());
@@ -523,10 +531,187 @@ int mark_down_by_log_index_test() {
     TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 2, "wait for replication");
 
     // S3 should be synchronized now.
-    CHK_EQ(commit_idx, s3.raftServer->get_last_log_idx());
+    CHK_EQ(commit_idx, s3.raftServer->get_committed_log_idx());
 
     // S3 should perceive that it is now part of the quorum.
     CHK_TRUE(s3.raftServer->is_part_of_full_consensus());
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int mark_down_after_leader_election_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    // Test phase:
+    //   0: normal
+    //   1: S2 and S3 are isolated from S1.
+    //   2: S1 is isolated from S2 and S3.
+    std::atomic<int> test_phase(0);
+
+    raft_server::init_options i_opt;
+    EventAwaiter ea_new_leader;
+    bool new_leader_elected = false;
+    i_opt.raft_callback_ = [&](cb_func::Type type, cb_func::Param* param)
+        -> cb_func::ReturnCode {
+
+        switch (test_phase.load()) {
+        case 0:
+            // Normal phase, do nothing.
+            return cb_func::ReturnCode::Ok;
+        case 1:
+            if (type == cb_func::Type::BecomeLeader &&
+                param && param->myId != 1) {
+                // S2 or S3 becomes a leader after refusing requests.
+                new_leader_elected = true;
+                test_phase = 2;
+                ea_new_leader.invoke();
+            }
+
+            // S2 and S3 refuse requests from S1.
+            if (type == cb_func::Type::ReceivedAppendEntriesReq &&
+                param && param->peerId == 1) {
+                return cb_func::ReturnCode::ReturnNull;
+            }
+            break;
+        case 2:
+            // S1 refuses requests from S2 and S3.
+            if (type == cb_func::Type::ReceivedAppendEntriesReq &&
+                param && param->myId == 1 &&
+                (param->peerId == 2 || param->peerId == 3)) {
+                return cb_func::ReturnCode::ReturnNull;
+            }
+            break;
+        default:
+            // Unknown phase, do nothing.
+            break;
+        }
+
+        return cb_func::ReturnCode::Ok;
+    };
+
+    _msg("launching asio-raft servers\n");
+    // Do not sleep.
+    CHK_Z( launch_servers(pkgs, false, false, true, i_opt, 0) );
+
+    for (auto& pp: pkgs) {
+        // Before initialization, this should return false.
+        CHK_FALSE(pp->raftServer->is_part_of_full_consensus());
+    }
+
+    TestSuite::sleep_sec(1);
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async & full consensus mode.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.max_append_size_ = 5;
+        param.reserved_log_items_ = 100;
+        param.use_full_consensus_among_healthy_members_ = true;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    auto do_async_append = [&](RaftAsioPkg& ss, size_t num) {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii = 0; ii < num; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                ss.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append(s1, NUM);
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 1, "wait for replication");
+
+    // They should be committed immediately.
+    uint64_t commit_idx = s1.raftServer->get_committed_log_idx();
+    CHK_EQ(commit_idx, s2.raftServer->get_committed_log_idx());
+    CHK_EQ(commit_idx, s3.raftServer->get_committed_log_idx());
+
+    // Let S2 and S3 refuse requests. It will cause a leader election.
+    _msg("S2 and S3 will refuse requests\n");
+    test_phase = true;
+
+    _msg("waiting for a new leader to be elected\n");
+    ea_new_leader.wait_ms(2000);
+    CHK_TRUE(new_leader_elected);
+
+    // Right after the leader election, S1 should recognize that it is not part of
+    // the full consensus.
+    CHK_FALSE(s1.raftServer->is_part_of_full_consensus());
+
+    // S2 and S3 should recognize themselves as part of the full consensus.
+    RaftAsioPkg* new_leader = nullptr;
+    RaftAsioPkg* follower = nullptr;
+    for (auto& ss: {&s2, &s3}) {
+        if (ss->raftServer->is_leader()) {
+            // Leader: a majority is reachable, so it should be part of consensus
+            //         (i.e., guaranteed that the state machine has the latest data),
+            //         although it cannot accept further writes until S1 is marked down.
+            CHK_TRUE(ss->raftServer->is_part_of_full_consensus());
+            TestSuite::_msg("leader: %d\n", ss->raftServer->get_id());
+            new_leader = ss;
+        } else {
+            // Follower: since election timer's lower bound is greater than
+            //           full consensus expiry for follower, it should recognize
+            //           itself as not part of the full consensus.
+            CHK_FALSE(ss->raftServer->is_part_of_full_consensus());
+            TestSuite::_msg("follower: %d\n", ss->raftServer->get_id());
+            follower = ss;
+        }
+    }
+
+    commit_idx = new_leader->raftServer->get_committed_log_idx();
+
+    // Append more messages.
+    do_async_append(*new_leader, 1);
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 1, "wait for replication");
+
+    // They can't be committed due to S1.
+    CHK_EQ(commit_idx, new_leader->raftServer->get_committed_log_idx());
+    CHK_EQ(commit_idx, follower->raftServer->get_committed_log_idx());
+
+    // Wait more so that S1 can be marked down.
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 3, "wait for S1 mark down");
+
+    // After marking down S1, the new leader should be able to commit.
+    CHK_SM(commit_idx, new_leader->raftServer->get_committed_log_idx());
+    CHK_SM(commit_idx, follower->raftServer->get_committed_log_idx());
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
@@ -756,6 +941,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "mark down by log index test",
                mark_down_by_log_index_test );
+
+    ts.doTest( "mark down after leader election test",
+               mark_down_after_leader_election_test );
 
     ts.doTest( "sm commit watcher test",
                sm_commit_watcher_test );

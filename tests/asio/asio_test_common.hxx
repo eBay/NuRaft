@@ -3,10 +3,12 @@
 #include "raft_package_asio.hxx"
 
 inline int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
-                   bool enable_ssl,
-                   bool use_global_asio = false,
-                   bool use_bg_snapshot_io = true,
-                   const raft_server::init_options & opt = raft_server::init_options())
+                          bool enable_ssl,
+                          bool use_global_asio = false,
+                          bool use_bg_snapshot_io = true,
+                          const raft_server::init_options& opt =
+                            raft_server::init_options(),
+                          size_t initial_sleep_time_ms = 1000)
 {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
@@ -15,8 +17,9 @@ inline int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
         RaftAsioPkg* pp = entry;
         pp->initServer(enable_ssl, use_global_asio, use_bg_snapshot_io, opt);
     }
+
     // Wait longer than upper timeout.
-    TestSuite::sleep_sec(1);
+    TestSuite::sleep_ms(initial_sleep_time_ms);
     return 0;
 }
 
@@ -43,6 +46,10 @@ inline void async_handler(std::list<ulong>* idx_list,
                           ptr<buffer>& result,
                           ptr<std::exception>& err)
 {
+    if (!result.get()) {
+        // It may be null during shutdown.
+        return;
+    }
     result->pos(0);
     ulong idx = result->get_ulong();
     if (idx_list) {
