@@ -1215,7 +1215,11 @@ bool raft_server::check_leadership_validity() {
              min_quorum_size);
 
         const auto nr_peers_list = get_not_responding_peers();
-        assert(nr_peers_list.size() == static_cast<std::size_t>(nr_peers));
+
+        // NOTE:
+        //   `nr_peers` and `nr_peers_list.size()` may not be the same,
+        //   since it is based on timer.
+        // assert(nr_peers_list.size() == static_cast<std::size_t>(nr_peers));
         for (auto& peer : nr_peers_list) {
             if (peer->is_lost()) {
                 continue;
