@@ -118,7 +118,7 @@ public:
             , leave_limit_(5)
             , vote_limit_(5)
             , busy_connection_limit_(20)
-            , full_consensus_leader_limit_(3)
+            , full_consensus_leader_limit_(4)
             , full_consensus_follower_limit_(2)
             {}
 

@@ -321,7 +321,7 @@ int full_consensus_test() {
     CHK_EQ(commit_idx, s1.raftServer->get_committed_log_idx());
 
     // Wait more so that the leader can tolerate not responding peer.
-    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 2, "wait for not responding peer");
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 3, "wait for not responding peer");
     uint64_t new_commit_idx = s1.raftServer->get_committed_log_idx();
     CHK_GT(new_commit_idx, commit_idx);
 
@@ -511,7 +511,7 @@ int mark_down_by_log_index_test() {
     refuse_request = true;
 
     // Wait for S3 to be excluded.
-    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 4, "wait for not responding peer");
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 5, "wait for not responding peer");
 
     // Do another append.
     do_async_append();
@@ -707,11 +707,134 @@ int mark_down_after_leader_election_test() {
     CHK_EQ(commit_idx, follower->raftServer->get_committed_log_idx());
 
     // Wait more so that S1 can be marked down.
-    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 3, "wait for S1 mark down");
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 4, "wait for S1 mark down");
 
     // After marking down S1, the new leader should be able to commit.
     CHK_SM(commit_idx, new_leader->raftServer->get_committed_log_idx());
     CHK_SM(commit_idx, follower->raftServer->get_committed_log_idx());
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
+int mark_down_without_advancing_heartbeats(bool streaming_mode) {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    // Test phase:
+    //   0: normal
+    //   1: S3 drops the response of append_entries request after processing it.
+    std::atomic<int> test_phase(0);
+
+    raft_server::init_options i_opt;
+    i_opt.raft_callback_ = [&](cb_func::Type type, cb_func::Param* param)
+        -> cb_func::ReturnCode {
+
+        switch (test_phase.load()) {
+        case 1:
+            if (type == cb_func::SentAppendEntriesResp &&
+                param && param->myId == 3) {
+                // S3 drops the response of append_entries request after processing it.
+                return cb_func::ReturnCode::ReturnNull;
+            }
+        case 0:
+        default:
+            // Normal phase, do nothing.
+            return cb_func::ReturnCode::Ok;
+        }
+        return cb_func::ReturnCode::Ok;
+    };
+
+    _msg("launching asio-raft servers\n");
+    // Do not sleep.
+    CHK_Z( launch_servers(pkgs, false, false, true, i_opt, 0,
+                          (streaming_mode ? 10 : 0) ) );
+
+    for (auto& pp: pkgs) {
+        // Before initialization, this should return false.
+        CHK_FALSE(pp->raftServer->is_part_of_full_consensus());
+    }
+
+    TestSuite::sleep_sec(1);
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async & full consensus mode.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.max_append_size_ = 5;
+        param.reserved_log_items_ = 100;
+        param.use_full_consensus_among_healthy_members_ = true;
+        pp->raftServer->update_params(param);
+    }
+
+    // Append messages asynchronously.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    auto do_async_append = [&](RaftAsioPkg& ss, size_t num) {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii = 0; ii < num; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                ss.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append(s1, NUM);
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 1, "wait for replication");
+
+    // They should be committed immediately.
+    uint64_t commit_idx = s1.raftServer->get_committed_log_idx();
+    CHK_EQ(commit_idx, s2.raftServer->get_committed_log_idx());
+    CHK_EQ(commit_idx, s3.raftServer->get_committed_log_idx());
+
+    // Let S3 drops the response.
+    TestSuite::_msgt("S3's responses will be dropped\n");
+    test_phase = true;
+
+    // Append more messages.
+    do_async_append(s1, NUM);
+
+    // Send enough number of heartbeats.
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 5, "wait for replication");
+
+    // S3 should perceive that it is not part of the full consensus,
+    // even with live heartbeats.
+    CHK_FALSE(s3.raftServer->is_part_of_full_consensus());
+
+    // S3 should be excluded, thus S1 and S2's commit index should be advanced.
+    CHK_GT(s1.raftServer->get_committed_log_idx(), commit_idx);
+    CHK_GT(s2.raftServer->get_committed_log_idx(), commit_idx);
 
     s1.raftServer->shutdown();
     s2.raftServer->shutdown();
@@ -944,6 +1067,10 @@ int main(int argc, char** argv) {
 
     ts.doTest( "mark down after leader election test",
                mark_down_after_leader_election_test );
+
+    ts.doTest( "mark down without advancing heartbeats test",
+               mark_down_without_advancing_heartbeats,
+               TestRange<bool>({false, true}) );
 
     ts.doTest( "sm commit watcher test",
                sm_commit_watcher_test );

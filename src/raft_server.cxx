@@ -799,7 +799,11 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
         resp = handle_append_entries(req);
         {
             cb_func::Param param(id_, leader_, req.get_src(), resp.get());
-            ctx_->cb_func_.call(cb_func::SentAppendEntriesResp, &param);
+            cb_func::ReturnCode rc =
+                ctx_->cb_func_.call(cb_func::SentAppendEntriesResp, &param);
+            if (rc != cb_func::ReturnCode::Ok) {
+                return nullptr;
+            }
         }
 
     } else if (req.get_type() == msg_type::request_vote_request) {

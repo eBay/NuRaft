@@ -7,15 +7,22 @@ inline int launch_servers(const std::vector<RaftAsioPkg*>& pkgs,
                           bool use_global_asio = false,
                           bool use_bg_snapshot_io = true,
                           const raft_server::init_options& opt =
-                            raft_server::init_options(),
-                          size_t initial_sleep_time_ms = 1000)
+                              raft_server::init_options(),
+                          size_t initial_sleep_time_ms = 1000,
+                          int32_t streaming_mode_gap = 0)
 {
     size_t num_srvs = pkgs.size();
     CHK_GT(num_srvs, 0);
 
     for (auto& entry: pkgs) {
         RaftAsioPkg* pp = entry;
-        pp->initServer(enable_ssl, use_global_asio, use_bg_snapshot_io, opt);
+        pp->initServer(enable_ssl, use_global_asio, use_bg_snapshot_io, opt,
+                       streaming_mode_gap > 0);
+        if (streaming_mode_gap > 0) {
+            raft_params param = pp->raftServer->get_current_params();
+            param.max_log_gap_in_stream_ = streaming_mode_gap;
+            pp->raftServer->update_params(param);
+        }
     }
 
     // Wait longer than upper timeout.
