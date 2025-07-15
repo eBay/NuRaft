@@ -608,7 +608,10 @@ public:
      * cannot commit the log.
      *
      * A member becomes "unhealthy" if it does not respond to the leader's
-     * request for a configured time (`response_limit_`).
+     * request for a configured time (`full_consensus_leader_limit_`).
+     *
+     * A member also does self-mark-down if it does not receive valid messages
+     * from the leader for a configured time (`full_consensus_follower_limit_`).
      */
     bool use_full_consensus_among_healthy_members_;
 
