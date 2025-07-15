@@ -2047,7 +2047,7 @@ bool raft_server::is_part_of_full_consensus() {
     }
 
     // Follower.
-    if (last_rcvd_append_entries_req_.get_ms() >
+    if (last_rcvd_valid_append_entries_req_.get_ms() >
             (uint64_t)params.heart_beat_interval_ *
             raft_limits_.full_consensus_follower_limit_) {
         // If we have not received any append entries request for
