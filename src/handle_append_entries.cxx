@@ -666,6 +666,35 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
 
 ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
 {
+    ptr<raft_params> params = ctx_->get_params();
+    uint64_t time_gap_ms = last_rcvd_append_entries_req_.get_ms();
+    last_rcvd_append_entries_req_.reset();
+    if (params->use_full_consensus_among_healthy_members_ &&
+        time_gap_ms > (uint64_t)params->heart_beat_interval_ *
+            raft_limits_.full_consensus_follower_limit_) {
+        // If full consensus mode is on, and heartbeat or append_entries request
+        // arrives after the limit. We cannot accept it due to the case as follows:
+        //
+        // [L] Sends heartbeat, still in-flight.
+        // [L] At 4*H, the leader will exclude the follower and make another commit.
+        // [F] Receives heartbeat after 5*H, at this moment,
+        //     it thinks it is part of consensus and able to server reads.
+        //     But it does not have the latest commit.
+        //
+        // To avoid this, we should accept the request only when its interval
+        // is smaller than the limit.
+        //
+        // If all the request have longer interval than the limit,
+        // it is reasonable to say this follower is not healthy and excluded.
+        p_wn("heartbeat or append_entries request arrives after %" PRIu64 " ms, "
+             "which is larger than the limit: %d ms, reject it",
+             time_gap_ms,
+             params->heart_beat_interval_ *
+                 raft_limits_.full_consensus_follower_limit_);
+
+        return nullptr;
+    }
+
     bool supp_exp_warning = false;
     if (state_->is_catching_up()) {
         // WARNING:
@@ -851,7 +880,7 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
     }
 
     // Reset timer.
-    last_rcvd_append_entries_req_.reset();
+    last_rcvd_valid_append_entries_req_.reset();
 
     if (req.log_entries().size() > 0) {
         // Write logs to store, start from overlapped logs
@@ -997,7 +1026,6 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
         log_store_->end_of_append_batch( req.get_last_log_idx() + 1,
                                          req.log_entries().size() );
 
-        ptr<raft_params> params = ctx_->get_params();
         if (params->parallel_log_appending_) {
             uint64_t last_durable_index = log_store_->last_durable_index();
             while ( last_durable_index <

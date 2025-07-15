@@ -1707,7 +1707,13 @@ protected:
 
     /**
      * Timer that will be reset on receiving
-     * a successful `AppendEntries` request.
+     * a valid `AppendEntries` request.
+     */
+    timer_helper last_rcvd_valid_append_entries_req_;
+
+    /**
+     * Timer that will be reset on receiving
+     * a `AppendEntries` request including invalid one too.
      */
     timer_helper last_rcvd_append_entries_req_;
 };
