@@ -933,6 +933,15 @@ public:
     bool is_part_of_full_consensus();
 
     /**
+     * Check if this server is excluded from the quorum by the leader,
+     * when it runs in full consensus mode.
+     *
+     * @return `true` if this server is excluded by the current leader and
+     *         not the part of the full consensus.
+     */
+    bool is_excluded_by_leader();
+
+    /**
      * Wait for the state machine to commit the log at the given index.
      * This function will return immediately, and the commit results will be
      * set to the returned `cmd_result` instance later.

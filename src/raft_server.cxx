@@ -1101,7 +1101,7 @@ void raft_server::become_leader() {
     {   recur_lock(cli_lock_);
         role_ = srv_role::leader;
         leader_ = id_;
-        self_mark_down_ = false;
+        self_mark_down_ = excluded_from_the_quorum_ = false;
         srv_to_join_.reset();
         leadership_transfer_timer_.set_duration_ms
             (params->leadership_transfer_min_wait_time_);
@@ -2055,6 +2055,13 @@ bool raft_server::is_part_of_full_consensus() {
         return false;
     }
     return true;
+}
+
+bool raft_server::is_excluded_by_leader() {
+    if (is_leader()) {
+        return false;
+    }
+    return excluded_from_the_quorum_;
 }
 
 } // namespace nuraft;
