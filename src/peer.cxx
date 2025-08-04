@@ -124,15 +124,22 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 if (stale_resps < limit) {
                     p_wn( "[EDGE CASE] got stale RPC response from %d: "
                           "current %p (%" PRIu64 "), from parameter %p (%" PRIu64 "). "
-                          "will ignore this response",
+                          "will ignore this response."
+                          "Currently, stale_resps: %d, response_limit: %d",
                           config_->get_id(),
                           rpc_.get(),
                           cur_rpc_id,
                           my_rpc_client.get(),
-                          given_rpc_id );
+                          given_rpc_id,
+                          stale_resps,
+                          limit );
                 } else if (stale_resps == limit) {
                     p_wn( "[EDGE CASE] too verbose stale RPC response from peer %d, "
-                          "will suppress it from now", config_->get_id() );
+                          "will suppress it from now."
+                          "Currently, stale_resps: %d, response_limit: %d",
+                          config_->get_id(),
+                          stale_resps,
+                          limit );
                 }
 
             } else {
@@ -206,15 +213,22 @@ void peer::handle_rpc_result( ptr<peer> myself,
                 if (stale_resps < limit) {
                     p_wn( "[EDGE CASE] RPC for %d has been reset before "
                           "returning error: current %p (%" PRIu64
-                          "), from parameter %p (%" PRIu64 ")",
+                          "), from parameter %p (%" PRIu64 ")."
+                          "Currently, stale_resps: %d, response_limit: %d",
                           config_->get_id(),
                           rpc_.get(),
                           cur_rpc_id,
                           my_rpc_client.get(),
-                          given_rpc_id );
+                          given_rpc_id,
+                          stale_resps,
+                          limit );
                 } else if (stale_resps == limit) {
                     p_wn( "[EDGE CASE] too verbose stale RPC response from peer %d, "
-                          "will suppress it from now", config_->get_id() );
+                          "will suppress it from now."
+                          "Currently, stale_resps: %d, response_limit: %d",
+                          config_->get_id(),
+                          stale_resps,
+                          limit );
                 }
             }
         }
