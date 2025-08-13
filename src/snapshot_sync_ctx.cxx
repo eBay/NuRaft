@@ -207,11 +207,17 @@ void snapshot_io_mgr::async_io_loop() {
                     // If normal member (already in the peer list):
                     //   reset the `sync_ctx` so as to retry with the newer version.
                     elem->raft_->clear_snapshot_sync_ctx(*elem->dst_);
-                } else {
+                } else if (elem->raft_->srv_to_join_.get()) {
                     // If it is joing the server (not in the peer list),
                     // enable HB temporarily to retry the request.
                     elem->raft_->srv_to_join_snp_retry_required_ = true;
                     elem->raft_->enable_hb_for_peer(*elem->raft_->srv_to_join_);
+                } else {
+                    // This means this server has been removed from the cluster,
+                    // but a stale snapshot request is still in the queue.
+                    // Ignore it.
+                    p_wn("stale snapshot request in queue for peer %d, ignore it",
+                         dst_id);
                 }
 
                 continue;
