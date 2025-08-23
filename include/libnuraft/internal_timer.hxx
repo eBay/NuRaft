@@ -45,7 +45,7 @@ struct timer_helper {
 
     void reset() {
         std::lock_guard<std::mutex> l(lock_);
-        t_created_ = std::chrono::system_clock::now();
+        t_created_ = std::chrono::steady_clock::now();
     }
 
     size_t get_duration_us() const {
@@ -68,27 +68,27 @@ struct timer_helper {
 
     uint64_t get_us() {
         std::lock_guard<std::mutex> l(lock_);
-        auto cur = std::chrono::system_clock::now();
+        auto cur = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)(1000000 * elapsed.count());
     }
 
     uint64_t get_ms() {
         std::lock_guard<std::mutex> l(lock_);
-        auto cur = std::chrono::system_clock::now();
+        auto cur = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)(1000 * elapsed.count());
     }
 
     uint64_t get_sec() {
         std::lock_guard<std::mutex> l(lock_);
-        auto cur = std::chrono::system_clock::now();
+        auto cur = std::chrono::steady_clock::now();
         std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)elapsed.count();
     }
 
     bool timeout() {
-        auto cur = std::chrono::system_clock::now();
+        auto cur = std::chrono::steady_clock::now();
 
         std::lock_guard<std::mutex> l(lock_);
         if (!first_event_fired_) {
@@ -102,7 +102,7 @@ struct timer_helper {
     }
 
     bool timeout_and_reset() {
-        auto cur = std::chrono::system_clock::now();
+        auto cur = std::chrono::steady_clock::now();
 
         std::lock_guard<std::mutex> l(lock_);
         if (!first_event_fired_) {
@@ -121,12 +121,12 @@ struct timer_helper {
 
     static uint64_t get_timeofday_us() {
         namespace sc = std::chrono;
-        sc::system_clock::duration const d = sc::system_clock::now().time_since_epoch();
+        sc::steady_clock::duration const d = sc::steady_clock::now().time_since_epoch();
         uint64_t const s = sc::duration_cast<sc::microseconds>(d).count();
         return s;
     }
 
-    std::chrono::time_point<std::chrono::system_clock> t_created_;
+    std::chrono::time_point<std::chrono::steady_clock> t_created_;
     size_t duration_us_;
     mutable bool first_event_fired_;
     mutable std::mutex lock_;
