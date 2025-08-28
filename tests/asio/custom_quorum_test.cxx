@@ -421,6 +421,133 @@ int self_mark_down_test() {
     return 0;
 }
 
+int stop_term_incr_restart_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://127.0.0.1:20010";
+    std::string s2_addr = "tcp://127.0.0.1:20020";
+    std::string s3_addr = "tcp://127.0.0.1:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    std::atomic<bool> chk_first_msg(false);
+    std::atomic<bool> first_msg_rcvd(false);
+    EventAwaiter first_msg_ea;
+    bool part_of_full_consensus_test = true;
+    raft_server::init_options i_opt;
+    i_opt.raft_callback_ = [&](cb_func::Type type, cb_func::Param* param)
+        -> cb_func::ReturnCode {
+        if (!chk_first_msg.load() || param->myId != 3) {
+            return cb_func::ReturnCode::Ok;
+        }
+
+        // Check the very first message received after restart.
+        // At the moment it receives this message,
+        // S3 should NOT be part of the full consensus.
+        first_msg_rcvd = true;
+        if (type == cb_func::ReceivedAppendEntriesReq) {
+            TestSuite::_msgt("first message received\n");
+            part_of_full_consensus_test =
+                s3.raftServer->is_part_of_full_consensus();
+            chk_first_msg = false;
+            first_msg_rcvd = true;
+            first_msg_ea.invoke();
+        }
+        return cb_func::ReturnCode::Ok;
+    };
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false, false, true, i_opt, 1000) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set async & full consensus mode.
+    for (auto& entry: pkgs) {
+        RaftAsioPkg* pp = entry;
+        raft_params param = pp->raftServer->get_current_params();
+        param.return_method_ = raft_params::async_handler;
+        param.use_full_consensus_among_healthy_members_ = true;
+        pp->raftServer->update_params(param);
+    }
+
+    // S3: self mark down.
+    s3.raftServer->set_self_mark_down(true);
+
+    // Wait 2 heartbeats to make sure leader receives the flag.
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 2, "wait for self mark down");
+
+    // Stop S3.
+    s3.raftServer->shutdown();
+    s3.stopAsio();
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 1, "stop S3");
+
+    // Remember the commit index.
+    uint64_t commit_idx = s1.raftServer->get_committed_log_idx();
+
+    // Append messages asynchronously.
+    const size_t NUM = 10;
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+    auto do_async_append = [&]() {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii=0; ii<NUM; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                s1.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+    do_async_append();
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 1, "wait for replication");
+    // They should be committed immediately.
+    CHK_GT(s1.raftServer->get_committed_log_idx(), commit_idx);
+
+    // Change leader to increase the term.
+    s1.raftServer->yield_leadership();
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 5, "Changing leader");
+    CHK_TRUE(s2.raftServer->is_leader());
+
+    // S3: remove mark down flag.
+    s3.raftServer->set_self_mark_down(false);
+    chk_first_msg = true;
+    s3.restartServer(nullptr, false, false, i_opt);
+    TestSuite::sleep_sec(1, "restarting S3");
+    first_msg_ea.wait_ms(3000);
+    CHK_TRUE(first_msg_rcvd.load());
+
+    // full consensus test for the very first message should not succeed.
+    CHK_FALSE(part_of_full_consensus_test);
+
+    // After some time,  it should be the part of consensus.
+    TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 2, "wait for sync-up");
+    CHK_TRUE( s3.raftServer->is_part_of_full_consensus() );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 int mark_down_by_log_index_test() {
     reset_log_files();
 
@@ -1209,6 +1336,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "self mark down test",
                self_mark_down_test );
+
+    ts.doTest( "stop, term increment, restart test",
+               stop_term_incr_restart_test );
 
     ts.doTest( "mark down by log index test",
                mark_down_by_log_index_test );

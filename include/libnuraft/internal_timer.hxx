@@ -43,9 +43,10 @@ struct timer_helper {
         std::this_thread::sleep_for(std::chrono::seconds(sec));
     }
 
-    void reset() {
+    void reset(int64_t offset_ms = 0) {
         std::lock_guard<std::mutex> l(lock_);
-        t_created_ = std::chrono::steady_clock::now();
+        t_created_ =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(offset_ms);
     }
 
     size_t get_duration_us() const {

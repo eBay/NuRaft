@@ -113,6 +113,14 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , self_mark_down_(false)
     , excluded_from_the_quorum_(false)
 {
+    // Reset it with sufficiently big negative offset, so as not to
+    // incorrectly consider it as up-to-date.
+    last_rcvd_valid_append_entries_req_.reset(
+        -1 * ctx_->get_params()->heart_beat_interval_ *
+        std::max(100, raft_limits_.full_consensus_follower_limit_.load()));
+    p_in("last_rcvd_valid_append_entries_req_ get ms: %lu",
+         last_rcvd_valid_append_entries_req_.get_ms());
+
     if (opt.raft_callback_) {
         ctx->set_cb_func(opt.raft_callback_);
     }
