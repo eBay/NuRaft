@@ -322,7 +322,8 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             }
         }
 
-        if (check_sm_commit_notify_ready(index_to_commit)) {
+        if (ctx_->get_params()->track_peers_sm_commit_idx_ &&
+            check_sm_commit_notify_ready(index_to_commit)) {
             uint64_t target_idx = update_sm_commit_notifier_target_idx(index_to_commit);
             p_tr("sm commit notify ready: %" PRIu64 ", target: %" PRIu64,
                  index_to_commit, target_idx);
@@ -516,9 +517,13 @@ void raft_server::commit_conf(ulong idx_to_commit,
 }
 
 void raft_server::scan_sm_commit_and_notify(uint64_t idx_upto) {
+    auto params = ctx_->get_params();
+    if (params->track_peers_sm_commit_idx_ == false) {
+        return;
+    }
+
     p_tr("sm commit notifier scan start, upto %" PRIu64, idx_upto);
 
-    auto params = ctx_->get_params();
     std::list< ptr<commit_ret_elem> > async_elems;
 
     std::unique_lock<std::mutex> cre_lock(commit_ret_elems_lock_);
