@@ -41,12 +41,13 @@ namespace nuraft {
 
 void raft_server::commit(ulong target_idx) {
     bool track_peers_sm_commit_idx = ctx_->get_params()->track_peers_sm_commit_idx_;
+    bool same_target_idx = (target_idx == quick_commit_index_);
     if (target_idx > quick_commit_index_ ||
-        (track_peers_sm_commit_idx &&
-         target_idx >= quick_commit_index_)) {
+        (track_peers_sm_commit_idx && same_target_idx)) {
+        p_db( "trigger commit upto %" PRIu64 ", current quick commit index %" PRIu64,
+              target_idx, quick_commit_index_.load() );
         quick_commit_index_ = target_idx;
         lagging_sm_target_index_ = target_idx;
-        p_db( "trigger commit upto %" PRIu64 "", quick_commit_index_.load() );
 
         // if this is a leader notify peers to commit as well
         // for peers that are free, send the request, otherwise,
@@ -58,6 +59,11 @@ void raft_server::commit(ulong target_idx) {
                     pp->get_sm_committed_idx() >= target_idx) {
                     // This peer's state machine is already committed
                     // upto the target index. No need to send AE.
+                    continue;
+                }
+                if (track_peers_sm_commit_idx &&
+                    same_target_idx &&
+                    pp->get_sm_committed_idx() == 0) {
                     continue;
                 }
                 if (!request_append_entries(pp)) {
@@ -316,7 +322,8 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             }
         }
 
-        if (check_sm_commit_notify_ready(index_to_commit)) {
+        if (ctx_->get_params()->track_peers_sm_commit_idx_ &&
+            check_sm_commit_notify_ready(index_to_commit)) {
             uint64_t target_idx = update_sm_commit_notifier_target_idx(index_to_commit);
             p_tr("sm commit notify ready: %" PRIu64 ", target: %" PRIu64,
                  index_to_commit, target_idx);
@@ -510,9 +517,13 @@ void raft_server::commit_conf(ulong idx_to_commit,
 }
 
 void raft_server::scan_sm_commit_and_notify(uint64_t idx_upto) {
+    auto params = ctx_->get_params();
+    if (params->track_peers_sm_commit_idx_ == false) {
+        return;
+    }
+
     p_tr("sm commit notifier scan start, upto %" PRIu64, idx_upto);
 
-    auto params = ctx_->get_params();
     std::list< ptr<commit_ret_elem> > async_elems;
 
     std::unique_lock<std::mutex> cre_lock(commit_ret_elems_lock_);
@@ -572,8 +583,12 @@ bool raft_server::check_sm_commit_notify_ready(uint64_t idx) {
             // that means it is excluded from the quorum.
             continue;
         }
-        if (pp.second->get_sm_committed_idx() < idx) {
+        if (pp.second->get_sm_committed_idx() &&
+            pp.second->get_sm_committed_idx() < idx) {
             // At least one peer's lag is enough to return false.
+            //
+            // WARNING: We should exclude 0, in case that there are member
+            //          without tracking peer sm mode.
             return false;
         }
     }

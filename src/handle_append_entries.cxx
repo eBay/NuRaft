@@ -1227,6 +1227,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_last_accepted_log_idx(new_matched_idx);
         }
 
+        bool sm_committed_idx_updated = false;
         if (resp.get_ctx() &&
             ctx_->get_params()->track_peers_sm_commit_idx_) {
             // If the response contains appendix, it should be
@@ -1239,6 +1240,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                     p_tr("sm committed index of peer %d: %" PRIu64 " -> %" PRIu64,
                          p->get_id(), prev_sm_committed_idx, new_sm_committed_idx);
                     p->set_sm_committed_idx(new_sm_committed_idx);
+                    sm_committed_idx_updated = true;
                 }
                 if (check_sm_commit_notify_ready(new_sm_committed_idx)) {
                     uint64_t target_idx =
@@ -1255,6 +1257,9 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                     }
                 }
             }
+        }
+        if (!sm_committed_idx_updated) {
+            p->set_sm_committed_idx(0);
         }
 
         cb_func::Param param(id_, leader_, p->get_id());
