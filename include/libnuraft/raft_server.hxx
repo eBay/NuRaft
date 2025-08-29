@@ -1138,6 +1138,14 @@ protected:
                         bool need_to_handle_commit_elem);
     void commit_conf(ulong idx_to_commit, ptr<log_entry>& le);
 
+    void scan_sm_commit_and_notify(uint64_t idx_upto);
+
+    bool check_sm_commit_notify_ready(uint64_t idx);
+
+    uint64_t update_sm_commit_notifier_target_idx(uint64_t to);
+
+    bool reset_sm_commit_notifier_target_idx(uint64_t expected);
+
     ptr< cmd_result< ptr<buffer> > >
         send_msg_to_leader(ptr<req_msg>& req,
                            const req_ext_params& ext_params = req_ext_params());
@@ -1725,6 +1733,12 @@ protected:
      * a `AppendEntries` request including invalid one too.
      */
     timer_helper last_rcvd_append_entries_req_;
+
+    /**
+     * Scan each peer's state machine commit and notify callback.
+     * Protected by `lock_`.
+     */
+    std::atomic<uint64_t> sm_commit_notifier_target_idx_;
 };
 
 } // namespace nuraft;

@@ -313,6 +313,10 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
 
         p_tr("execute commit for %p", target.get());
 
+        if (target->sm_commit_notifier_target_idx_ > 0) {
+            target->scan_sm_commit_and_notify(target->sm_commit_notifier_target_idx_);
+        }
+
         if (target->sm_commit_paused_) {
             p_tr("commit of this server has been paused");
             // Since there can be other Raft server waiting for being served,
