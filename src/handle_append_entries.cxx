@@ -18,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 **************************************************************************/
 
+#include "global_mgr.hxx"
 #include "pp_util.hxx"
 #include "raft_params.hxx"
 #include "raft_server.hxx"
@@ -1215,19 +1216,6 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         uint64_t prev_sm_committed_idx = p->get_sm_committed_idx();
         uint64_t new_sm_committed_idx = 0;
 
-        if (resp.get_ctx() &&
-            ctx_->get_params()->track_peers_sm_commit_idx_) {
-            // If the response contains appendix, it should be
-            // `resp_appendix` type.
-            ptr<resp_appendix> appendix = resp_appendix::deserialize(*resp.get_ctx());
-            if (appendix->extra_order_ == resp_appendix::NOTIFYING_SM_COMMITTED_INDEX) {
-                new_sm_committed_idx = appendix->sm_committed_idx_;
-                p_tr("sm committed index of peer %d: %" PRIu64 " -> %" PRIu64,
-                     p->get_id(), prev_sm_committed_idx, new_sm_committed_idx);
-                p->set_sm_committed_idx(new_sm_committed_idx);
-            }
-        }
-
         {
             std::lock_guard<std::mutex> l(p->get_lock());
             p->set_next_log_idx(resp.get_next_idx());
@@ -1238,6 +1226,37 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_matched_idx(new_matched_idx);
             p->set_last_accepted_log_idx(new_matched_idx);
         }
+
+        if (resp.get_ctx() &&
+            ctx_->get_params()->track_peers_sm_commit_idx_) {
+            // If the response contains appendix, it should be
+            // `resp_appendix` type.
+            ptr<resp_appendix> appendix = resp_appendix::deserialize(*resp.get_ctx());
+            if (appendix->extra_order_ == resp_appendix::NOTIFYING_SM_COMMITTED_INDEX) {
+                {
+                    std::lock_guard<std::mutex> l(p->get_lock());
+                    new_sm_committed_idx = appendix->sm_committed_idx_;
+                    p_tr("sm committed index of peer %d: %" PRIu64 " -> %" PRIu64,
+                         p->get_id(), prev_sm_committed_idx, new_sm_committed_idx);
+                    p->set_sm_committed_idx(new_sm_committed_idx);
+                }
+                if (check_sm_commit_notify_ready(new_sm_committed_idx)) {
+                    uint64_t target_idx =
+                        update_sm_commit_notifier_target_idx(new_sm_committed_idx);
+                    p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
+                          new_sm_committed_idx, target_idx);
+                    global_mgr* mgr = get_global_mgr();
+                    if (mgr) {
+                        // Global thread pool exists, request it.
+                        mgr->request_commit( this->shared_from_this() );
+                    } else {
+                        std::unique_lock<std::mutex> lock(commit_cv_lock_);
+                        commit_cv_.notify_one();
+                    }
+                }
+            }
+        }
+
         cb_func::Param param(id_, leader_, p->get_id());
         param.ctx = &new_matched_idx;
         CbReturnCode rc = ctx_->cb_func_.call
@@ -1282,6 +1301,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                                  : resp.get_next_idx();
         need_to_catchup = p->clear_pending_commit() ||
                           next_idx_to_send < log_store_->next_slot();
+        p_tr("need to catchup peer %d: %d", p->get_id(), need_to_catchup);
 
     } else {
         std::lock_guard<std::mutex> guard(p->get_lock());

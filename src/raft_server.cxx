@@ -112,6 +112,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , test_mode_flag_(opt.test_mode_flag_)
     , self_mark_down_(false)
     , excluded_from_the_quorum_(false)
+    , sm_commit_notifier_target_idx_(0)
 {
     // Reset it with sufficiently big negative offset, so as not to
     // incorrectly consider it as up-to-date.
@@ -278,6 +279,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
 void raft_server::start_server(bool skip_initial_election_timeout)
 {
     ptr<raft_params> params = ctx_->get_params();
+    sm_commit_notifier_target_idx_ = 0;
     global_mgr* mgr = get_global_mgr();
     if (mgr) {
         p_in("global manager is detected. will use shared thread pool");
