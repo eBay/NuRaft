@@ -313,7 +313,8 @@ void nuraft_global_mgr::commit_worker_loop(ptr<worker_handle> handle) {
 
         p_tr("execute commit for %p", target.get());
 
-        if (target->sm_commit_notifier_target_idx_ > 0) {
+        if (target->sm_commit_notifier_target_idx_ >
+                target->sm_commit_notifier_notified_idx_) {
             target->scan_sm_commit_and_notify(target->sm_commit_notifier_target_idx_);
         }
 

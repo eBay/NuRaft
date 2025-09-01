@@ -655,8 +655,8 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
         uint64_t required_log_idx =
             quick_commit_index_ > (uint64_t)params->max_append_size_
             ? quick_commit_index_ - params->max_append_size_ : 0;
-        if (last_resp_time_ms > expiry ||
-            p.get_matched_idx() < required_log_idx) {
+        if (is_excluded_from_quorum(p, last_resp_time_ms, expiry, required_log_idx,
+                                    /* include_self_mark_down = */ false)) {
             req->set_extra_flags(
                 req->get_extra_flags() | req_msg::EXCLUDED_FROM_THE_QUORUM);
         }
@@ -1242,9 +1242,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                     p->set_sm_committed_idx(new_sm_committed_idx);
                     sm_committed_idx_updated = true;
                 }
-                if (check_sm_commit_notify_ready(new_sm_committed_idx)) {
-                    uint64_t target_idx =
-                        update_sm_commit_notifier_target_idx(new_sm_committed_idx);
+
+                if (sm_committed_idx_updated &&
+                    prev_sm_committed_idx < new_sm_committed_idx) {
+                    uint64_t target_idx = find_sm_commit_idx_to_notify();
+                    target_idx = update_sm_commit_notifier_target_idx(target_idx);
                     p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
                           new_sm_committed_idx, target_idx);
                     global_mgr* mgr = get_global_mgr();
