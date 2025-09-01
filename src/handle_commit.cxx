@@ -340,7 +340,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         uint64_t target_idx = find_sm_commit_idx_to_notify();
         uint64_t target_idx2 = update_sm_commit_notifier_target_idx(target_idx);
         if (target_idx != target_idx2) {
-            p_in("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
+            p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
                  target_idx, target_idx2);
         }
     }
@@ -532,7 +532,7 @@ void raft_server::scan_sm_commit_and_notify(uint64_t idx_upto) {
         }
         ptr<commit_ret_elem> elem = entry->second;
 
-        p_in("notify cb %" PRIu64 " %p", entry->first, &elem->awaiter_);
+        p_tr("notify cb %" PRIu64 " %p", entry->first, &elem->awaiter_);
         switch (params->return_method_) {
         case raft_params::blocking:
         default:
@@ -568,31 +568,6 @@ void raft_server::scan_sm_commit_and_notify(uint64_t idx_upto) {
     sm_commit_notifier_notified_idx_ = idx_upto;
     p_tr("sm commit notifier scan done, notified index %" PRIu64,
          sm_commit_notifier_notified_idx_.load());
-}
-
-bool raft_server::check_sm_commit_notify_ready(uint64_t idx) {
-    recur_lock(lock_);
-    for (auto& pp: peers_) {
-        if (pp.second->get_matched_idx() < idx) {
-            // At the moment this function is invoked,
-            // if there is a peer whose last index is smaller than `idx`,
-            // that means it is excluded from the quorum.
-            continue;
-        }
-        if (pp.second->get_sm_committed_idx() &&
-            pp.second->get_sm_committed_idx() < idx) {
-            // At least one peer's lag is enough to return false.
-            //
-            // WARNING: We should exclude 0, in case that there are member
-            //          without tracking peer sm mode.
-            return false;
-        }
-    }
-    // Finally, the leader itself state machine should meet the condition too.
-    if (sm_commit_index_ < idx) {
-        return false;
-    }
-    return true;
 }
 
 uint64_t raft_server::find_sm_commit_idx_to_notify() {

@@ -1145,8 +1145,6 @@ protected:
 
     void scan_sm_commit_and_notify(uint64_t idx_upto);
 
-    bool check_sm_commit_notify_ready(uint64_t idx);
-
     uint64_t find_sm_commit_idx_to_notify();
 
     uint64_t update_sm_commit_notifier_target_idx(uint64_t to);
