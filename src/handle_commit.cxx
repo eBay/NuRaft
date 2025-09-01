@@ -120,10 +120,12 @@ void raft_server::commit_in_bg() {
         while ( ( quick_commit_index_ <= sm_commit_index_ ||
                   sm_commit_index_ >= log_store_->next_slot() - 1 ||
                   sm_commit_paused_ ) &&
-                sm_commit_notifier_notified_idx_ <= sm_commit_notifier_target_idx_ ) {
+                sm_commit_notifier_target_idx_ <= sm_commit_notifier_notified_idx_ ) {
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
 
             auto wait_check = [this]() {
+                // Wake up (escape this loop) on `true`.
+
                 if (stopping_) {
                     // WARNING: `stopping_` flag should have the highest priority.
                     return true;
@@ -340,8 +342,9 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
         uint64_t target_idx = find_sm_commit_idx_to_notify();
         uint64_t target_idx2 = update_sm_commit_notifier_target_idx(target_idx);
         if (target_idx != target_idx2) {
-            p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
-                 target_idx, target_idx2);
+            p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64
+                 ", notified idx: %" PRIu64,
+                 target_idx, target_idx2, sm_commit_notifier_notified_idx_.load());
         }
     }
 
@@ -591,7 +594,7 @@ uint64_t raft_server::find_sm_commit_idx_to_notify() {
         if (pp.second->get_sm_committed_idx() == 0) {
             continue;
         }
-        min_commit_idx = std::max(min_commit_idx, pp.second->get_sm_committed_idx());
+        min_commit_idx = std::min(min_commit_idx, pp.second->get_sm_committed_idx());
     }
     return min_commit_idx;
 }
