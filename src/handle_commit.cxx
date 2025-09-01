@@ -120,7 +120,7 @@ void raft_server::commit_in_bg() {
         while ( ( quick_commit_index_ <= sm_commit_index_ ||
                   sm_commit_index_ >= log_store_->next_slot() - 1 ||
                   sm_commit_paused_ ) &&
-                sm_commit_notifier_target_idx_ <= sm_commit_notifier_notified_idx_ ) {
+                sm_commit_notifier_target_idx_ == sm_commit_notifier_notified_idx_ ) {
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
 
             auto wait_check = [this]() {
@@ -315,6 +315,7 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
                 watcher->set_result(ret_bool, exp);
             }
         }
+
     }
 
     p_db( "DONE: commit upto %" PRIu64 ", current idx %" PRIu64,
