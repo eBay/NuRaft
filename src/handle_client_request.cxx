@@ -119,7 +119,7 @@ ptr<resp_msg> raft_server::handle_cli_req(req_msg& req,
         entries.at(i)->set_timestamp(timestamp_us);
 
         ulong next_slot = store_log_entry(entries.at(i));
-        p_db("append at log_idx %" PRIu64 ", timestamp %" PRIu64,
+        p_in("append at log_idx %" PRIu64 ", timestamp %" PRIu64,
              next_slot, timestamp_us);
         last_idx = next_slot;
 

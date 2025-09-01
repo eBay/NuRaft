@@ -41,9 +41,7 @@ namespace nuraft {
 
 void raft_server::commit(ulong target_idx) {
     bool track_peers_sm_commit_idx = ctx_->get_params()->track_peers_sm_commit_idx_;
-    bool same_target_idx = (target_idx == quick_commit_index_);
-    if (target_idx > quick_commit_index_ ||
-        (track_peers_sm_commit_idx && same_target_idx)) {
+    if (target_idx > quick_commit_index_) {
         p_db( "trigger commit upto %" PRIu64 ", current quick commit index %" PRIu64,
               target_idx, quick_commit_index_.load() );
         quick_commit_index_ = target_idx;
@@ -59,11 +57,6 @@ void raft_server::commit(ulong target_idx) {
                     pp->get_sm_committed_idx() >= target_idx) {
                     // This peer's state machine is already committed
                     // upto the target index. No need to send AE.
-                    continue;
-                }
-                if (track_peers_sm_commit_idx &&
-                    same_target_idx &&
-                    pp->get_sm_committed_idx() == 0) {
                     continue;
                 }
                 if (!request_append_entries(pp)) {
@@ -127,7 +120,7 @@ void raft_server::commit_in_bg() {
         while ( ( quick_commit_index_ <= sm_commit_index_ ||
                   sm_commit_index_ >= log_store_->next_slot() - 1 ||
                   sm_commit_paused_ ) &&
-                sm_commit_notifier_target_idx_ == 0  ) {
+                sm_commit_notifier_notified_idx_ <= sm_commit_notifier_target_idx_ ) {
             std::unique_lock<std::mutex> lock(commit_cv_lock_);
 
             auto wait_check = [this]() {
@@ -135,7 +128,7 @@ void raft_server::commit_in_bg() {
                     // WARNING: `stopping_` flag should have the highest priority.
                     return true;
                 }
-                if (sm_commit_notifier_target_idx_ > 0) {
+                if (sm_commit_notifier_target_idx_ > sm_commit_notifier_notified_idx_) {
                     return true;
                 }
                 if (sm_commit_paused_) {
@@ -167,10 +160,9 @@ void raft_server::commit_in_bg() {
 
         commit_in_bg_exec();
 
-        if (sm_commit_notifier_target_idx_ > 0) {
+        if (sm_commit_notifier_target_idx_ > sm_commit_notifier_notified_idx_) {
             uint64_t target_idx = sm_commit_notifier_target_idx_;
             scan_sm_commit_and_notify(target_idx);
-            reset_sm_commit_notifier_target_idx(target_idx);
         }
 
      } catch (std::exception& err) {
@@ -321,14 +313,6 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
                 watcher->set_result(ret_bool, exp);
             }
         }
-
-        if (ctx_->get_params()->track_peers_sm_commit_idx_ &&
-            check_sm_commit_notify_ready(index_to_commit)) {
-            uint64_t target_idx = update_sm_commit_notifier_target_idx(index_to_commit);
-            p_tr("sm commit notify ready: %" PRIu64 ", target: %" PRIu64,
-                 index_to_commit, target_idx);
-        }
-
     }
 
     p_db( "DONE: commit upto %" PRIu64 ", current idx %" PRIu64,
@@ -351,6 +335,16 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             (void) ctx_->cb_func_.call(cb_func::BecomeFresh, &param);
         }
     }
+
+    if (ctx_->get_params()->track_peers_sm_commit_idx_) {
+        uint64_t target_idx = find_sm_commit_idx_to_notify();
+        uint64_t target_idx2 = update_sm_commit_notifier_target_idx(target_idx);
+        if (target_idx != target_idx2) {
+            p_in("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
+                 target_idx, target_idx2);
+        }
+    }
+
     return finished_in_time;
 }
 
@@ -538,7 +532,7 @@ void raft_server::scan_sm_commit_and_notify(uint64_t idx_upto) {
         }
         ptr<commit_ret_elem> elem = entry->second;
 
-        p_tr("notify cb %" PRIu64 " %p", entry->first, &elem->awaiter_);
+        p_in("notify cb %" PRIu64 " %p", entry->first, &elem->awaiter_);
         switch (params->return_method_) {
         case raft_params::blocking:
         default:
@@ -571,7 +565,9 @@ void raft_server::scan_sm_commit_and_notify(uint64_t idx_upto) {
         }
     }
 
-    p_tr("sm commit notifier scan done");
+    sm_commit_notifier_notified_idx_ = idx_upto;
+    p_tr("sm commit notifier scan done, notified index %" PRIu64,
+         sm_commit_notifier_notified_idx_.load());
 }
 
 bool raft_server::check_sm_commit_notify_ready(uint64_t idx) {
@@ -599,6 +595,32 @@ bool raft_server::check_sm_commit_notify_ready(uint64_t idx) {
     return true;
 }
 
+uint64_t raft_server::find_sm_commit_idx_to_notify() {
+    ptr<raft_params> params = ctx_->get_params();
+
+    recur_lock(lock_);
+    uint64_t expiry = params->heart_beat_interval_ *
+                      raft_server::raft_limits_.full_consensus_leader_limit_;
+    uint64_t required_log_idx =
+        quick_commit_index_ > (uint64_t)params->max_append_size_
+        ? quick_commit_index_ - params->max_append_size_ : 0;
+
+    uint64_t min_commit_idx = sm_commit_index_;
+
+    for (auto& pp: peers_) {
+        uint64_t last_resp_time_ms = pp.second->get_resp_timer_us() / 1000;
+        if (is_excluded_from_quorum(*pp.second, last_resp_time_ms,
+                                    expiry, required_log_idx)) {
+            continue;
+        }
+        if (pp.second->get_sm_committed_idx() == 0) {
+            continue;
+        }
+        min_commit_idx = std::max(min_commit_idx, pp.second->get_sm_committed_idx());
+    }
+    return min_commit_idx;
+}
+
 uint64_t raft_server::update_sm_commit_notifier_target_idx(uint64_t to) {
     recur_lock(lock_);
     if (sm_commit_notifier_target_idx_ >= to) {
@@ -611,12 +633,8 @@ uint64_t raft_server::update_sm_commit_notifier_target_idx(uint64_t to) {
 
 bool raft_server::reset_sm_commit_notifier_target_idx(uint64_t expected) {
     recur_lock(lock_);
-    if (sm_commit_notifier_target_idx_ == expected) {
-        sm_commit_notifier_target_idx_ = 0;
-        p_tr("reset sm commit notifier target idx from %" PRIu64, expected);
-        return true;
-    }
-    return false;
+    sm_commit_notifier_notified_idx_ = expected;
+    return true;
 }
 
 bool raft_server::apply_config_log_entry(ptr<log_entry>& le,

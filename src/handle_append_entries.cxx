@@ -333,6 +333,9 @@ bool raft_server::request_append_entries(ptr<peer> p) {
             p_tr("send request to %d, streaming: %d, is_busy: %d\n", (int)p->get_id(),
                  streaming, p->is_busy());
             msg = create_append_entries_req(p, last_streamed_log_idx);
+            p_in("to peer %d, last_log_idx: %" PRIu64 ", log_entries: %zu, commit_idx: %" PRIu64,
+                  msg->get_dst(), msg->get_last_log_idx(), msg->log_entries().size(),
+                  msg->get_commit_idx());
             m_handler = resp_handler_;
 
             if (msg) {
@@ -655,8 +658,8 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
         uint64_t required_log_idx =
             quick_commit_index_ > (uint64_t)params->max_append_size_
             ? quick_commit_index_ - params->max_append_size_ : 0;
-        if (last_resp_time_ms > expiry ||
-            p.get_matched_idx() < required_log_idx) {
+        if (is_excluded_from_quorum(p, last_resp_time_ms, expiry, required_log_idx,
+                                    /* include_self_mark_down = */ false)) {
             req->set_extra_flags(
                 req->get_extra_flags() | req_msg::EXCLUDED_FROM_THE_QUORUM);
         }
@@ -1135,6 +1138,10 @@ ptr<resp_msg> raft_server::handle_append_entries(req_msg& req)
              appendix.sm_committed_idx_);
     }
 
+    p_in("req last idx %" PRIu64 ", log entries %zu, resp last idx %" PRIu64,
+         req.get_last_log_idx(), req.log_entries().size(),
+         resp->get_next_idx() - 1);
+
     p_tr("batch size hint: %" PRId64 " bytes, flags: %" PRIx64,
          bs_hint, resp->get_extra_flags());
 
@@ -1221,7 +1228,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
             p->set_next_log_idx(resp.get_next_idx());
             prev_matched_idx = p->get_matched_idx();
             new_matched_idx = resp.get_next_idx() - 1;
-            p_tr("peer %d, prev matched idx: %" PRIu64 ", new matched idx: %" PRIu64,
+            p_in("peer %d, prev matched idx: %" PRIu64 ", new matched idx: %" PRIu64,
                  p->get_id(), prev_matched_idx, new_matched_idx);
             p->set_matched_idx(new_matched_idx);
             p->set_last_accepted_log_idx(new_matched_idx);
@@ -1237,15 +1244,32 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                 {
                     std::lock_guard<std::mutex> l(p->get_lock());
                     new_sm_committed_idx = appendix->sm_committed_idx_;
-                    p_tr("sm committed index of peer %d: %" PRIu64 " -> %" PRIu64,
+                    p_in("sm committed index of peer %d: %" PRIu64 " -> %" PRIu64,
                          p->get_id(), prev_sm_committed_idx, new_sm_committed_idx);
                     p->set_sm_committed_idx(new_sm_committed_idx);
                     sm_committed_idx_updated = true;
                 }
-                if (check_sm_commit_notify_ready(new_sm_committed_idx)) {
-                    uint64_t target_idx =
-                        update_sm_commit_notifier_target_idx(new_sm_committed_idx);
-                    p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
+
+                // if (check_sm_commit_notify_ready(new_sm_committed_idx) &&
+                //     new_sm_committed_idx > sm_commit_notifier_target_idx_) {
+                //     uint64_t target_idx =
+                //         update_sm_commit_notifier_target_idx(new_sm_committed_idx);
+                //     p_in("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
+                //           new_sm_committed_idx, target_idx);
+                //     global_mgr* mgr = get_global_mgr();
+                //     if (mgr) {
+                //         // Global thread pool exists, request it.
+                //         mgr->request_commit( this->shared_from_this() );
+                //     } else {
+                //         std::unique_lock<std::mutex> lock(commit_cv_lock_);
+                //         commit_cv_.notify_one();
+                //     }
+                // }
+                if (sm_committed_idx_updated &&
+                    prev_sm_committed_idx < new_sm_committed_idx) {
+                    uint64_t target_idx = find_sm_commit_idx_to_notify();
+                    target_idx = update_sm_commit_notifier_target_idx(target_idx);
+                    p_in("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
                           new_sm_committed_idx, target_idx);
                     global_mgr* mgr = get_global_mgr();
                     if (mgr) {

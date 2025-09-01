@@ -113,6 +113,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , self_mark_down_(false)
     , excluded_from_the_quorum_(false)
     , sm_commit_notifier_target_idx_(0)
+    , sm_commit_notifier_notified_idx_(0)
 {
     // Reset it with sufficiently big negative offset, so as not to
     // incorrectly consider it as up-to-date.
@@ -280,6 +281,7 @@ void raft_server::start_server(bool skip_initial_election_timeout)
 {
     ptr<raft_params> params = ctx_->get_params();
     sm_commit_notifier_target_idx_ = 0;
+    sm_commit_notifier_notified_idx_ = 0;
     global_mgr* mgr = get_global_mgr();
     if (mgr) {
         p_in("global manager is detected. will use shared thread pool");
@@ -663,6 +665,39 @@ std::list<ptr<peer>> raft_server::get_not_responding_peers(int expiry) {
     return rs;
 }
 
+bool raft_server::is_excluded_from_quorum(const peer& pp,
+                                          int32_t resp_elapsed_ms,
+                                          int32_t expiry,
+                                          uint64_t required_log_idx,
+                                          bool include_self_mark_down)
+{
+    bool excluded = false;
+    if (resp_elapsed_ms <= expiry) {
+        // Response time is within the expiry time.
+
+        if (required_log_idx &&
+            pp.get_matched_idx() &&
+            pp.get_matched_idx() < required_log_idx) {
+            // If the peer's matched index is less than the required log index,
+            // it is considered as not responding for full consensus.
+            //
+            // WARNING: Should exclude matched_idx = 0,
+            //          which means the peer has not responded yet right after
+            //          the new connection.
+            excluded = true;
+        }
+
+        if (include_self_mark_down && pp.is_self_mark_down()) {
+            // If the peer marks itself down, count it too.
+            excluded = true;
+        }
+
+    } else {
+        excluded = true;
+    }
+    return excluded;
+}
+
 size_t raft_server::get_not_responding_peers_count(
     int expiry, uint64_t required_log_idx)
 {
@@ -678,30 +713,8 @@ size_t raft_server::get_not_responding_peers_count(
     auto cb = [&num_not_resp_nodes, required_log_idx, expiry]
         (const ptr<peer>& pp, int32_t resp_elapsed_ms)
     {
-        bool non_responding_peer = false;
-        if (resp_elapsed_ms <= expiry) {
-            // Response time is within the expiry time.
-
-            if (required_log_idx &&
-                pp->get_matched_idx() &&
-                pp->get_matched_idx() < required_log_idx) {
-                // If the peer's matched index is less than the required log index,
-                // it is considered as not responding for full consensus.
-                //
-                // WARNING: Should exclude matched_idx = 0,
-                //          which means the peer has not responded yet right after
-                //          the new connection.
-                non_responding_peer = true;
-            }
-
-            if (pp->is_self_mark_down()) {
-                // If the peer marks itself down, count it too.
-                non_responding_peer = true;
-            }
-
-        } else {
-            non_responding_peer = true;
-        }
+        bool non_responding_peer =
+            is_excluded_from_quorum(*pp, resp_elapsed_ms, expiry, required_log_idx);
 
         if (non_responding_peer) {
             ++num_not_resp_nodes;
