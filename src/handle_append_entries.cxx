@@ -1310,6 +1310,11 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                                  : resp.get_next_idx();
         need_to_catchup = p->clear_pending_commit() ||
                           next_idx_to_send < log_store_->next_slot();
+        if (ctx_->get_params()->track_peers_sm_commit_idx_) {
+            if (p->get_sm_committed_idx() < quick_commit_index_) {
+                need_to_catchup = true;
+            }
+        }
         p_tr("need to catchup peer %d: %d", p->get_id(), need_to_catchup);
 
     } else {
