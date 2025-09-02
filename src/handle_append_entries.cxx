@@ -1247,8 +1247,10 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                     prev_sm_committed_idx < new_sm_committed_idx) {
                     uint64_t target_idx = find_sm_commit_idx_to_notify();
                     target_idx = update_sm_commit_notifier_target_idx(target_idx);
-                    p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64,
-                          new_sm_committed_idx, target_idx);
+                    p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64
+                         ", notified idx: %" PRIu64,
+                          new_sm_committed_idx, target_idx,
+                          sm_commit_notifier_notified_idx_.load());
                     global_mgr* mgr = get_global_mgr();
                     if (mgr) {
                         // Global thread pool exists, request it.
