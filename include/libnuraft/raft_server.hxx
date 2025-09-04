@@ -1740,13 +1740,19 @@ protected:
     timer_helper last_rcvd_append_entries_req_;
 
     /**
-     * Scan each peer's state machine commit and notify callback.
+     * When tracking peers' SM index mode is on, this is the target
+     * log index to invoke the client request's callback.
+     * It is set to `min(healthy peers' SM commit index)`.
+     *
      * Protected by `lock_`.
      */
     std::atomic<uint64_t> sm_commit_notifier_target_idx_;
 
     /**
-     * Notified index targeted by `sm_commit_notifier_target_idx_`.
+     * When tracking peers' SM index mode is on, this is set to
+     * the last log index that client requests are notified.
+     *
+     * Protected by `lock_`.
      */
     std::atomic<uint64_t> sm_commit_notifier_notified_idx_;
 };
