@@ -1310,9 +1310,21 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                                  : resp.get_next_idx();
         need_to_catchup = p->clear_pending_commit() ||
                           next_idx_to_send < log_store_->next_slot();
-        if (ctx_->get_params()->track_peers_sm_commit_idx_) {
-            if (p->get_sm_committed_idx() &&
-                p->get_sm_committed_idx() < quick_commit_index_) {
+        if (ctx_->get_params()->track_peers_sm_commit_idx_ &&
+            p->get_sm_committed_idx() &&
+            p->get_sm_committed_idx() < quick_commit_index_) {
+            // If peer's SM committed index is lagging behind the
+            // quick commit index, we should keep sending messages
+            // to listen to the peer's SM commit progress.
+
+            // However, if stream mode is on, and if there are
+            // requests already in flight, those requests will do the job.
+            // So we don't need to set `need_to_catchup` true in that case.
+            bool streaming = last_streamed_log_idx > 0;
+            int64_t bytes_in_flight = p->get_bytes_in_flight();
+            if (streaming && bytes_in_flight > 0) {
+                // No need to send.
+            } else {
                 need_to_catchup = true;
             }
         }
