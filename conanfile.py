@@ -74,7 +74,7 @@ class NuRaftConan(ConanFile):
         else:
             self.requires("asio/[>=1.22.0]")
 
-        self.requires("openssl/[~3]")
+        self.requires("openssl/[>=1 <4]")
 
     def _computeCommitHash(self):
         hash_file = os.path.join(self.recipe_folder, "COMMIT_HASH")
