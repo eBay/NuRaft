@@ -238,7 +238,7 @@ private:
     std::list< ptr<std::thread> > worker_handles_;
     asio_service::options my_opt_;
     asio::steady_timer asio_timer_;
-    std::atomic<uint64_t> client_id_counter_;
+    std::atomic<uint64_t> client_id_counter_{1};
     ptr<logger> l_;
     friend asio_service;
 };
