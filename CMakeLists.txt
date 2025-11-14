@@ -191,9 +191,7 @@ endif(WITH_CONAN)
 set(LIBRARIES
     ${LIBSSL}
     ${LIBCRYPTO}
-    ${LIBBOOST_SYSTEM}
-    ${LIBDL}
-    ${LIBZ})
+    ${LIBBOOST_SYSTEM})
 
 # === Compiler flags ===
 option(USE_PTHREAD_EXIT "Call pthread_exit on server threads" OFF)
