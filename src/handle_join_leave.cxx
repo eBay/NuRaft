@@ -170,6 +170,33 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
         p_in("this server is already in a cluster, ignore the request");
         return resp;
     }
+    // Handle Race Condition: Simultaneous Add Server
+    // Problem: Two single-node clusters try to add each other at the same time.
+    // Both set srv_to_join_ (busy state) and send JoinRequests.
+    // When they receive the request from the other, they must decide who yields.
+    
+    if (srv_to_join_) {
+        // Symmetry Breaking: Compare IDs.
+        // Rule: Higher ID yields to Lower ID.
+        if (id_ > req.get_src()) {
+            p_wn("Race condition detected: I (id %d) am adding server %d, "
+                 "but detected incoming join request from lower ID %d. "
+                 "Yielding (cancelling my operation) to join them.",
+                 id_, srv_to_join_->get_id(), req.get_src());
+            
+            // Cancel my attempt to add them, so I whacan become their follower.
+            reset_srv_to_join(); 
+        } else {
+            p_wn("Race condition detected: I (id %d) am adding server %d, "
+                 "and detected incoming join request from higher ID %d. "
+                 "Rejecting them so they can yield and join me.",
+                 id_, srv_to_join_->get_id(), req.get_src());
+            
+            // Reject their request. They will receive this, see my lower ID, 
+            // and yield.
+            return resp; 
+        }
+    }
 
     // MONSTOR-8244:
     //   Adding server may be called multiple times while previous process is
