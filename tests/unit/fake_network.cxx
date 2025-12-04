@@ -180,6 +180,43 @@ bool FakeNetwork::delieverReqTo(const std::string& endpoint,
     return true;
 }
 
+bool FakeNetwork::delieverStaleReqTo(const std::string& endpoint)
+{
+    SimpleLogger* ll = base->getLogger();
+
+    // this:                    source (sending request)
+    // conn->dstNet (endpoint): destination (sending response)
+
+    ptr<FakeClient> conn = nullptr;
+    for (auto& entry: staleClients) {
+        if (entry->dstNet->getEndpoint() == endpoint && entry->isDstOnline()) {
+            conn = entry;
+            break;
+        }
+    }
+    if (!conn) {
+        _log_info(ll, "no stale connection to %s is available", endpoint.c_str());
+        return false;
+    }
+    auto pkg_entry = conn->pendingReqs.begin();
+    if (pkg_entry == conn->pendingReqs.end()) return false;
+
+    ReqPkg& pkg = *pkg_entry;
+
+    _log_info(ll, "[STALE BEGIN] send/process %s -> %s, %s",
+              myEndpoint.c_str(), endpoint.c_str(),
+              msg_type_to_string( pkg.req->get_type() ).c_str() );
+
+    ptr<resp_msg> resp = conn->dstNet->gotMsg( pkg.req );
+    _log_info(ll, "[STALE END] send/process %s -> %s, %s",
+              myEndpoint.c_str(), endpoint.c_str(),
+              msg_type_to_string( pkg.req->get_type() ).c_str() );
+
+    // Ignore the response, just remove the request.
+    conn->pendingReqs.erase(pkg_entry);
+    return true;
+}
+
 void FakeNetwork::delieverAllTo(const std::string& endpoint) {
     while (delieverReqTo(endpoint));
 }

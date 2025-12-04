@@ -410,6 +410,71 @@ int add_node_error_cases_test() {
     return 0;
 }
 
+int add_node_race_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2};
+
+    CHK_Z( launch_servers( pkgs ) );
+
+    // Wait enough time to commit the latest config.
+    // This is needed for `add_srv` to proceed without
+    // being blocked by previous config change.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Call `add_srv` at the same time.
+    s1.raftServer->add_srv( *(s2.getTestMgr()->get_srv_config()) );
+    s2.raftServer->add_srv( *(s1.getTestMgr()->get_srv_config()) );
+
+    // Deliver message each other (S1 -> S2 and S2 -> S1) at the same time.
+    s1.fNet->delieverReqTo(s2_addr);
+
+    // As a result of S1's message, S2 may create a new connection,
+    // and the previous request (by `add_srv` call) pending in the
+    // previous connection may be lost.
+    //
+    // We need to deliver the stale request to make this race condition happen.
+    s2.fNet->delieverStaleReqTo(s1_addr);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Handle responses simultaneously.
+    s1.fNet->handleRespFrom(s2_addr);
+    s2.fNet->handleRespFrom(s1_addr);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Repeat communication for a few more times.
+    for (size_t ii = 0; ii < 5; ++ii) {
+        s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s2.fTimer->invoke( timer_task_type::heartbeat_timer );
+        s1.fNet->delieverReqTo(s2_addr);
+        s2.fNet->delieverReqTo(s1_addr);
+        s1.fNet->handleRespFrom(s2_addr);
+        s2.fNet->handleRespFrom(s1_addr);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    }
+
+    // In the race condition, S1 (smaller ID) should be the leader.
+    TestSuite::_msg("s1: %s\n", s1.raftServer->is_leader() ? "leader" : "follower");
+    TestSuite::_msg("s2: %s\n", s2.raftServer->is_leader() ? "leader" : "follower");
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_FALSE( s2.raftServer->is_leader() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int remove_node_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -1990,6 +2055,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "add node error cases test",
                add_node_error_cases_test );
+
+    ts.doTest( "add node race test",
+               add_node_race_test );
 
     ts.doTest( "remove node test",
                remove_node_test );

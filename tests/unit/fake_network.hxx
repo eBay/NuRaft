@@ -73,6 +73,10 @@ public:
     bool delieverReqTo(const std::string& endpoint,
                        bool random_order = false);
 
+    // Similar to `deliverReqTo`, but delivers request from the stale connections.
+    // The response as a result of the request will be ignored.
+    bool delieverStaleReqTo(const std::string& endpoint);
+
     void delieverAllTo(const std::string& endpoint);
 
     bool makeReqFail(const std::string& endpoint,
