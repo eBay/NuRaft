@@ -184,7 +184,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
                  "Yielding (cancelling my operation) to join them.",
                  id_, srv_to_join_->get_id(), req.get_src());
             
-            // Cancel my attempt to add them, so I whacan become their follower.
+            // Cancel my attempt to add them, so I can become their follower.
             reset_srv_to_join(); 
         } else {
             p_wn("Race condition detected: I (id %d) am adding server %d, "
