@@ -53,7 +53,7 @@ static inline std::string msg_if_given(const char* format, ...) {
     }
 
     // Get rid of newline at the end.
-    if ((not msg.empty()) && (msg.back() == '\n')) {
+    if ((!msg.empty()) && (msg.back() == '\n')) {
         msg.pop_back();
     }
     return msg;
