@@ -168,6 +168,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     ptr<cluster_config> cur_config = get_config();
     if (cur_config->get_servers().size() > 1) {
         p_in("this server is already in a cluster, ignore the request");
+        resp->accept( quick_commit_index_.load() + 1 );
         return resp;
     }
     // Handle Race Condition: Simultaneous Add Server
