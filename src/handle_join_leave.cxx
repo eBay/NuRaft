@@ -30,6 +30,7 @@ limitations under the License.
 #include "tracer.hxx"
 
 #include <cassert>
+#include <set>
 #include <sstream>
 
 namespace nuraft {
@@ -167,7 +168,36 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
 
     ptr<cluster_config> cur_config = get_config();
     if (cur_config->get_servers().size() > 1) {
-        p_in("this server is already in a cluster, ignore the request");
+        // This server is already in a cluster.
+        // Validate that the request is from the same cluster by comparing
+        // cluster configurations. The request should be accepted only if:
+        // req->cluster_config == this->cluster_config - this_server
+
+        // Build a set of server IDs from the request's cluster config
+        ptr<cluster_config> req_config =
+            cluster_config::deserialize(entries[0]->get_buf());
+        std::set<int32> req_server_ids;
+        for (const auto& srv: req_config->get_servers()) {
+            req_server_ids.insert(srv->get_id());
+        }
+
+        // Build a set of server IDs from current cluster config, excluding this server
+        std::set<int32> cur_server_ids_minus_self;
+        for (const auto& srv: cur_config->get_servers()) {
+            if (srv->get_id() != id_) {
+                cur_server_ids_minus_self.insert(srv->get_id());
+            }
+        }
+
+        // Compare the two sets
+        if (req_server_ids == cur_server_ids_minus_self) {
+            p_in("this server is already in the cluster and request is from the same "
+                 "cluster, accepting");
+            resp->accept(quick_commit_index_.load() + 1);
+            return resp;
+        }
+        p_in("this server is already in a cluster and request is from a different "
+             "cluster, rejecting");
         return resp;
     }
     // Handle Race Condition: Simultaneous Add Server
