@@ -1345,8 +1345,9 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                     do_log_rewind = false;
                 } else if (appendix->extra_order_ == resp_appendix::RECEIVING_SNAPSHOT) {
                     p->set_snapshot_sync_is_needed(true);
-                    p_in("peer %d was in snapshot sync mode, re-sending a snapshot",
-                         p->get_id());
+                    p_in("peer %d was in snapshot sync mode, re-sending a snapshot. "
+                         "peers next log idx: %" PRIu64 ", resp next idx: %" PRIu64,
+                         p->get_id(), prev_next_log, resp.get_next_idx());
                 }
 
                 static timer_helper extra_order_timer(1000 * 1000, true);
