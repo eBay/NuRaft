@@ -174,7 +174,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
         // req->cluster_config == this->cluster_config - this_server
 
         // Build a set of server IDs from the request's cluster config,
-        // excludeing the server itself.
+        // excluding the server itself.
         ptr<cluster_config> req_config =
             cluster_config::deserialize(entries[0]->get_buf());
 
