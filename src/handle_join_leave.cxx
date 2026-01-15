@@ -173,38 +173,51 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
         // cluster configurations. The request should be accepted only if:
         // req->cluster_config == this->cluster_config - this_server
 
-        // Build a set of server IDs from the request's cluster config
+        // Build a set of server IDs from the request's cluster config,
+        // excludeing the server itself.
         ptr<cluster_config> req_config =
             cluster_config::deserialize(entries[0]->get_buf());
-        std::set<int32> req_server_ids;
-        for (const auto& srv: req_config->get_servers()) {
-            req_server_ids.insert(srv->get_id());
-        }
 
-        // Build a set of server IDs from current cluster config, excluding this server
-        std::set<int32> cur_server_ids_minus_self;
-        for (const auto& srv: cur_config->get_servers()) {
+        // Key: server ID, value: endpoint.
+        // We should compare endpoint as well to avoid the case that two different
+        // clusters coincidentally have same server IDs.
+        std::map<int32, std::string> server_ids_from_req;
+        for (const auto& srv: req_config->get_servers()) {
             if (srv->get_id() != id_) {
-                cur_server_ids_minus_self.insert(srv->get_id());
+                server_ids_from_req[srv->get_id()] = srv->get_endpoint();
             }
         }
 
-        // Compare the two sets
-        if (req_server_ids == cur_server_ids_minus_self) {
+        // Do the same for this server's cluster config.
+        std::map<int32, std::string> server_ids_of_mine;
+        for (const auto& srv: cur_config->get_servers()) {
+            if (srv->get_id() != id_) {
+                server_ids_of_mine[srv->get_id()] = srv->get_endpoint();
+            }
+        }
+
+        // Compare the two maps.
+        if (server_ids_from_req == server_ids_of_mine) {
+            // If two configs are the same, probably this is a duplicate
+            // request. Accept it again.
             p_in("this server is already in the cluster and request is from the same "
                  "cluster, accepting");
             resp->accept(quick_commit_index_.load() + 1);
             return resp;
         }
+
+        // Otherwise, the join request came from a different cluster.
+        // Such request should never be accepted.
         p_in("this server is already in a cluster and request is from a different "
              "cluster, rejecting");
         return resp;
     }
+
     // Handle Race Condition: Simultaneous Add Server
     // Problem: Two single-node clusters try to add each other at the same time.
     // Both set srv_to_join_ (busy state) and send JoinRequests.
     // When they receive the request from the other, they must decide who yields.
-    
+
     if (srv_to_join_) {
         // Symmetry Breaking: Compare IDs.
         // Rule: Higher ID yields to Lower ID.
@@ -213,18 +226,18 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
                  "but detected incoming join request from lower ID %d. "
                  "Yielding (cancelling my operation) to join them.",
                  id_, srv_to_join_->get_id(), req.get_src());
-            
+
             // Cancel my attempt to add them, so I can become their follower.
-            reset_srv_to_join(); 
+            reset_srv_to_join();
         } else {
             p_wn("Race condition detected: I (id %d) am adding server %d, "
                  "and detected incoming join request from higher ID %d. "
                  "Rejecting them so they can yield and join me.",
                  id_, srv_to_join_->get_id(), req.get_src());
-            
-            // Reject their request. They will receive this, see my lower ID, 
+
+            // Reject their request. They will receive this, see my lower ID,
             // and yield.
-            return resp; 
+            return resp;
         }
     }
 
