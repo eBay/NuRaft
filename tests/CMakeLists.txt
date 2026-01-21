@@ -152,4 +152,14 @@ unit_test(NAME dispatcher_test
     ../src/raft_group_dispatcher.cxx
     ${EXAMPLES_SRC}/logger.cc)
 
+# === Port sharing (launcher) test ===
+if(NOT DISABLE_ASIO)
+    unit_test(NAME launcher_test
+        SOURCES
+        unit/launcher_test.cxx
+        ../src/launcher.cxx
+        ../src/raft_group_dispatcher.cxx
+        ${EXAMPLES_SRC}/logger.cc)
+endif()
+
 #set_tests_properties(asio_service_stream_test stream_functional_test asio_service_test PROPERTIES RUN_SERIAL TRUE)

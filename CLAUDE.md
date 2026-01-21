@@ -1,0 +1,1 @@
+Refer to @notes.md for detailed instructions on development workflows and security policies.
