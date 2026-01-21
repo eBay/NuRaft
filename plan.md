@@ -73,12 +73,24 @@
 
 **预计工作量**：3-5 天
 
+**当前进度**：30% - 消息解析部分完成
+
+**提交**：2adfabc "Modify message parsing to support extended header format"
+
+### 已完成的工作
+
+1. **消息头部解析** ✅
+   - 检测 FLAG_EXTENDED_HEADER 标志
+   - 动态确定头部大小（39 vs 43 字节）
+   - 解析 group_id 字段
+   - 向后兼容（默认 group_id = 0）
+
 ### 待完成的任务
 
-1. **修改消息序列化/反序列化**
-   - [ ] 修改 `asio_service.cxx` 消息解析逻辑
-   - [ ] 支持扩展格式（43 字节头部）
-   - [ ] 向后兼容处理
+1. **修改消息序列化/反序列化** 🔄
+   - [x] 修改 `asio_service.cxx` 消息解析逻辑
+   - [ ] 修改消息序列化逻辑（发送请求时写入 group_id）
+   - [ ] 修改响应序列化/反序列化
    - [ ] 测试新旧格式互操作性
 
 2. **修改 rpc_session**

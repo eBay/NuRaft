@@ -452,14 +452,26 @@ public:
             // header_->pos(0);
             buffer_serializer h_bs(header_);
             byte* header_data = header_->data_begin();
-            crc_header_ = crc32_8( header_data,
-                                   RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN,
-                                   0 );
 
-            // header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
+            // First, read flags to determine header size
+            // We need to read flags first, which is at the end of header
             h_bs.pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN);
-            // uint64_t flags_and_crc = header_->get_ulong();
             uint64_t flags_and_crc = h_bs.get_u64();
+            uint64_t flags = (flags_and_crc >> 32);
+
+            // Determine if this is extended header format
+            bool is_extended = (flags & FLAG_EXTENDED_HEADER) != 0;
+            size_t header_size = is_extended ? RPC_REQ_HEADER_EXT_SIZE : RPC_REQ_HEADER_SIZE;
+
+            // Re-read the entire header with correct size
+            h_bs.pos(0);
+            crc_header_ = crc32_8(header_data,
+                                  header_size - CRC_FLAGS_LEN,
+                                  0);
+
+            // Read flags and CRC again
+            h_bs.pos(header_size - CRC_FLAGS_LEN);
+            flags_and_crc = h_bs.get_u64();
             crc_from_msg_ = flags_and_crc & (uint32_t)0xffffffff;
             flags_ = (flags_and_crc >> 32);
 
@@ -505,9 +517,9 @@ public:
                 return;
             }
 
-            // header_->pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
+            // header_->pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
             // int32 data_size = header_->get_int();
-            h_bs.pos(RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN - DATA_SIZE_LEN);
+            h_bs.pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
             int32 data_size = h_bs.get_i32();
             // Up to 1GB.
             if (data_size < 0 || data_size > 0x40000000) {
@@ -631,6 +643,14 @@ private:
         ulong last_term = h_bs.get_u64();
         ulong last_idx = h_bs.get_u64();
         ulong commit_idx = h_bs.get_u64();
+
+        // Read group_id if extended format
+        int32 group_id = 0;  // default for backward compatibility
+        bool is_extended = (flags_ & FLAG_EXTENDED_HEADER) != 0;
+        if (is_extended) {
+            group_id = h_bs.get_i32();
+        }
+
         int32 log_data_size = h_bs.get_i32();
 
         if (flags_ & CRC_ON_ENTIRE_MESSAGE) {
@@ -694,7 +714,7 @@ private:
 
         std::string meta_str;
         ptr<req_msg> req = cs_new<req_msg>
-                           ( term, t, src, dst, last_term, last_idx, commit_idx );
+                           ( term, t, src, dst, last_term, last_idx, commit_idx, group_id );
         if (flags_ & MARK_DOWN) {
             req->set_extra_flags(
                 req->get_extra_flags() | req_msg::EXCLUDED_FROM_THE_QUORUM);
