@@ -32,6 +32,7 @@ limitations under the License.
 #include "crc32.hxx"
 #include "global_mgr.hxx"
 #include "internal_timer.hxx"
+#include "raft_group_dispatcher.hxx"
 #include "rpc_listener.hxx"
 #include "raft_server.hxx"
 #include "raft_server_handler.hxx"
@@ -324,10 +325,12 @@ public:
                  bool _enable_ssl,
                  ptr<msg_handler>& handler,
                  ptr<logger>& logger,
-                 session_closed_callback& callback )
+                 session_closed_callback& callback,
+                 const ptr<raft_group_dispatcher>& dispatcher = nullptr )
         : session_id_(id)
         , impl_(_impl)
         , handler_(handler)
+        , dispatcher_(dispatcher)  // Add dispatcher
         , socket_(io)
         , ssl_socket_(socket_, ssl_ctx)
         , ssl_enabled_(_enable_ssl)
@@ -815,7 +818,21 @@ private:
         }
 
         // === RAFT server processes the request here. ===
-        ptr<resp_msg> resp = raft_server_handler::process_req(handler_.get(), *req);
+        ptr<resp_msg> resp;
+
+        // If dispatcher is available and group_id is set, use dispatcher for routing
+        if (dispatcher_ && group_id != 0) {
+            resp = dispatcher_->dispatch(group_id, *req);
+            if (!resp) {
+                p_wn("dispatcher returned null response for group_id %d", group_id);
+                this->stop();
+                return;
+            }
+        } else {
+            // Use traditional handler (backward compatibility)
+            resp = raft_server_handler::process_req(handler_.get(), *req);
+        }
+
         if (!resp) {
             p_wn("no response is returned from raft message handler");
             this->stop();
@@ -995,6 +1012,7 @@ private:
     uint64_t session_id_;
     asio_service_impl* impl_;
     ptr<msg_handler> handler_;
+    ptr<raft_group_dispatcher> dispatcher_;  // For port sharing
     asio::ip::tcp::socket socket_;
     ssl_socket ssl_socket_;
     bool ssl_enabled_;
@@ -1076,6 +1094,12 @@ public:
         start(guard);
     }
 
+    // Set dispatcher for port sharing (optional)
+    void set_dispatcher(const ptr<raft_group_dispatcher>& dispatcher) {
+        std::lock_guard<std::mutex> guard(listener_lock_);
+        dispatcher_ = dispatcher;
+    }
+
     virtual void shutdown() override {
         {
             auto_lock(session_lock_);
@@ -1107,7 +1131,7 @@ private:
             cs_new< rpc_session >
             ( session_id_cnt_.fetch_add(1),
               impl_, io_svc_, ssl_ctx_, ssl_enabled_,
-              handler_, l_, cb );
+              handler_, l_, cb, dispatcher_ );
 
         acceptor_.async_accept( session->socket(),
                                 std::bind( &asio_rpc_listener::handle_accept,
@@ -1160,6 +1184,7 @@ private:
 
     std::mutex listener_lock_;
     ptr<msg_handler> handler_;
+    ptr<raft_group_dispatcher> dispatcher_;  // For port sharing
     bool stopped_;
     asio::ip::tcp::acceptor acceptor_;
 
