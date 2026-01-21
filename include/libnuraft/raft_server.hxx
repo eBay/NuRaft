@@ -64,6 +64,7 @@ class raft_server : public std::enable_shared_from_this<raft_server> {
     friend class nuraft_global_mgr;
     friend class raft_server_handler;
     friend class snapshot_io_mgr;
+    friend class raft_group_dispatcher;  // For port sharing feature
 public:
     struct init_options {
         init_options()

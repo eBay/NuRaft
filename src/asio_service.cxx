@@ -91,8 +91,24 @@ limitations under the License.
 //     int32        log data size       (4),
 //     ulong        flags + CRC32       (8),
 //     -------------------------------------
-//                  total               (54)
+//                  total               (39)
 #define RPC_REQ_HEADER_SIZE (4*3 + 8*5 + 1*2)
+
+// Extended request header (with group_id support):
+//     byte         marker (req = 0x0) (1),
+//     msg_type     type                (1),
+//     int32        src                 (4),
+//     int32        dst                 (4),
+//     ulong        term                (8),
+//     ulong        last_log_term       (8),
+//     ulong        last_log_idx        (8),
+//     ulong        commit_idx          (8),
+//     int32        group_id            (4),  <-- NEW
+//     int32        log data size       (4),
+//     ulong        flags + CRC32       (8),
+//     -------------------------------------
+//                  total               (43)
+#define RPC_REQ_HEADER_EXT_SIZE (RPC_REQ_HEADER_SIZE + 4)
 
 // response header:
 //     byte         marker (resp = 0x1) (1),
@@ -107,6 +123,22 @@ limitations under the License.
 //     -------------------------------------
 //                  total               (39)
 #define RPC_RESP_HEADER_SIZE (4*3 + 8*3 + 1*3)
+
+// Extended response header (with group_id support):
+//     byte         marker (resp = 0x1) (1),
+//     msg_type     type                (1),
+//     int32        src                 (4),
+//     int32        dst                 (4),
+//     ulong        term                (8),
+//     ulong        next_idx            (8),
+//     bool         accepted            (1),
+//     byte         padding             (1),  <-- NEW for alignment
+//     int32        ctx data size       (4),
+//     int32        group_id            (4),  <-- NEW
+//     ulong        flags + CRC32       (8),
+//     -------------------------------------
+//                  total               (43)
+#define RPC_RESP_HEADER_EXT_SIZE (RPC_RESP_HEADER_SIZE + 4)
 
 #define DATA_SIZE_LEN (4)
 #define CRC_FLAGS_LEN (8)
@@ -138,6 +170,9 @@ limitations under the License.
 //   - If it is used in a response (follower -> leader),
 //     the follower is marked down by itself.
 #define MARK_DOWN (0x40)
+
+// If set, message uses extended header format (includes group_id).
+#define FLAG_EXTENDED_HEADER (0x80)
 
 // =======================
 

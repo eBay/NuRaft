@@ -145,4 +145,11 @@ unit_test(NAME logger_test
     SOURCES
     unit/logger_test.cxx)
 
+# === Port sharing (dispatcher) test ===
+unit_test(NAME dispatcher_test
+    SOURCES
+    unit/dispatcher_test.cxx
+    ../src/raft_group_dispatcher.cxx
+    ${EXAMPLES_SRC}/logger.cc)
+
 #set_tests_properties(asio_service_stream_test stream_functional_test asio_service_test PROPERTIES RUN_SERIAL TRUE)
