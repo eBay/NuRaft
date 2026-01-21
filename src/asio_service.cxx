@@ -901,7 +901,17 @@ private:
             carried_data_size += result_code_size;
         }
 
-        int buf_size = RPC_RESP_HEADER_SIZE + carried_data_size;
+        // Check if we need to use extended header format (for group_id support)
+        int32 group_id = req->get_group_id();
+        bool use_extended_header = (group_id != 0);
+        if (use_extended_header) {
+            flags |= FLAG_EXTENDED_HEADER;
+        }
+
+        size_t header_size = use_extended_header ?
+                             RPC_RESP_HEADER_EXT_SIZE : RPC_RESP_HEADER_SIZE;
+
+        int buf_size = header_size + carried_data_size;
         ptr<buffer> resp_buf = buffer::alloc(buf_size);
         buffer_serializer bs(resp_buf);
 
@@ -913,11 +923,18 @@ private:
         bs.put_u64(resp->get_term());
         bs.put_u64(resp->get_next_idx());
         bs.put_u8(resp->get_accepted());
+
+        // Add padding and group_id if using extended header
+        if (use_extended_header) {
+            bs.put_u8(0);  // padding byte for alignment
+            bs.put_i32(group_id);
+        }
+
         bs.put_i32(carried_data_size);
 
         // Calculate CRC32 on header only.
         uint32_t crc_val = crc32_8( resp_buf->data_begin(),
-                                    RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN,
+                                    header_size - CRC_FLAGS_LEN,
                                     0 );
 
         uint64_t flags_crc = ((uint64_t)flags << 32) | crc_val;
@@ -1485,8 +1502,18 @@ public:
             }
         }
 
+        // Check if we need to use extended header format (for group_id support)
+        int32 group_id = req->get_group_id();
+        bool use_extended_header = (group_id != 0);
+        if (use_extended_header) {
+            flags |= FLAG_EXTENDED_HEADER;
+        }
+
+        size_t header_size = use_extended_header ?
+                             RPC_REQ_HEADER_EXT_SIZE : RPC_REQ_HEADER_SIZE;
+
         ptr<buffer> req_buf =
-            buffer::alloc(RPC_REQ_HEADER_SIZE + meta_size + log_data_size);
+            buffer::alloc(header_size + meta_size + log_data_size);
 
         // Deprecate `buffer::put` and use `buffer_serializer`.
 
@@ -1513,11 +1540,17 @@ public:
         req_buf_bs.put_u64(req->get_last_log_term());
         req_buf_bs.put_u64(req->get_last_log_idx());
         req_buf_bs.put_u64(req->get_commit_idx());
+
+        // Add group_id if using extended header
+        if (use_extended_header) {
+            req_buf_bs.put_i32(group_id);
+        }
+
         req_buf_bs.put_i32((int32)meta_size + log_data_size);
 
         // Calculate CRC32 on header-only.
         uint32_t crc_header = crc32_8( req_buf->data_begin(),
-                                       RPC_REQ_HEADER_SIZE - CRC_FLAGS_LEN,
+                                       header_size - CRC_FLAGS_LEN,
                                        0 );
 
         uint64_t flags_and_crc = ((uint64_t)flags << 32) | crc_header;
@@ -1823,13 +1856,21 @@ private:
         }
 
         buffer_serializer bs(resp_buf);
-        uint32_t crc_local = crc32_8( resp_buf->data_begin(),
-                                      RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN,
-                                      0 );
+
+        // First, read flags to determine header size
         bs.pos(RPC_RESP_HEADER_SIZE - CRC_FLAGS_LEN);
         uint64_t flags_and_crc = bs.get_u64();
-        uint32_t crc_buf = flags_and_crc & (uint32_t)0xffffffff;
         uint32_t flags = (flags_and_crc >> 32);
+
+        // Determine if this is extended header format
+        bool is_extended = (flags & FLAG_EXTENDED_HEADER) != 0;
+        size_t header_size = is_extended ? RPC_RESP_HEADER_EXT_SIZE : RPC_RESP_HEADER_SIZE;
+
+        // Recalculate CRC with correct header size
+        uint32_t crc_local = crc32_8( resp_buf->data_begin(),
+                                      header_size - CRC_FLAGS_LEN,
+                                      0 );
+        uint32_t crc_buf = flags_and_crc & (uint32_t)0xffffffff;
 
         if (crc_local != crc_buf) {
             std::string err_msg = sstrfmt( "CRC mismatch in response from "
@@ -1848,11 +1889,19 @@ private:
         ulong term = bs.get_u64();
         ulong nxt_idx = bs.get_u64();
         byte accepted_val = bs.get_u8();
+
+        // Read group_id if extended format
+        int32 group_id = 0;  // default for backward compatibility
+        if (is_extended) {
+            bs.get_u8();  // skip padding byte
+            group_id = bs.get_i32();
+        }
+
         int32 carried_data_size = bs.get_i32();
         ptr<resp_msg> rsp
             ( cs_new<resp_msg>
               ( term, (msg_type)msg_type_val, src, dst,
-                nxt_idx, accepted_val == 1 ) );
+                nxt_idx, accepted_val == 1, group_id ) );
 
         if ( !(flags & INCLUDE_META) &&
              impl_->get_options().read_resp_meta_ &&

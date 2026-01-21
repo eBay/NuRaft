@@ -73,9 +73,11 @@
 
 **预计工作量**：3-5 天
 
-**当前进度**：30% - 消息解析部分完成
+**当前进度**：60% - 消息序列化/反序列化完成
 
-**提交**：2adfabc "Modify message parsing to support extended header format"
+**提交**：
+- 2adfabc "Modify message parsing to support extended header format"
+- a9507f7 "Add message serialization support for extended header format"
 
 ### 已完成的工作
 
@@ -85,25 +87,31 @@
    - 解析 group_id 字段
    - 向后兼容（默认 group_id = 0）
 
+2. **消息序列化** ✅
+   - 发送请求时检测 group_id
+   - 使用扩展格式（43 字节）当 group_id != 0
+   - 正确设置 FLAG_EXTENDED_HEADER
+   - 调整缓冲区大小和 CRC 计算
+
+3. **响应序列化/反序列化** ✅
+   - 发送响应时包含 group_id
+   - 接收响应时解析 group_id
+   - 添加 padding 字节保持对齐
+   - 动态头部大小处理
+
 ### 待完成的任务
 
-1. **修改消息序列化/反序列化** 🔄
-   - [x] 修改 `asio_service.cxx` 消息解析逻辑
-   - [ ] 修改消息序列化逻辑（发送请求时写入 group_id）
-   - [ ] 修改响应序列化/反序列化
-   - [ ] 测试新旧格式互操作性
-
-2. **修改 rpc_session**
+1. **修改 rpc_session** 🔄
    - [ ] 集成 dispatcher
    - [ ] 根据 group_id 路由请求
    - [ ] 错误处理
 
-3. **修改 raft_launcher**
+2. **修改 raft_launcher**
    - [ ] 添加共享端口 API
    - [ ] 实现多 group 管理
    - [ ] API 文档
 
-4. **集成测试**
+3. **集成测试**
    - [ ] 多 group 共享端口测试
    - [ ] 动态添加/删除 group 测试
    - [ ] 并发压力测试
