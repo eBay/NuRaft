@@ -228,7 +228,7 @@ ptr<req_msg> raft_server::create_sync_snapshot_req(ptr<peer>& pp,
                         p.get_id(),
                         snp->get_last_log_term(),
                         snp->get_last_log_idx(),
-                        commit_idx ) );
+                        commit_idx, ctx_->group_id_ ) );
     req->log_entries().push_back( cs_new<log_entry>
                                   ( term,
                                     sync_req->serialize(),
