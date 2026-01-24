@@ -60,7 +60,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::add_srv(const srv_config& srv)
                         ( 0, buf, log_val_type::cluster_server ) );
     ptr<req_msg> req = cs_new<req_msg>
                        ( (ulong)0, msg_type::add_server_request, 0, 0,
-                         (ulong)0, (ulong)0, (ulong)0 );
+                         (ulong)0, (ulong)0, (ulong)0, ctx_->group_id_ );
     req->log_entries().push_back(log);
     return send_msg_to_leader(req);
 }
@@ -73,7 +73,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::remove_srv(const int srv_id)
     ptr<log_entry> log(cs_new<log_entry>(0, buf, log_val_type::cluster_server));
     ptr<req_msg> req = cs_new<req_msg>
                        ( (ulong)0, msg_type::remove_server_request, 0, 0,
-                         (ulong)0, (ulong)0, (ulong)0 );
+                         (ulong)0, (ulong)0, (ulong)0, ctx_->group_id_ );
     req->log_entries().push_back(log);
     return send_msg_to_leader(req);
 }
@@ -96,7 +96,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::append_entries_ext
 
     ptr<req_msg> req = cs_new<req_msg>
                        ( (ulong)0, msg_type::client_request, 0, 0,
-                         (ulong)0, (ulong)0, (ulong)0 ) ;
+                         (ulong)0, (ulong)0, (ulong)0, ctx_->group_id_ ) ;
     for (auto it = logs.begin(); it != logs.end(); ++it) {
         ptr<buffer> buf = *it;
         // Just in case when user forgot to reset the position.

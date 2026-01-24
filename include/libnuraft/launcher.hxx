@@ -18,6 +18,8 @@ limitations under the License.
 #pragma once
 
 #include "nuraft.hxx"
+#include "raft_group_dispatcher.hxx"
+#include <map>
 
 namespace nuraft {
 
@@ -51,6 +53,53 @@ public:
                           const raft_server::init_options& opt = raft_server::init_options());
 
     /**
+     * Initialize shared port mode for multiple Raft groups.
+     * Creates ASIO service and listener, but does not create any raft_server.
+     * Use add_group() to add Raft groups to this shared port.
+     *
+     * @param port_number Shared port number.
+     * @param lg Logger.
+     * @param asio_options ASIO options.
+     * @return `true` on success, `false` on error.
+     */
+    bool init_shared_port(int port_number,
+                          ptr<logger> lg,
+                          const asio_service::options& asio_options);
+
+    /**
+     * Add a Raft group to the shared port.
+     * Creates a raft_server and registers it with the dispatcher.
+     *
+     * @param group_id Unique group identifier.
+     * @param sm State machine.
+     * @param smgr State manager.
+     * @param params Raft parameters.
+     * @param opt Raft server init options.
+     * @return 0 on success, -1 on failure (group_id already exists or creation failed).
+     */
+    int add_group(int32 group_id,
+                  ptr<state_machine> sm,
+                  ptr<state_mgr> smgr,
+                  const raft_params& params,
+                  const raft_server::init_options& opt = raft_server::init_options());
+
+    /**
+     * Remove a Raft group from the shared port.
+     *
+     * @param group_id Group identifier.
+     * @return 0 on success, -1 if group_id not found.
+     */
+    int remove_group(int32 group_id);
+
+    /**
+     * Get the raft_server for a specific group.
+     *
+     * @param group_id Group identifier.
+     * @return raft_server pointer, or nullptr if not found.
+     */
+    ptr<raft_server> get_server(int32 group_id);
+
+    /**
      * Shutdown Raft server and ASIO service.
      * If this function is hanging even after the given timeout,
      * it will do force return.
@@ -75,7 +124,7 @@ public:
     ptr<rpc_listener> get_rpc_listener() const { return asio_listener_; }
 
     /**
-     * Get Raft server instance.
+     * Get Raft server instance (legacy mode).
      *
      * @return Raft server instance.
      */
@@ -85,6 +134,13 @@ private:
     ptr<asio_service> asio_svc_;
     ptr<rpc_listener> asio_listener_;
     ptr<raft_server> raft_instance_;
+
+    // Shared port mode members
+    ptr<raft_group_dispatcher> dispatcher_;
+    ptr<logger> logger_;
+    std::map<int32, ptr<raft_server>> servers_;
+    bool shared_port_mode_;
+    std::mutex servers_lock_;
 };
 
 }

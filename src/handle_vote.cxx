@@ -163,7 +163,7 @@ void raft_server::request_prevote() {
                             pp->get_id(),
                             term_for_log(log_store_->next_slot() - 1),
                             log_store_->next_slot() - 1,
-                            quick_commit_index_.load() ) );
+                            quick_commit_index_.load(), ctx_->group_id_ ) );
         if (pp->make_busy()) {
             pp->send_req(pp, req, resp_handler_);
         } else {
@@ -288,7 +288,7 @@ void raft_server::request_vote(bool force_vote) {
                              pp->get_id(),
                              term_for_log(log_store_->next_slot() - 1),
                              log_store_->next_slot() - 1,
-                             quick_commit_index_.load() );
+                             quick_commit_index_.load(), ctx_->group_id_ );
         if (force_vote) {
             // Add a special log entry to let receivers ignore the priority.
 

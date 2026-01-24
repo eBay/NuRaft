@@ -133,7 +133,7 @@ void raft_server::broadcast_priority_change(const int srv_id,
                             it->second->get_id(),
                             term_for_log(log_store_->next_slot() - 1),
                             log_store_->next_slot() - 1,
-                            quick_commit_index_.load() ) );
+                            quick_commit_index_.load(), ctx_->group_id_ ) );
 
         // ID + priority
         ptr<buffer> buf = buffer::alloc(sz_int * 2);

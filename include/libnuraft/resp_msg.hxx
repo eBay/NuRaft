@@ -47,11 +47,13 @@ public:
              int32 src,
              int32 dst,
              ulong next_idx = 0L,
-             bool accepted = false)
+             bool accepted = false,
+             int32 group_id = 0)
         : msg_base(term, type, src, dst)
         , next_idx_(next_idx)
         , next_batch_size_hint_in_bytes_(0)
         , accepted_(accepted)
+        , group_id_(group_id)
         , ctx_(nullptr)
         , cb_func_(nullptr)
         , async_cb_func_(nullptr)
@@ -141,12 +143,25 @@ public:
         return extra_flags_;
     }
 
+    int32 get_group_id() const {
+        return group_id_;
+    }
+
+    void set_group_id(int32 id) {
+        group_id_ = id;
+    }
+
 private:
     ulong next_idx_;
 
     // Hint for the leader about the next batch size (only when non-zero).
     int64 next_batch_size_hint_in_bytes_;
     bool accepted_;
+
+    // Group identifier for port sharing feature.
+    // Default 0 for backward compatibility.
+    int32 group_id_;
+
     ptr<buffer> ctx_;
     ptr<peer> peer_;
     resp_cb cb_func_;
