@@ -164,7 +164,7 @@ if(NOT DISABLE_ASIO)
     # === Port sharing integration test ===
     unit_test(NAME port_sharing_test
         SOURCES
-        integration/port_sharing_test.cxx
+        asio/port_sharing_test.cxx
         ../src/launcher.cxx
         ../src/raft_group_dispatcher.cxx
         ${EXAMPLES_SRC}/logger.cc

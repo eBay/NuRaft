@@ -20,14 +20,14 @@ limitations under the License.
 
 using namespace nuraft;
 
-namespace dispatcher_test {
+#define _msg(...) TestSuite::_msg(__VA_ARGS__)
 
 // Note: In this simplified test, we test only the basic functionality
 // of dispatcher (register/deregister/group_exists/get_group_count).
 // Full dispatch testing requires a complete raft_server instance,
 // which will be tested in integration tests later.
 
-int basic_register_deregister_test() {
+static int basic_register_deregister_test() {
     ptr<raft_group_dispatcher> dispatcher = cs_new<raft_group_dispatcher>();
 
     // Test 1: Initial state
@@ -42,25 +42,16 @@ int basic_register_deregister_test() {
     // Should fail with null server
     CHK_TRUE(result != 0);  // register_group should return non-zero on failure
 
-    // Test passed
-    std::cout << "[PASS] dispatcher basic structure test" << std::endl;
-
     return 0;
 }
 
-int dispatcher_test_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     TestSuite ts;
 
     ts.doTest("basic register/deregister test", basic_register_deregister_test);
 
-    std::cout << "NOTE: Full dispatcher tests require raft_server instances." << std::endl;
-    std::cout << "      Basic structure tests passed. Integration tests will follow." << std::endl;
+    _msg("NOTE: Full dispatcher tests require raft_server instances.\n");
+    _msg("      Basic structure tests passed. Integration tests will follow.\n");
 
     return 0;
-}
-
-} // namespace dispatcher_test
-
-int main(int argc, char** argv) {
-    return dispatcher_test::dispatcher_test_main(argc, argv);
 }
