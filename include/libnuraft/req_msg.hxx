@@ -40,11 +40,13 @@ public:
             int32 dst,
             ulong last_log_term,
             ulong last_log_idx,
-            ulong commit_idx)
+            ulong commit_idx,
+            int32 group_id = 0)
         : msg_base(term, type, src, dst)
         , last_log_term_(last_log_term)
         , last_log_idx_(last_log_idx)
         , commit_idx_(commit_idx)
+        , group_id_(group_id)
         , log_entries_()
         , extra_flags_(0)
         { }
@@ -78,6 +80,14 @@ public:
         return extra_flags_;
     }
 
+    int32 get_group_id() const {
+        return group_id_;
+    }
+
+    void set_group_id(int32 id) {
+        group_id_ = id;
+    }
+
 private:
     // Term of last log below.
     ulong last_log_term_;
@@ -91,6 +101,10 @@ private:
     // As a pipelining, follower will do commit on this index number
     // after appending given logs.
     ulong commit_idx_;
+
+    // Group identifier for port sharing feature.
+    // Default 0 for backward compatibility.
+    int32 group_id_;
 
     // Logs. Can be empty.
     std::vector<ptr<log_entry>> log_entries_;

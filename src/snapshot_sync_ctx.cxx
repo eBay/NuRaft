@@ -239,7 +239,7 @@ void snapshot_io_mgr::async_io_loop() {
                                 dst_id,
                                 elem->snapshot_->get_last_log_term(),
                                 elem->snapshot_->get_last_log_idx(),
-                                commit_idx ) );
+                                commit_idx, elem->raft_->ctx_->group_id_ ) );
             req->log_entries().push_back( cs_new<log_entry>
                                           ( term,
                                             sync_req->serialize(),

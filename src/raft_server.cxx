@@ -1041,7 +1041,7 @@ void raft_server::send_reconnect_request() {
                                             msg_type::reconnect_request,
                                             id_,
                                             leader_,
-                                            0, 0, 0 );
+                                            0, 0, 0, ctx_->group_id_ );
 
         if (p_leader->make_busy()) {
             p_leader->send_req(p_leader, req, ex_resp_handler_);
@@ -1483,7 +1483,7 @@ bool raft_server::request_leadership() {
                          id_, leader_,
                          term_for_log(log_store_->next_slot() - 1),
                          log_store_->next_slot() - 1,
-                         quick_commit_index_.load() );
+                         quick_commit_index_.load(), ctx_->group_id_ );
 
     // Create a notification.
     ptr<custom_notification_msg> custom_noti =

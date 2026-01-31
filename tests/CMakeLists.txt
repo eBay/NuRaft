@@ -145,4 +145,31 @@ unit_test(NAME logger_test
     SOURCES
     unit/logger_test.cxx)
 
+# === Port sharing (dispatcher) test ===
+unit_test(NAME dispatcher_test
+    SOURCES
+    unit/dispatcher_test.cxx
+    ../src/raft_group_dispatcher.cxx
+    ${EXAMPLES_SRC}/logger.cc)
+
+# === Port sharing (launcher) test ===
+if(NOT DISABLE_ASIO)
+    unit_test(NAME launcher_test
+        SOURCES
+        unit/launcher_test.cxx
+        ../src/launcher.cxx
+        ../src/raft_group_dispatcher.cxx
+        ${EXAMPLES_SRC}/logger.cc)
+
+    # === Port sharing integration test ===
+    unit_test(NAME port_sharing_test
+        SOURCES
+        asio/port_sharing_test.cxx
+        ../src/launcher.cxx
+        ../src/raft_group_dispatcher.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        TIMEOUT 900)
+endif()
+
 #set_tests_properties(asio_service_stream_test stream_functional_test asio_service_test PROPERTIES RUN_SERIAL TRUE)
