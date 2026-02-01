@@ -69,6 +69,7 @@ public:
     /**
      * Add a Raft group to the shared port.
      * Creates a raft_server and registers it with the dispatcher.
+     * NOTE: This method is deprecated. Use init_with_group_id() instead.
      *
      * @param group_id Unique group identifier.
      * @param sm State machine.
@@ -82,6 +83,28 @@ public:
                   ptr<state_mgr> smgr,
                   const raft_params& params,
                   const raft_server::init_options& opt = raft_server::init_options());
+
+    /**
+     * Initialize a Raft group with its own logger (for port sharing mode).
+     * This is the recommended API for port sharing, replacing add_group().
+     *
+     * After calling init_shared_port(), use this method to create each Raft group.
+     * Each group gets its own raft_server instance and logger.
+     *
+     * @param group_id Unique group identifier.
+     * @param sm State machine for this group.
+     * @param smgr State manager for this group.
+     * @param lg Logger for this group (each group should have its own logger).
+     * @param params Raft parameters.
+     * @param opt Raft server init options.
+     * @return Raft server instance on success, nullptr on failure.
+     */
+    ptr<raft_server> init_with_group_id(int32 group_id,
+                                         ptr<state_machine> sm,
+                                         ptr<state_mgr> smgr,
+                                         ptr<logger> lg,
+                                         const raft_params& params,
+                                         const raft_server::init_options& opt = raft_server::init_options());
 
     /**
      * Remove a Raft group from the shared port.

@@ -96,30 +96,46 @@ int raft_launcher::add_group(int32 group_id,
                              const raft_params& params,
                              const raft_server::init_options& opt)
 {
+    // Use init_with_group_id and convert return type
+    ptr<raft_server> server = init_with_group_id(group_id, sm, smgr, logger_, params, opt);
+    return server ? 0 : -1;
+}
+
+ptr<raft_server> raft_launcher::init_with_group_id(int32 group_id,
+                                                     ptr<state_machine> sm,
+                                                     ptr<state_mgr> smgr,
+                                                     ptr<logger> lg,
+                                                     const raft_params& params,
+                                                     const raft_server::init_options& opt)
+{
     if (!shared_port_mode_) {
         // Not in shared port mode
-        return -1;
+        return nullptr;
     }
     if (!dispatcher_ || !asio_listener_ || !asio_svc_) {
         // Not properly initialized
-        return -1;
+        return nullptr;
+    }
+    if (!lg) {
+        // Logger is required
+        return nullptr;
     }
 
     std::lock_guard<std::mutex> l(servers_lock_);
 
     // Check if group_id already exists
     if (servers_.find(group_id) != servers_.end()) {
-        return -1;
+        return nullptr;
     }
 
-    // Create context for this group
+    // Create context for this group with its own logger
     ptr<delayed_task_scheduler> scheduler = asio_svc_;
     ptr<rpc_client_factory> rpc_cli_factory = asio_svc_;
 
     context* ctx = new context(smgr,
                                 sm,
                                 asio_listener_,
-                                logger_,
+                                lg,  // Each group uses its own logger
                                 rpc_cli_factory,
                                 scheduler,
                                 params,
@@ -129,20 +145,20 @@ int raft_launcher::add_group(int32 group_id,
     // Create raft_server instance
     ptr<raft_server> server = cs_new<raft_server>(ctx, opt);
     if (!server) {
-        return -1;
+        return nullptr;
     }
 
     // Verify group_id is correctly set
     if (ctx->group_id_ != group_id) {
         // Context group_id mismatch, this shouldn't happen
-        return -1;
+        return nullptr;
     }
 
     // Register with dispatcher
     int ret = dispatcher_->register_group(group_id, server);
     if (ret != 0) {
         // Registration failed
-        return -1;
+        return nullptr;
     }
 
     // Store server
@@ -154,7 +170,7 @@ int raft_launcher::add_group(int32 group_id,
         asio_listener_->listen(server);
     }
 
-    return 0;
+    return server;
 }
 
 int raft_launcher::remove_group(int32 group_id) {
@@ -233,6 +249,7 @@ bool raft_launcher::shutdown(size_t time_limit_sec) {
     if (asio_listener_) {
         asio_listener_->stop();
         asio_listener_->shutdown();
+        asio_listener_.reset();
     }
     if (asio_svc_) {
         asio_svc_->stop();
@@ -243,8 +260,9 @@ bool raft_launcher::shutdown(size_t time_limit_sec) {
             timer_helper::sleep_ms(10);
             count++;
         }
+        asio_svc_.reset();
     }
-    if (asio_svc_->get_active_workers()) return false;
+    logger_.reset();
     return true;
 }
 

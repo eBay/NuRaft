@@ -80,7 +80,8 @@ limitations under the License.
 // Note: both req & resp header structures have been modified by Jung-Sang Ahn.
 //       They MUST NOT be combined with the original code.
 
-// request header:
+// === Header Version 0 (Legacy Format) ===
+// request header version 0:
 //     byte         marker (req = 0x0)  (1),
 //     msg_type     type                (1),
 //     int32        src                 (4),
@@ -93,10 +94,25 @@ limitations under the License.
 //     ulong        flags + CRC32       (8),
 //     -------------------------------------
 //                  total               (54)
-#define RPC_REQ_HEADER_SIZE (4*3 + 8*4 + 1*2 + 8)  // 54 bytes
+#define RPC_REQ_HEADER_SIZE_V0 (4*3 + 8*4 + 1*2 + 8)  // 54 bytes
 
-// Extended request header (with group_id support):
-//     byte         marker (req = 0x0) (1),
+// response header version 0:
+//     byte         marker (resp = 0x1) (1),
+//     msg_type     type                (1),
+//     int32        src                 (4),
+//     int32        dst                 (4),
+//     ulong        term                (8),
+//     ulong        next_idx            (8),
+//     bool         accepted            (1),
+//     int32        ctx data size       (4),
+//     ulong        flags + CRC32       (8),
+//     -------------------------------------
+//                  total               (39)
+#define RPC_RESP_HEADER_SIZE_V0 (4*3 + 8*3 + 1*3)
+
+// === Header Version 1 (Extended Format with group_id support) ===
+// request header version 1:
+//     byte         marker (req = 0x2)  (1),  <-- NEW marker
 //     msg_type     type                (1),
 //     int32        src                 (4),
 //     int32        dst                 (4),
@@ -109,37 +125,34 @@ limitations under the License.
 //     ulong        flags + CRC32       (8),
 //     -------------------------------------
 //                  total               (58)
-#define RPC_REQ_HEADER_EXT_SIZE (RPC_REQ_HEADER_SIZE + 4)  // 58 bytes
+#define RPC_REQ_HEADER_SIZE_V1 (RPC_REQ_HEADER_SIZE_V0 + 4)  // 58 bytes
 
-// response header:
-//     byte         marker (resp = 0x1) (1),
+// response header version 1:
+//     byte         marker (resp = 0x3) (1),  <-- NEW marker
 //     msg_type     type                (1),
 //     int32        src                 (4),
 //     int32        dst                 (4),
 //     ulong        term                (8),
 //     ulong        next_idx            (8),
 //     bool         accepted            (1),
-//     int32        ctx data dize       (4),
-//     ulong        flags + CRC32       (8),
-//     -------------------------------------
-//                  total               (39)
-#define RPC_RESP_HEADER_SIZE (4*3 + 8*3 + 1*3)
-
-// Extended response header (with group_id support):
-//     byte         marker (resp = 0x1) (1),
-//     msg_type     type                (1),
-//     int32        src                 (4),
-//     int32        dst                 (4),
-//     ulong        term                (8),
-//     ulong        next_idx            (8),
-//     bool         accepted            (1),
-//     byte         padding             (1),  <-- NEW for alignment
 //     int32        ctx data size       (4),
 //     int32        group_id            (4),  <-- NEW
 //     ulong        flags + CRC32       (8),
 //     -------------------------------------
 //                  total               (43)
-#define RPC_RESP_HEADER_EXT_SIZE (RPC_RESP_HEADER_SIZE + 5)  // 39 + 5 (1 padding + 4 group_id) = 44
+#define RPC_RESP_HEADER_SIZE_V1 (RPC_RESP_HEADER_SIZE_V0 + 4)  // 43 bytes
+
+// Marker values for different versions and message types
+#define MARKER_REQ_V0 0x0
+#define MARKER_RESP_V0 0x1
+#define MARKER_REQ_V1 0x2
+#define MARKER_RESP_V1 0x3
+
+// Legacy size defines for backward compatibility
+#define RPC_REQ_HEADER_SIZE RPC_REQ_HEADER_SIZE_V0
+#define RPC_RESP_HEADER_SIZE RPC_RESP_HEADER_SIZE_V0
+#define RPC_REQ_HEADER_EXT_SIZE RPC_REQ_HEADER_SIZE_V1
+#define RPC_RESP_HEADER_EXT_SIZE RPC_RESP_HEADER_SIZE_V1
 
 #define DATA_SIZE_LEN (4)
 #define CRC_FLAGS_LEN (8)
@@ -171,9 +184,6 @@ limitations under the License.
 //   - If it is used in a response (follower -> leader),
 //     the follower is marked down by itself.
 #define MARK_DOWN (0x40)
-
-// If set, message uses extended header format (includes group_id).
-#define FLAG_EXTENDED_HEADER (0x80)
 
 // =======================
 
@@ -245,15 +255,13 @@ public:
         }
     }
 
-    // Overload for when strand is provided (not void)
     template<typename BB, typename FF, typename Strand>
-    static auto read(bool is_ssl,
+    static void read(bool is_ssl,
                      ssl_socket& _ssl_socket,
                      asio::ip::tcp::socket& tcp_socket,
                      const BB& buffer,
                      FF func,
                      Strand* strand)
-        -> typename std::enable_if<!std::is_same<Strand, void>::value>::type
     {
         if (is_ssl && strand) {
             asio::post(*strand, [&_ssl_socket, buffer, func, strand]() mutable {
@@ -267,14 +275,13 @@ public:
         }
     }
 
-    // Overload for when strand is not provided (void)
+    // Overload for when strand is not provided
     template<typename BB, typename FF>
     static void read(bool is_ssl,
                      ssl_socket& _ssl_socket,
                      asio::ip::tcp::socket& tcp_socket,
                      const BB& buffer,
-                     FF func,
-                     ...)
+                     FF func)
     {
         if (is_ssl) {
             asio::async_read(_ssl_socket, buffer, func);
@@ -364,6 +371,8 @@ public:
         , cached_port_(0)
         , crc_header_(0)
         , crc_from_msg_(0)
+        , current_header_size_(0)
+        , current_group_id_(0)
     {
         p_tr( "asio rpc session created: %p. %s",
               this,
@@ -447,60 +456,97 @@ public:
     void start(ptr<rpc_session> self) {
         header_->pos(0);
 
-        // Use strand conditionally to avoid template deduction issues
+        // Step 1: Read just the marker (1 byte) to determine header version
         auto handler = [this, self]
                       (const ERROR_CODE& err, size_t) -> void
         {
             if (err) {
-                p_er( "session %" PRIu64 " failed to read rpc header from socket %s:%u "
-                      "due to error %d, %s, ref count %" PRIu64 "",
+                p_er( "session %" PRIu64 " failed to read marker from socket %s:%u "
+                      "due to error %d, %s",
                       session_id_,
                       cached_address_.c_str(),
                       cached_port_,
                       err.value(),
-                      err.message().c_str(),
-                      self.use_count() );
+                      err.message().c_str() );
                 this->stop();
                 return;
             }
 
-            // Read extended format (58 bytes)
+            // Step 2: Check marker and determine header version
             buffer_serializer h_bs(header_);
+            byte marker = h_bs.get_u8();
 
-            // In extended format, group_id is at position 42, log_data_size at 46, flags_and_crc at 50
-            // In standard format, log_data_size is at 42, flags_and_crc at 46
-            // So we check position 50 to determine the format
-            h_bs.pos(RPC_REQ_HEADER_EXT_SIZE - CRC_FLAGS_LEN);  // pos = 50
-            uint64_t ext_flags_and_crc = h_bs.get_u64();
-            uint64_t ext_flags = (ext_flags_and_crc >> 32);
+            size_t header_size;
+            if (marker == MARKER_REQ_V0) {
+                // Legacy format (version 0)
+                header_size = RPC_REQ_HEADER_SIZE_V0;
+            } else if (marker == MARKER_REQ_V1) {
+                // Extended format (version 1) with group_id
+                header_size = RPC_REQ_HEADER_SIZE_V1;
+            } else {
+                p_er( "session %" PRIu64 " received invalid request marker: %u",
+                      session_id_, (uint32_t)marker );
+                this->stop();
+                return;
+            }
 
-            bool is_extended = (ext_flags & FLAG_EXTENDED_HEADER) != 0;
-            size_t header_size = is_extended ? RPC_REQ_HEADER_EXT_SIZE : RPC_REQ_HEADER_SIZE;
+            // Step 3: Read the rest of the header (excluding the already-read marker)
+            size_t remaining_size = header_size - 1;
+            if (remaining_size > 0) {
+                auto continue_handler = [this, self, header_size, marker]
+                                       (const ERROR_CODE& err2, size_t) -> void
+                {
+                    if (err2) {
+                        p_er( "session %" PRIu64 " failed to read header remainder from socket %s:%u "
+                              "due to error %d, %s",
+                              session_id_,
+                              cached_address_.c_str(),
+                              cached_port_,
+                              err2.value(),
+                              err2.message().c_str() );
+                        this->stop();
+                        return;
+                    }
+                    // Process the complete header
+                    process_header(self, header_size, marker);
+                };
 
-            // Continue with full header processing
-            continue_read_header(self, header_size, is_extended ? ext_flags_and_crc : 0);
+                // Read remaining bytes starting from position 1 (after marker)
+                if (use_strand_) {
+                    aa::read( ssl_enabled_, ssl_socket_, socket_,
+                              asio::buffer( header_->data() + 1, remaining_size ),
+                              continue_handler, &ssl_strand_ );
+                } else {
+                    aa::read( ssl_enabled_, ssl_socket_, socket_,
+                              asio::buffer( header_->data() + 1, remaining_size ),
+                              continue_handler );
+                }
+            } else {
+                // Process immediately (shouldn't happen for valid headers)
+                process_header(self, header_size, marker);
+            }
         };
 
-        // Always read extended format size (58 bytes)
-        // Old clients sending 54 bytes will have their connection closed
-        // (which is acceptable - they're not compatible with port sharing anyway)
+        // First read: only 1 byte (marker)
         if (use_strand_) {
             aa::read( ssl_enabled_, ssl_socket_, socket_,
-                      asio::buffer( header_->data(), RPC_REQ_HEADER_EXT_SIZE ),
+                      asio::buffer( header_->data(), 1 ),
                       handler, &ssl_strand_ );
         } else {
             aa::read( ssl_enabled_, ssl_socket_, socket_,
-                      asio::buffer( header_->data(), RPC_REQ_HEADER_EXT_SIZE ),
+                      asio::buffer( header_->data(), 1 ),
                       handler );
         }
     }
 
-    void continue_read_header(ptr<rpc_session> self, size_t header_size, uint64_t known_flags) {
+    void process_header(ptr<rpc_session> self, size_t header_size, byte marker) {
+        // Store the actual header size for use in read_complete
+        current_header_size_ = header_size;
+
         buffer_serializer h_bs(header_);
         byte* header_data = header_->data_begin();
 
-        // Re-read the entire header with correct size
-        h_bs.pos(0);
+        // Calculate CRC on the entire header
         crc_header_ = crc32_8(header_data,
                               header_size - CRC_FLAGS_LEN,
                               0);
@@ -526,20 +572,18 @@ public:
             return;
         }
 
-        h_bs.pos(0);
-        byte marker = h_bs.get_u8();
-        if (marker != 0x0) {
-            // Means that this is not RPC_REQ, shouldn't happen.
-            p_er("Wrong packet: expected REQ, got %u", marker);
-
+        // Verify marker matches what we expect
+        if (marker != MARKER_REQ_V0 && marker != MARKER_REQ_V1) {
+            p_er("Wrong packet: expected REQ marker, got %u", (uint32_t)marker);
             if (impl_->get_options().corrupted_msg_handler_) {
                 impl_->get_options().corrupted_msg_handler_(header_, nullptr);
             }
-
             this->stop();
             return;
         }
 
+        // Skip marker and read msg_type
+        h_bs.pos(1);
         msg_type m_type = (msg_type)h_bs.get_u8();
         if (!is_valid_msg(m_type)) {
             p_er("Wrong message type: got %u", (uint8_t)m_type);
@@ -552,7 +596,16 @@ public:
             return;
         }
 
-        h_bs.pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
+        // For version 1, skip group_id to get to data_size
+        if (marker == MARKER_REQ_V1) {
+            // Version 1: after marker(1) + type(1) + src(4) + dst(4) + term(8) + last_log_term(8) + last_log_idx(8) + commit_idx(8)
+            // group_id comes next (4 bytes), then data_size (4 bytes)
+            h_bs.pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
+        } else {
+            // Version 0: data_size is at header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN
+            h_bs.pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
+        }
+
         int32 data_size = h_bs.get_i32();
         // Up to 1GB.
         if (data_size < 0 || data_size > 0x40000000) {
@@ -675,11 +728,11 @@ private:
         ulong last_idx = h_bs.get_u64();
         ulong commit_idx = h_bs.get_u64();
 
-        // Read group_id if extended format
-        int32 group_id = 0;  // default for backward compatibility
-        bool is_extended = (flags_ & FLAG_EXTENDED_HEADER) != 0;
-        if (is_extended) {
-            group_id = h_bs.get_i32();
+        // Read group_id if version 1 format
+        current_group_id_ = 0;  // default for version 0
+        if (current_header_size_ >= RPC_REQ_HEADER_SIZE_V1) {
+            // Version 1: group_id exists
+            current_group_id_ = h_bs.get_i32();
         }
 
         int32 log_data_size = h_bs.get_i32();
@@ -745,7 +798,7 @@ private:
 
         std::string meta_str;
         ptr<req_msg> req = cs_new<req_msg>
-                           ( term, t, src, dst, last_term, last_idx, commit_idx, group_id );
+                           ( term, t, src, dst, last_term, last_idx, commit_idx, current_group_id_ );
         if (flags_ & MARK_DOWN) {
             req->set_extra_flags(
                 req->get_extra_flags() | req_msg::EXCLUDED_FROM_THE_QUORUM);
@@ -849,10 +902,10 @@ private:
         ptr<resp_msg> resp;
 
         // If dispatcher is available and group_id is set, use dispatcher for routing
-        if (dispatcher_ && group_id != 0) {
-            resp = dispatcher_->dispatch(group_id, *req);
+        if (dispatcher_ && current_group_id_ != 0) {
+            resp = dispatcher_->dispatch(current_group_id_, *req);
             if (!resp) {
-                p_wn("dispatcher returned null response for group_id %d", group_id);
+                p_wn("dispatcher returned null response for group_id %d", current_group_id_);
                 this->stop();
                 return;
             }
@@ -946,22 +999,27 @@ private:
             carried_data_size += result_code_size;
         }
 
-        // Check if we need to use extended header format (for group_id support)
-        int32 group_id = req->get_group_id();
-        bool use_extended_header = (group_id != 0);
-        if (use_extended_header) {
-            flags |= FLAG_EXTENDED_HEADER;
-        }
+        // Determine header version and marker based on asio_service_options
+        int32 header_version = impl_->get_options().header_version_;
+        int32 group_id = current_group_id_;  // Use group_id from request header
 
-        size_t header_size = use_extended_header ?
-                             RPC_RESP_HEADER_EXT_SIZE : RPC_RESP_HEADER_SIZE;
+        size_t header_size;
+        byte resp_marker;
+        if (header_version >= 1) {
+            // Version 1: extended header with group_id
+            header_size = RPC_RESP_HEADER_SIZE_V1;
+            resp_marker = MARKER_RESP_V1;
+        } else {
+            // Version 0: legacy header
+            header_size = RPC_RESP_HEADER_SIZE_V0;
+            resp_marker = MARKER_RESP_V0;
+        }
 
         int buf_size = header_size + carried_data_size;
         ptr<buffer> resp_buf = buffer::alloc(buf_size);
         buffer_serializer bs(resp_buf);
 
-        const byte RESP_MARKER = 0x1;
-        bs.put_u8(RESP_MARKER);
+        bs.put_u8(resp_marker);
         bs.put_u8(resp->get_type());
         bs.put_i32(resp->get_src());
         bs.put_i32(resp->get_dst());
@@ -969,13 +1027,12 @@ private:
         bs.put_u64(resp->get_next_idx());
         bs.put_u8(resp->get_accepted());
 
-        // Add padding and group_id if using extended header
-        if (use_extended_header) {
-            bs.put_u8(0);  // padding byte for alignment
+        bs.put_i32(carried_data_size);
+
+        // Add group_id for version 1
+        if (header_version >= 1) {
             bs.put_i32(group_id);
         }
-
-        bs.put_i32(carried_data_size);
 
         // Calculate CRC32 on header only.
         uint32_t crc_val = crc32_8( resp_buf->data_begin(),
@@ -1078,6 +1135,19 @@ private:
      * CRC number from the request header.
      */
     uint32_t crc_from_msg_;
+
+    /**
+     * Actual size of the current request header (54 for V0, 58 for V1).
+     * This is needed because the buffer is allocated with a fixed size,
+     * but we need to know which version was actually received.
+     */
+    size_t current_header_size_;
+
+    /**
+     * Group ID extracted from the current request header.
+     * Used when sending responses to include the correct group_id.
+     */
+    int32 current_group_id_;
 };
 
 // rpc listener implementation
@@ -1234,7 +1304,8 @@ public:
                     std::string& host,
                     std::string& port,
                     bool ssl_enabled,
-                    ptr<logger> l)
+                    ptr<logger> l,
+                    int32 group_id = 0)
         : impl_(_impl)
         , resolver_(io_svc)
         , socket_(io_svc)
@@ -1251,6 +1322,7 @@ public:
         , socket_busy_(false)
         , operation_timer_(io_svc)
         , l_(l)
+        , group_id_(group_id)
     {
         client_id_ = impl_->assign_client_id();
         if (ssl_enabled_) {
@@ -1555,37 +1627,27 @@ public:
             }
         }
 
-        // Check if we need to use extended header format (for group_id support)
-        int32 group_id = req->get_group_id();
-        bool use_extended_header = (group_id != 0);
-        if (use_extended_header) {
-            flags |= FLAG_EXTENDED_HEADER;
-        }
+        // Determine header version and marker based on asio_service_options
+        int32 header_version = impl_->get_options().header_version_;
+        int32 group_id = group_id_;  // Use client's group_id instead of req's group_id
 
-        size_t header_size = use_extended_header ?
-                             RPC_REQ_HEADER_EXT_SIZE : RPC_REQ_HEADER_SIZE;
+        size_t header_size;
+        byte req_marker;
+        if (header_version >= 1) {
+            // Version 1: extended header with group_id
+            header_size = RPC_REQ_HEADER_SIZE_V1;
+            req_marker = MARKER_REQ_V1;
+        } else {
+            // Version 0: legacy header
+            header_size = RPC_REQ_HEADER_SIZE_V0;
+            req_marker = MARKER_REQ_V0;
+        }
 
         ptr<buffer> req_buf =
             buffer::alloc(header_size + meta_size + log_data_size);
 
-        // Deprecate `buffer::put` and use `buffer_serializer`.
-
-        // req_buf->pos(0);
-        // byte* req_buf_data = req_buf->data();
-
-        // byte marker = 0x0;
-        // req_buf->put(marker);
-        // req_buf->put((byte)req->get_type());
-        // req_buf->put(req->get_src());
-        // req_buf->put(req->get_dst());
-        // req_buf->put(req->get_term());
-        // req_buf->put(req->get_last_log_term());
-        // req_buf->put(req->get_last_log_idx());
-        // req_buf->put(req->get_commit_idx());
-        // req_buf->put((int32)meta_size + log_data_size);
-
         buffer_serializer req_buf_bs(req_buf);
-        req_buf_bs.put_u8(0x0);
+        req_buf_bs.put_u8(req_marker);
         req_buf_bs.put_u8((byte)req->get_type());
         req_buf_bs.put_i32(req->get_src());
         req_buf_bs.put_i32(req->get_dst());
@@ -1594,8 +1656,8 @@ public:
         req_buf_bs.put_u64(req->get_last_log_idx());
         req_buf_bs.put_u64(req->get_commit_idx());
 
-        // Add group_id if using extended header
-        if (use_extended_header) {
+        // Add group_id for version 1
+        if (header_version >= 1) {
             req_buf_bs.put_i32(group_id);
         }
 
@@ -1896,6 +1958,7 @@ private:
                        std::error_code err,
                        size_t bytes_transferred)
     {
+        (void)bytes_transferred;  // We know the exact size from marker-based read
         ptr<asio_rpc_client> self(this->shared_from_this());
         if (err) {
             abandoned_ = true;
@@ -1910,14 +1973,13 @@ private:
 
         buffer_serializer bs(resp_buf);
 
-        // Determine actual header size based on bytes read
-        // Extended format is 43 bytes, standard is 39 bytes
-        size_t header_size = (bytes_transferred >= RPC_RESP_HEADER_EXT_SIZE)
-                           ? RPC_RESP_HEADER_EXT_SIZE
-                           : RPC_RESP_HEADER_SIZE;
+        // Get marker (already validated in handle_response_marker)
+        byte marker = bs.get_u8();
+        size_t header_size = resp_buf->size();
 
-        // Read flags from the correct position based on actual header size
-        bs.pos(header_size - CRC_FLAGS_LEN);
+        // Read flags from the correct position based on header size
+        size_t crc_pos = header_size - CRC_FLAGS_LEN;
+        bs.pos(crc_pos);
         uint64_t flags_and_crc = bs.get_u64();
         uint32_t flags = (flags_and_crc >> 32);
 
@@ -1945,19 +2007,18 @@ private:
         ulong nxt_idx = bs.get_u64();
         byte accepted_val = bs.get_u8();
 
-        // Read group_id if extended format
-        int32 group_id = 0;  // default for backward compatibility
-        bool is_extended = (flags & FLAG_EXTENDED_HEADER) != 0;
-        if (is_extended) {
-            bs.get_u8();  // skip padding byte
-            group_id = bs.get_i32();
-        }
-
         int32 carried_data_size = bs.get_i32();
+
+        // Read group_id for version 1 (stored in ASIO layer, not passed to resp_msg)
+        int32 group_id = 0;  // default for version 0
+        if (marker == MARKER_RESP_V1) {
+            group_id = bs.get_i32();
+            // Note: group_id is now handled by ASIO layer, not passed to resp_msg
+        }
         ptr<resp_msg> rsp
             ( cs_new<resp_msg>
               ( term, (msg_type)msg_type_val, src, dst,
-                nxt_idx, accepted_val == 1, group_id ) );
+                nxt_idx, accepted_val == 1 ) );
 
         if ( !(flags & INCLUDE_META) &&
              impl_->get_options().read_resp_meta_ &&
@@ -2107,18 +2168,76 @@ private:
                               rpc_handler& when_done )
     {
         ptr<asio_rpc_client> self(this->shared_from_this());
-        // Allocate buffer for extended header format to support group_id
-        ptr<buffer> resp_buf(buffer::alloc(RPC_RESP_HEADER_EXT_SIZE));
+        // For rolling upgrade compatibility, we first read just the marker (1 byte)
+        // to determine the header version, then read the rest of the header
+        ptr<buffer> marker_buf(buffer::alloc(1));
         aa::read( ssl_enabled_, ssl_socket_, socket_,
-                  asio::buffer(resp_buf->data(), resp_buf->size()),
-                  std::bind( &asio_rpc_client::response_read,
+                  asio::buffer(marker_buf->data(), 1),
+                  std::bind( &asio_rpc_client::handle_response_marker,
                              self,
                              req,
                              when_done,
-                             resp_buf,
+                             marker_buf,
                              std::placeholders::_1,
                              std::placeholders::_2 ),
                   use_strand_ ? &ssl_strand_ : nullptr );
+    }
+
+    void handle_response_marker( ptr<req_msg>& req,
+                                 rpc_handler& when_done,
+                                 ptr<buffer>& marker_buf,
+                                 std::error_code err,
+                                 size_t bytes_transferred )
+    {
+        ptr<asio_rpc_client> self(this->shared_from_this());
+        if (err || bytes_transferred != 1) {
+            std::string err_msg = sstrfmt( "failed to read response marker from peer %d, %s:%s, "
+                                           "error %d, %s" )
+                                           .fmt( req->get_dst(), host_.c_str(),
+                                                 port_.c_str(), err.value(),
+                                                 err.message().c_str() );
+            handle_error(req, err_msg, when_done);
+            return;
+        }
+
+        // Check marker and determine header size
+        buffer_serializer bs(marker_buf);
+        byte marker = bs.get_u8();
+        size_t header_size;
+        if (marker == MARKER_RESP_V0) {
+            header_size = RPC_RESP_HEADER_SIZE_V0;
+        } else if (marker == MARKER_RESP_V1) {
+            header_size = RPC_RESP_HEADER_SIZE_V1;
+        } else {
+            std::string err_msg = sstrfmt( "invalid response marker %u from peer %d, %s:%s")
+                                           .fmt( (uint32_t)marker, req->get_dst(),
+                                                 host_.c_str(), port_.c_str() );
+            handle_error(req, err_msg, when_done);
+            return;
+        }
+
+        // Allocate buffer for the full header and copy marker
+        ptr<buffer> resp_buf(buffer::alloc(header_size));
+        // Directly copy the marker byte to avoid buffer API issues
+        memcpy(resp_buf->data_begin(), marker_buf->data_begin(), 1);
+
+        // Read the rest of the header
+        size_t remaining_size = header_size - 1;
+        if (remaining_size > 0) {
+            aa::read( ssl_enabled_, ssl_socket_, socket_,
+                      asio::buffer(resp_buf->data() + 1, remaining_size),
+                      std::bind( &asio_rpc_client::response_read,
+                                 self,
+                                 req,
+                                 when_done,
+                                 resp_buf,
+                                 std::placeholders::_1,
+                                 std::placeholders::_2 ),
+                      use_strand_ ? &ssl_strand_ : nullptr );
+        } else {
+            // Shouldn't happen for valid headers
+            response_read(req, when_done, resp_buf, err, 1);
+        }
     }
 
     void post_send(ptr<req_msg>& req, rpc_handler& when_done) {
@@ -2233,6 +2352,12 @@ private:
      * Lock for `pending_write_reqs_`.
      */
     std::mutex pending_write_reqs_lock_;
+
+    /**
+     * Group ID for this RPC client (for port sharing).
+     * Default 0 for backward compatibility (non-port-sharing mode).
+     */
+    int32 group_id_;
 };
 
 } // namespace nuraft
@@ -2556,7 +2681,7 @@ uint32_t asio_service::get_active_workers() {
     return impl_->num_active_workers_.load();
 }
 
-ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
+ptr<rpc_client> asio_service::create_client(const std::string& endpoint, int32 group_id) {
     // NOTE:
     //   Abandoned regular expression due to bug in GCC < 4.9.
     //   And also support `endpoint` which doesn't start with `tcp://`.
@@ -2602,7 +2727,8 @@ ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
                    hostname,
                    port,
                    impl_->my_opt_.enable_ssl_,
-                   l_ );
+                   l_,
+                   group_id );  // Pass group_id to client
 }
 
 ptr<rpc_listener> asio_service::create_rpc_listener( ushort listening_port,
