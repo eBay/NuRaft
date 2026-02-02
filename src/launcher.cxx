@@ -81,24 +81,13 @@ bool raft_launcher::init_shared_port(int port_number,
     // Set dispatcher to listener
     asio_listener_->set_dispatcher(dispatcher_);
 
-    // Note: listen() will be called in add_group() when the first group is added
+    // Note: listen() will be called in init_with_group_id() when the first group is added
 
-    // Save logger for later use in add_group
+    // Save logger for later use
     logger_ = lg;
     shared_port_mode_ = true;
 
     return true;
-}
-
-int raft_launcher::add_group(int32 group_id,
-                             ptr<state_machine> sm,
-                             ptr<state_mgr> smgr,
-                             const raft_params& params,
-                             const raft_server::init_options& opt)
-{
-    // Use init_with_group_id and convert return type
-    ptr<raft_server> server = init_with_group_id(group_id, sm, smgr, logger_, params, opt);
-    return server ? 0 : -1;
 }
 
 ptr<raft_server> raft_launcher::init_with_group_id(int32 group_id,

@@ -2681,6 +2681,11 @@ uint32_t asio_service::get_active_workers() {
     return impl_->num_active_workers_.load();
 }
 
+ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
+    // Legacy API: delegate to the new API with default group_id = 0
+    return create_client(endpoint, 0);
+}
+
 ptr<rpc_client> asio_service::create_client(const std::string& endpoint, int32 group_id) {
     // NOTE:
     //   Abandoned regular expression due to bug in GCC < 4.9.

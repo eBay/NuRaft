@@ -160,11 +160,13 @@ static int test_multi_group_shared_port() {
     // Create state machines and state managers for each group
     std::vector<std::vector<ptr<TestSm>>> state_machines(NUM_GROUPS);
     std::vector<std::vector<ptr<TestMgr>>> state_managers(NUM_GROUPS);
+    std::vector<std::vector<ptr<logger_wrapper>>> loggers(NUM_GROUPS);
 
     for (int g = 0; g < NUM_GROUPS; g++) {
         int group_id = g + 1;
         state_machines[g].resize(NUM_SERVERS);
         state_managers[g].resize(NUM_SERVERS);
+        loggers[g].resize(NUM_SERVERS);
 
         for (int i = 0; i < NUM_SERVERS; i++) {
             int server_id = i + 1;
@@ -174,6 +176,11 @@ static int test_multi_group_shared_port() {
 
             state_machines[g][i] = create_state_machine(group_id, server_id);
             state_managers[g][i] = create_state_manager(group_id, server_id, endpoint);
+
+            // Create a logger for each group-server combination
+            std::string log_file = "./port_sharing_g" + std::to_string(group_id) +
+                                   "_s" + std::to_string(server_id) + ".log";
+            loggers[g][i] = cs_new<logger_wrapper>(log_file);
         }
     }
 
@@ -185,13 +192,14 @@ static int test_multi_group_shared_port() {
             int group_id = g + 1;
             raft_params params = create_default_raft_params();
 
-            int ret = launchers[i]->add_group(
+            ptr<raft_server> sv = launchers[i]->init_with_group_id(
                 group_id,
                 state_machines[g][i],
                 state_managers[g][i],
+                loggers[g][i],
                 params);
 
-            if (ret != 0) {
+            if (!sv) {
                 TestSuite::Msg() << "Failed to add group " << group_id
                                  << " to launcher " << i << std::endl;
                 // Cleanup
@@ -408,14 +416,17 @@ static int test_dynamic_group_management() {
 
     std::vector<std::vector<ptr<TestSm>>> state_machines;
     std::vector<std::vector<ptr<TestMgr>>> state_managers;
+    std::vector<std::vector<ptr<logger_wrapper>>> loggers;
 
     state_machines.resize(3);  // groups 1, 2, 3
     state_managers.resize(3);
+    loggers.resize(3);
 
     for (int g = 0; g < 2; g++) {  // only groups 1 and 2 initially
         int group_id = g + 1;
         state_machines[g].resize(NUM_SERVERS);
         state_managers[g].resize(NUM_SERVERS);
+        loggers[g].resize(NUM_SERVERS);
 
         for (int i = 0; i < NUM_SERVERS; i++) {
             int server_id = i + 1;
@@ -425,14 +436,20 @@ static int test_dynamic_group_management() {
             state_machines[g][i] = create_state_machine(group_id, server_id);
             state_managers[g][i] = create_state_manager(group_id, server_id, endpoint);
 
+            // Create a logger for this group-server combination
+            std::string log_file = "./port_sharing_g" + std::to_string(group_id) +
+                                   "_s" + std::to_string(server_id) + ".log";
+            loggers[g][i] = cs_new<logger_wrapper>(log_file);
+
             raft_params params = create_default_raft_params();
-            int ret = launchers[i]->add_group(
+            ptr<raft_server> sv = launchers[i]->init_with_group_id(
                 group_id,
                 state_machines[g][i],
                 state_managers[g][i],
+                loggers[g][i],
                 params);
 
-            if (ret != 0) {
+            if (!sv) {
                 TestSuite::Msg() << "Failed to add group " << group_id
                                  << " to launcher " << i << std::endl;
                 // Cleanup
@@ -481,6 +498,7 @@ static int test_dynamic_group_management() {
     int group_id_3 = 3;
     state_machines[2].resize(NUM_SERVERS);
     state_managers[2].resize(NUM_SERVERS);
+    loggers[2].resize(NUM_SERVERS);
 
     for (int i = 0; i < NUM_SERVERS; i++) {
         int server_id = i + 1;
@@ -490,14 +508,20 @@ static int test_dynamic_group_management() {
         state_machines[2][i] = create_state_machine(group_id_3, server_id);
         state_managers[2][i] = create_state_manager(group_id_3, server_id, endpoint);
 
+        // Create a logger for group 3
+        std::string log_file = "./port_sharing_g" + std::to_string(group_id_3) +
+                               "_s" + std::to_string(server_id) + ".log";
+        loggers[2][i] = cs_new<logger_wrapper>(log_file);
+
         raft_params params = create_default_raft_params();
-        int ret = launchers[i]->add_group(
+        ptr<raft_server> sv = launchers[i]->init_with_group_id(
             group_id_3,
             state_machines[2][i],
             state_managers[2][i],
+            loggers[2][i],
             params);
 
-        if (ret != 0) {
+        if (!sv) {
             TestSuite::Msg() << "Failed to add group " << group_id_3
                              << " to launcher " << i << std::endl;
             // Cleanup

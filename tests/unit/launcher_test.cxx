@@ -129,7 +129,7 @@ static int test_remove_nonexistent_group() {
 }
 
 static int test_add_group_without_init_fails() {
-    // Test that add_group fails without init_shared_port
+    // Test that init_with_group_id fails without init_shared_port
     raft_launcher launcher;
     ptr<logger> logger = cs_new<simple_logger>();
     asio_service::options asio_opts;
@@ -137,12 +137,12 @@ static int test_add_group_without_init_fails() {
 
     // Don't call init_shared_port
 
-    // add_group should fail
+    // init_with_group_id should fail
     ptr<state_machine> sm = nullptr;
     ptr<state_mgr> smgr = nullptr;
 
-    int ret = launcher.add_group(1, sm, smgr, params);
-    CHK_EQ(-1, ret);
+    ptr<raft_server> sv = launcher.init_with_group_id(1, sm, smgr, logger, params);
+    CHK_NULL(sv);
     return 0;
 }
 

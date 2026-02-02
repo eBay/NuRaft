@@ -66,23 +66,6 @@ public:
                           ptr<logger> lg,
                           const asio_service::options& asio_options);
 
-    /**
-     * Add a Raft group to the shared port.
-     * Creates a raft_server and registers it with the dispatcher.
-     * NOTE: This method is deprecated. Use init_with_group_id() instead.
-     *
-     * @param group_id Unique group identifier.
-     * @param sm State machine.
-     * @param smgr State manager.
-     * @param params Raft parameters.
-     * @param opt Raft server init options.
-     * @return 0 on success, -1 on failure (group_id already exists or creation failed).
-     */
-    int add_group(int32 group_id,
-                  ptr<state_machine> sm,
-                  ptr<state_mgr> smgr,
-                  const raft_params& params,
-                  const raft_server::init_options& opt = raft_server::init_options());
 
     /**
      * Initialize a Raft group with its own logger (for port sharing mode).
