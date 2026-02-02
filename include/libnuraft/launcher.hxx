@@ -54,13 +54,25 @@ public:
 
     /**
      * Initialize shared port mode for multiple Raft groups.
-     * Creates ASIO service and listener, but does not create any raft_server.
-     * Use add_group() to add Raft groups to this shared port.
      *
-     * @param port_number Shared port number.
-     * @param lg Logger.
-     * @param asio_options ASIO options.
-     * @return `true` on success, `false` on error.
+     * This method initializes the ASIO service and creates a TCP listener on the
+     * specified port, but does NOT create any raft_server instances. It sets up
+     * the infrastructure needed for port sharing, including a dispatcher that
+     * routes incoming requests to the appropriate Raft group based on group_id.
+     *
+     * After calling this method, use init_with_group_id() to create individual
+     * Raft groups. Each group will share the same port but have its own state
+     * machine, state manager, and logger.
+     *
+     * Important: This method cannot be called if the launcher has already been
+     * initialized with the init() method (legacy mode). Once initialized in
+     * shared port mode, only init_with_group_id() can be used to add groups.
+     *
+     * @param port_number Shared port number for all Raft groups.
+     * @param lg Logger for the launcher (not for individual groups).
+     * @param asio_options ASIO service options. For port sharing, consider
+     *        setting header_version_ to 1 to enable extended header format.
+     * @return `true` on success, `false` on error (e.g., already initialized).
      */
     bool init_shared_port(int port_number,
                           ptr<logger> lg,
@@ -68,19 +80,41 @@ public:
 
 
     /**
-     * Initialize a Raft group with its own logger (for port sharing mode).
-     * This is the recommended API for port sharing, replacing add_group().
+     * Initialize a Raft group with its own resources (for port sharing mode).
      *
-     * After calling init_shared_port(), use this method to create each Raft group.
-     * Each group gets its own raft_server instance and logger.
+     * This method MUST be called after init_shared_port(). It creates a new
+     * Raft group with its own raft_server instance, state machine, state manager,
+     * and logger. Multiple groups can be added to the same shared port.
      *
-     * @param group_id Unique group identifier.
+     * Each group operates independently but shares the network port. Incoming
+     * requests are routed to the appropriate group based on the group_id field
+     * in the message header.
+     *
+     * Key features:
+     * - Each group has its own state machine and state manager
+     * - Each group has its own logger for independent logging
+     * - Groups are isolated from each other (no shared state)
+     * - The first group added will start the listener
+     *
+     * Typical usage:
+     *   raft_launcher launcher;
+     *   launcher.init_shared_port(20000, logger, asio_opts);
+     *
+     *   // Add group 1
+     *   auto server1 = launcher.init_with_group_id(1, sm1, smgr1, logger1, params1);
+     *
+     *   // Add group 2
+     *   auto server2 = launcher.init_with_group_id(2, sm2, smgr2, logger2, params2);
+     *
+     * @param group_id Unique group identifier (must be > 0).
      * @param sm State machine for this group.
      * @param smgr State manager for this group.
      * @param lg Logger for this group (each group should have its own logger).
-     * @param params Raft parameters.
-     * @param opt Raft server init options.
+     * @param params Raft parameters for this group.
+     * @param opt Raft server initialization options.
      * @return Raft server instance on success, nullptr on failure.
+     *         Failure reasons: not in shared port mode, group_id already exists,
+     *         or required parameters are null.
      */
     ptr<raft_server> init_with_group_id(int32 group_id,
                                          ptr<state_machine> sm,
