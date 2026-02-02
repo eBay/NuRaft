@@ -255,13 +255,13 @@ public:
         }
     }
 
-    template<typename BB, typename FF, typename Strand>
+    template<typename BB, typename FF, typename Strand = void>
     static void read(bool is_ssl,
                      ssl_socket& _ssl_socket,
                      asio::ip::tcp::socket& tcp_socket,
                      const BB& buffer,
                      FF func,
-                     Strand* strand)
+                     Strand* strand = nullptr)
     {
         if (is_ssl && strand) {
             asio::post(*strand, [&_ssl_socket, buffer, func, strand]() mutable {
@@ -269,21 +269,6 @@ public:
                     asio::bind_executor(*strand, func));
             });
         } else if (is_ssl) {
-            asio::async_read(_ssl_socket, buffer, func);
-        } else {
-            asio::async_read(tcp_socket, buffer, func);
-        }
-    }
-
-    // Overload for when strand is not provided
-    template<typename BB, typename FF>
-    static void read(bool is_ssl,
-                     ssl_socket& _ssl_socket,
-                     asio::ip::tcp::socket& tcp_socket,
-                     const BB& buffer,
-                     FF func)
-    {
-        if (is_ssl) {
             asio::async_read(_ssl_socket, buffer, func);
         } else {
             asio::async_read(tcp_socket, buffer, func);
@@ -512,15 +497,9 @@ public:
                 };
 
                 // Read remaining bytes starting from position 1 (after marker)
-                if (use_strand_) {
-                    aa::read( ssl_enabled_, ssl_socket_, socket_,
-                              asio::buffer( header_->data() + 1, remaining_size ),
-                              continue_handler, &ssl_strand_ );
-                } else {
-                    aa::read( ssl_enabled_, ssl_socket_, socket_,
-                              asio::buffer( header_->data() + 1, remaining_size ),
-                              continue_handler );
-                }
+                aa::read( ssl_enabled_, ssl_socket_, socket_,
+                          asio::buffer( header_->data() + 1, remaining_size ),
+                          continue_handler, use_strand_ ? &ssl_strand_ : nullptr );
             } else {
                 // Process immediately (shouldn't happen for valid headers)
                 process_header(self, header_size, marker);
@@ -528,15 +507,9 @@ public:
         };
 
         // First read: only 1 byte (marker)
-        if (use_strand_) {
-            aa::read( ssl_enabled_, ssl_socket_, socket_,
-                      asio::buffer( header_->data(), 1 ),
-                      handler, &ssl_strand_ );
-        } else {
-            aa::read( ssl_enabled_, ssl_socket_, socket_,
-                      asio::buffer( header_->data(), 1 ),
-                      handler );
-        }
+        aa::read( ssl_enabled_, ssl_socket_, socket_,
+                  asio::buffer( header_->data(), 1 ),
+                  handler, use_strand_ ? &ssl_strand_ : nullptr );
     }
 
     void process_header(ptr<rpc_session> self, size_t header_size, byte marker) {
