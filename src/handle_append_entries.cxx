@@ -154,8 +154,6 @@ void raft_server::append_entries_in_bg_exec() {
 }
 
 void raft_server::request_append_entries() {
-    p_db("request_append_entries: peers_.size()=%zu", peers_.size());
-
     // Special case:
     //   1) one-node cluster, OR
     //   2) quorum size == 1 (including leader).
