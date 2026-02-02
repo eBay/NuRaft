@@ -771,7 +771,7 @@ private:
 
         std::string meta_str;
         ptr<req_msg> req = cs_new<req_msg>
-                           ( term, t, src, dst, last_term, last_idx, commit_idx, current_group_id_ );
+                           ( term, t, src, dst, last_term, last_idx, commit_idx );
         if (flags_ & MARK_DOWN) {
             req->set_extra_flags(
                 req->get_extra_flags() | req_msg::EXCLUDED_FROM_THE_QUORUM);

@@ -140,7 +140,7 @@ void raft_server::invite_srv_to_join_cluster() {
                          srv_to_join_->get_id(),
                          0L,
                          log_store_->next_slot() - 1,
-                         quick_commit_index_.load(), ctx_->group_id_ );
+                         quick_commit_index_.load() );
 
     ptr<cluster_config> c_conf = get_config();
     req->log_entries().push_back
@@ -390,7 +390,7 @@ void raft_server::sync_log_to_new_srv(ulong start_idx) {
                                srv_to_join_->get_id(),
                                0L,
                                start_idx - 1,
-                               quick_commit_index_.load(), ctx_->group_id_ );
+                               quick_commit_index_.load() );
         req->log_entries().push_back
             ( cs_new<log_entry>
               ( state_->get_term(), log_pack, log_val_type::log_pack) );
@@ -519,7 +519,7 @@ ptr<resp_msg> raft_server::handle_rm_srv_req(req_msg& req) {
                               msg_type::leave_cluster_request,
                               id_, srv_id, 0,
                               log_store_->next_slot() - 1,
-                              quick_commit_index_.load(), ctx_->group_id_ ) );
+                              quick_commit_index_.load() ) );
     // WARNING:
     //   DO NOT reset HB counter to 0 as removing server
     //   may be requested multiple times, and anyway we should

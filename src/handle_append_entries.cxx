@@ -154,9 +154,7 @@ void raft_server::append_entries_in_bg_exec() {
 }
 
 void raft_server::request_append_entries() {
-    // Debug: log peers_ size and group_id
-    p_db("request_append_entries: group_id=%d, peers_.size()=%zu",
-         ctx_->group_id_, peers_.size());
+    p_db("request_append_entries: peers_.size()=%zu", peers_.size());
 
     // Special case:
     //   1) one-node cluster, OR
@@ -599,7 +597,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
         // Send out-of-log-range notification to this follower.
         ptr<req_msg> req = cs_new<req_msg>
                            ( term, msg_type::custom_notification_request,
-                             id_, p.get_id(), 0, last_log_idx, commit_idx, ctx_->group_id_ );
+                             id_, p.get_id(), 0, last_log_idx, commit_idx );
 
         // Out-of-log message.
         ptr<out_of_log_msg> ool_msg = cs_new<out_of_log_msg>();
@@ -644,7 +642,7 @@ ptr<req_msg> raft_server::create_append_entries_req(ptr<peer>& pp ,
     ptr<req_msg> req
         ( cs_new<req_msg>
           ( term, msg_type::append_entries_request, id_, p.get_id(),
-            last_log_term, last_log_idx, commit_idx, ctx_->group_id_ ) );
+            last_log_term, last_log_idx, commit_idx ) );
     std::vector<ptr<log_entry>>& v = req->log_entries();
     if (log_entries) {
         v.insert(v.end(), log_entries->begin(), log_entries->end());
@@ -1472,7 +1470,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                              id_, p->get_id(),
                              term_for_log(log_store_->next_slot() - 1),
                              log_store_->next_slot() - 1,
-                             quick_commit_index_.load(), ctx_->group_id_ );
+                             quick_commit_index_.load() );
 
         // Create a notification.
         ptr<custom_notification_msg> custom_noti =

@@ -128,18 +128,11 @@ ptr<raft_server> raft_launcher::init_with_group_id(int32 group_id,
                                 rpc_cli_factory,
                                 scheduler,
                                 params,
-                                nullptr,  // custom_global_mgr
-                                group_id);  // Pass group_id to context
+                                nullptr);  // custom_global_mgr
 
     // Create raft_server instance
     ptr<raft_server> server = cs_new<raft_server>(ctx, opt);
     if (!server) {
-        return nullptr;
-    }
-
-    // Verify group_id is correctly set
-    if (ctx->group_id_ != group_id) {
-        // Context group_id mismatch, this shouldn't happen
         return nullptr;
     }
 
