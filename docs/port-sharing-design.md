@@ -108,15 +108,22 @@ ulong        flags + CRC32                (8)
 
 **New Constants**:
 ```cpp
-// Location: src/asio_service.cxx
-#define RPC_REQ_HEADER_SIZE     39   // Unchanged (backward compatible)
-#define RPC_REQ_HEADER_EXT_SIZE 43   // New extended format
-#define FLAG_EXTENDED_HEADER    0x01 // Flag to identify extended format
+// Location: include/libnuraft/asio_service.hxx
+#define RPC_REQ_HEADER_SIZE_V0  39   // Legacy format (version 0)
+#define RPC_REQ_HEADER_SIZE_V1  58   // Extended format (version 1)
+#define RPC_RESP_HEADER_SIZE_V0 39   // Legacy format (version 0)
+#define RPC_RESP_HEADER_SIZE_V1 43   // Extended format (version 1)
+
+// Markers for version identification
+#define MARKER_REQ_V0  0x0
+#define MARKER_REQ_V1  0x2
+#define MARKER_RESP_V0 0x1
+#define MARKER_RESP_V1 0x3
 ```
 
-**Extended Request Header** (43 bytes):
+**Extended Request Header** (58 bytes):
 ```cpp
-byte         marker (req = 0x0)            (1)
+byte         marker (req = 0x2)            (1)  // Version 1 marker
 msg_type     type                         (1)
 int32        src                          (4)
 int32        dst                          (4)
@@ -127,20 +134,20 @@ ulong        commit_idx                   (8)
 int32        group_id                     (4)  // NEW: Raft group identifier
 int32        data_size                    (4)
 ulong        flags + CRC32                (8)
+int32        log_data_size                (4)  // Additional fields for version 1
 -------------------------------------
-              total                       (43)
+              total                       (58)
 ```
 
 **Extended Response Header** (43 bytes):
 ```cpp
-byte         marker (resp = 0x1)          (1)
+byte         marker (resp = 0x3)          (1)  // Version 1 marker
 msg_type     type                         (1)
 int32        src                          (4)
 int32        dst                          (4)
 ulong        term                         (8)
 ulong        next_idx                     (8)
 bool         accepted                     (1)
-byte         _padding                     (1)  // NEW: alignment
 int32        ctx data size                (4)
 int32        group_id                     (4)  // NEW: Raft group identifier
 ulong        flags + CRC32                (8)
@@ -148,21 +155,27 @@ ulong        flags + CRC32                (8)
               total                       (43)
 ```
 
+**Important**: The `group_id` field exists ONLY in the network message header for routing purposes. It is NOT part of the `req_msg` or `resp_msg` objects in the Raft layer.
+
 #### 2.3.3 Backward Compatibility
 
 **Compatibility Mechanism**:
-1. Use the lowest bit of `flags` field to identify extended format
-2. Sender decides whether to use extended format based on peer capability
-3. Receiver automatically recognizes both formats
+1. Use different marker values to identify header versions
+   - Version 0: `MARKER_REQ_V0 = 0x0`, `MARKER_RESP_V0 = 0x1`
+   - Version 1: `MARKER_REQ_V1 = 0x2`, `MARKER_RESP_V1 = 0x3`
+2. Sender decides which format to use based on `header_version_` option
+3. Receiver automatically detects both formats via marker byte
 
-**Handshake Protocol** (optional, for capability negotiation):
+**Configuration**:
 ```cpp
-// First message after connection establishment can include version info
-struct handshake_msg {
-    uint32 version;
-    uint32 capabilities;  // bit 0: support group_id
-};
+// In asio_service_options:
+int32 header_version_;  // 0 = legacy, 1 = extended with group_id
 ```
+
+**Rolling Upgrade**:
+- New servers can handle both version 0 and version 1 messages
+- Old servers only understand version 0 messages
+- Mixed version clusters can coexist during rolling upgrade
 
 ---
 
@@ -300,140 +313,243 @@ void asio_rpc_session::handle_request(ptr<buffer>& req_buf) {
 }
 ```
 
-### 3.3 Modify req_msg and resp_msg
+### 3.3 Architecture: Asio Layer vs Raft Layer
+
+**Important Design Principle**: `group_id` is ONLY used in the Asio (transport) layer, NOT in the Raft (logic) layer.
+
+#### 3.3.1 Layer Separation
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Asio Layer (Transport)                    │
+│  - Knows about group_id                                      │
+│  - Reads/writes group_id from/to message headers             │
+│  - Uses group_id for routing to correct raft_server          │
+│  - Manages asio_rpc_client with group_id                     │
+└─────────────────────────────────────────────────────────────┘
+                           ↓ (passes req/resp, NOT group_id)
+┌─────────────────────────────────────────────────────────────┐
+│                    Raft Layer (Logic)                        │
+│  - NO knowledge of group_id                                  │
+│  - req_msg and resp_msg do NOT contain group_id              │
+│  - Pure Raft protocol logic                                  │
+│  - Works independently of transport layer                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 3.3.2 req_msg and resp_msg - No Changes
 
 **File Locations**:
-- `include/libnuraft/req_msg.hxx`
-- `include/libnuraft/resp_msg.hxx`
+- `include/libnuraft/req_msg.hxx` - UNCHANGED (no group_id)
+- `include/libnuraft/resp_msg.hxx` - UNCHANGED (no group_id)
 
-**Modifications**:
+**Key Point**: `req_msg` and `resp_msg` do NOT contain `group_id` field. The group_id exists only in:
+1. Network message headers (for routing)
+2. `asio_rpc_client` (for sending)
+3. `rpc_session` (for receiving and routing)
 
-```cpp
-class req_msg {
-public:
-    // ... existing members ...
+This ensures clean separation between transport and protocol layers.
 
-    // New methods
-    int32 get_group_id() const          { return group_id_; }
-    void set_group_id(int32 id)         { group_id_ = id; }
+### 3.4 raft_launcher API
 
-private:
-    int32 group_id_;  // New field
-};
-```
+**File Location**: `include/libnuraft/launcher.hxx`
 
-```cpp
-class resp_msg {
-public:
-    // ... existing members ...
-
-    // New methods
-    int32 get_group_id() const          { return group_id_; }
-    void set_group_id(int32 id)         { group_id_ = id; }
-
-private:
-    int32 group_id_;  // New field
-};
-```
-
-### 3.4 Modify raft_launcher
-
-**File Location**: `src/launcher.cxx`
-
-**New APIs**:
+**APIs**:
 
 ```cpp
 class raft_launcher {
 public:
-    // Existing API (unchanged)
-    ptr<raft_server> init(...);
+    // Existing API (unchanged) - for single Raft group
+    ptr<raft_server> init(ptr<state_machine> sm,
+                          ptr<state_mgr> smgr,
+                          ptr<logger> lg,
+                          int port_number,
+                          const asio_service::options& asio_options,
+                          const raft_params& params,
+                          const raft_server::init_options& opt);
 
-    // NEW: Shared port mode
+    // NEW: Shared port mode APIs
+
     /**
-     * Initialize shared port mode
-     * @param port Listening port number
-     * @return 0 on success, -1 on failure
+     * Initialize shared port mode for multiple Raft groups
+     * @param port_number Shared port number
+     * @param lg Logger for the launcher
+     * @param asio_options ASIO options (include header_version_)
+     * @return true on success, false on error
      */
-    int init_shared_port(int port);
+    bool init_shared_port(int port_number,
+                          ptr<logger> lg,
+                          const asio_service::options& asio_options);
 
     /**
-     * Add Raft group to shared port
-     * @param group_id Group identifier
-     * @param server Raft server instance
-     * @return 0 on success, -1 on failure
+     * Initialize a Raft group with its own resources
+     * MUST be called after init_shared_port()
+     *
+     * @param group_id Unique group identifier
+     * @param sm State machine for this group
+     * @param smgr State manager for this group
+     * @param lg Logger for this group (independent per group)
+     * @param params Raft parameters
+     * @param opt Raft server init options
+     * @return Raft server instance on success, nullptr on failure
      */
-    int add_group(int32 group_id, ptr<raft_server> server);
+    ptr<raft_server> init_with_group_id(int32 group_id,
+                                         ptr<state_machine> sm,
+                                         ptr<state_mgr> smgr,
+                                         ptr<logger> lg,
+                                         const raft_params& params,
+                                         const raft_server::init_options& opt);
 
     /**
-     * Remove Raft group
+     * Remove a Raft group from the shared port
      * @param group_id Group identifier
-     * @return 0 on success, -1 on failure
+     * @return 0 on success, -1 if group_id not found
      */
     int remove_group(int32 group_id);
 
+    /**
+     * Get the raft_server for a specific group
+     * @param group_id Group identifier
+     * @return raft_server pointer, or nullptr if not found
+     */
+    ptr<raft_server> get_server(int32 group_id);
+
 private:
-    // New members
-    bool use_shared_port_;
+    // New members for shared port mode
     ptr<raft_group_dispatcher> dispatcher_;
     ptr<asio_service> asio_svc_;
     ptr<asio_listener> asio_listener_;
+    ptr<logger> logger_;
+    std::map<int32, ptr<raft_server>> servers_;
+    bool shared_port_mode_;
 };
+```
+
+**Usage Example**:
+```cpp
+raft_launcher launcher;
+
+// Initialize shared port
+asio_service::options asio_opts;
+asio_opts.header_version_ = 1;  // Enable extended header with group_id
+launcher.init_shared_port(20000, logger, asio_opts);
+
+// Add multiple groups
+for (int i = 1; i <= 5; i++) {
+    auto server = launcher.init_with_group_id(i, sm[i], smgr[i], lg[i], params[i]);
+}
 ```
 
 ---
 
-## 4. Serialization/Deserialization Modifications
+## 4. Serialization/Deserialization in Asio Layer
 
-### 4.1 Request Serialization
+### 4.1 Request Sending (Client Side)
 
-**File Location**: `src/asio_service.cxx`
+**File Location**: `src/asio_service.cxx` (asio_rpc_client::register_req_send)
 
-**Modify serialize_req_header method**:
+**Process**:
+1. Create `req_msg` object (without group_id)
+2. Determine header version from `asio_service_options::header_version_`
+3. Serialize message header with marker, group_id (if version 1)
+4. **Key Point**: group_id comes from `asio_rpc_client::group_id_`, NOT from req_msg
 
 ```cpp
-void asio_rpc_session::serialize_req_header(ptr<buffer>& buf,
-                                            ptr<req_msg>& req,
-                                            bool use_extended) {
-    int header_size = use_extended ? RPC_REQ_HEADER_EXT_SIZE : RPC_REQ_HEADER_SIZE;
-    buf = buffer::alloc(header_size + req->get_log_entries().size());
+// In asio_rpc_client::register_req_send
+int32 group_id = group_id_;  // Use client's group_id
 
-    buffer_serializer bs(buf);
+size_t header_size;
+byte req_marker;
+if (header_version >= 1) {
+    header_size = RPC_REQ_HEADER_SIZE_V1;
+    req_marker = MARKER_REQ_V1;
+} else {
+    header_size = RPC_REQ_HEADER_SIZE_V0;
+    req_marker = MARKER_REQ_V0;
+}
 
-    // Existing fields...
-    bs.put_byte(0x0);  // marker
-    bs.put_byte(static_cast<byte>(req->get_type()));
-    bs.put_int32(req->get_src());
-    bs.put_int32(req->get_dst());
-    bs.put_uint64(req->get_term());
-    bs.put_uint64(req->get_last_log_term());
-    bs.put_uint64(req->get_last_log_idx());
-    bs.put_uint64(req->get_commit_idx());
+ptr<buffer> req_buf = buffer::alloc(header_size + ...);
+buffer_serializer req_buf_bs(req_buf);
 
-    // NEW: group_id (extended format only)
-    if (use_extended) {
-        bs.put_int32(req->get_group_id());
-    }
+req_buf_bs.put_u8(req_marker);
+req_buf_bs.put_u8((byte)req->get_type());
+// ... other fields ...
 
-    bs.put_int32(static_cast<int>(req->get_log_entries().size()));
-
-    ulong flags = 0;
-    if (use_extended) {
-        flags |= FLAG_EXTENDED_HEADER;
-    }
-    bs.put_uint64(flags);
+// Add group_id for version 1
+if (header_version >= 1) {
+    req_buf_bs.put_i32(group_id);
 }
 ```
 
-### 4.2 Response Serialization
+### 4.2 Request Receiving (Server Side)
 
-**Modify serialize_resp_header method**:
+**File Location**: `src/asio_service.cxx` (rpc_session::read_complete)
+
+**Process**:
+1. Read first byte to detect marker (header version)
+2. Read remaining header based on detected version
+3. Extract `current_group_id_` from message header
+4. Create `req_msg` object (without group_id)
+5. Use `current_group_id_` for routing
 
 ```cpp
-void asio_rpc_session::serialize_resp_header(ptr<buffer>& buf,
-                                             ptr<resp_msg>& resp,
-                                             bool use_extended) {
-    int header_size = use_extended ? RPC_RESP_HEADER_EXT_SIZE : RPC_RESP_HEADER_SIZE;
-    // ... similar modifications ...
+// In rpc_session::read_complete
+// Read first byte (marker)
+byte marker = ...;
+
+// Determine header version and size
+size_t header_size;
+if (marker == MARKER_REQ_V1) {
+    header_size = RPC_REQ_HEADER_SIZE_V1;
+} else {
+    header_size = RPC_REQ_HEADER_SIZE_V0;
+}
+
+// Read complete header
+// ...
+
+// Extract group_id (version 1 only)
+current_group_id_ = 0;
+if (header_size >= RPC_REQ_HEADER_SIZE_V1) {
+    current_group_id_ = h_bs.get_i32();
+}
+
+// Create req_msg WITHOUT group_id
+ptr<req_msg> req = cs_new<req_msg>(term, t, src, dst,
+                                     last_term, last_idx, commit_idx);
+
+// Route based on current_group_id_
+if (dispatcher_ && current_group_id_ != 0) {
+    resp = dispatcher_->dispatch(current_group_id_, *req);
+} else {
+    resp = raft_server_handler::process_req(handler_.get(), *req);
+}
+```
+
+### 4.3 Response Sending (Server Side)
+
+**Process**:
+1. Raft handler returns `resp_msg` (without group_id)
+2. Asio layer uses `current_group_id_` from request
+3. Serialize response header with marker, group_id (if version 1)
+
+```cpp
+// Use group_id from request header, NOT from resp_msg
+int32 group_id = current_group_id_;
+
+byte resp_marker;
+size_t header_size;
+if (header_version >= 1) {
+    header_size = RPC_RESP_HEADER_SIZE_V1;
+    resp_marker = MARKER_RESP_V1;
+} else {
+    header_size = RPC_RESP_HEADER_SIZE_V0;
+    resp_marker = MARKER_RESP_V0;
+}
+
+// Serialize with group_id
+if (header_version >= 1) {
+    bs.put_i32(group_id);
 }
 ```
 
@@ -452,22 +568,36 @@ int main() {
     raft_launcher launcher;
 
     // 1. Initialize shared port
-    launcher.init_shared_port(20000);
+    asio_service::options asio_opts;
+    asio_opts.header_version_ = 1;  // Enable extended header with group_id
+
+    launcher.init_shared_port(20000, launcher_logger, asio_opts);
 
     // 2. Create multiple Raft groups
     for (int i = 1; i <= 5; i++) {
-        // Create raft_server
-        ptr<raft_server> server = create_raft_server(...);
+        // Each group has its own state machine, state manager, and logger
+        ptr<state_machine> sm = create_state_machine(i);
+        ptr<state_mgr> smgr = create_state_manager(i);
+        ptr<logger> lg = create_logger(i);
 
-        // Add to shared port
-        launcher.add_group(i, server);
+        raft_params params = create_default_params();
+
+        // Initialize group (returns raft_server instance)
+        ptr<raft_server> server = launcher.init_with_group_id(
+            i, sm, smgr, lg, params);
+
+        if (!server) {
+            std::cerr << "Failed to initialize group " << i << std::endl;
+            return 1;
+        }
     }
 
     // 3. All groups now share port 20000
-    // Client connection: 127.0.0.1:20000, message includes group_id
+    // Client connection: 127.0.0.1:20000, message header includes group_id
 
     // ... run ...
 
+    launcher.shutdown(5);
     return 0;
 }
 ```
@@ -475,58 +605,113 @@ int main() {
 ### 5.2 Client Connection Example
 
 ```cpp
-// Client needs to specify group_id
-ptr<rpc_client> client = create_rpc_client("127.0.0.1:20000");
+// Create RPC client with group_id
+asio_service::options asio_opts;
+asio_opts.header_version_ = 1;  // Enable extended header
 
-// Send request to specific group
-ptr<req_msg> req = cs_new<req_msg>(...);
-req->set_group_id(3);  // Send to group 3
+ptr<asio_service> asio_svc = cs_new<asio_service>(asio_opts);
+ptr<rpc_client> client = asio_svc->create_client("127.0.0.1:20000", 3);
 
+// Create request (NO group_id in req_msg object)
+ptr<req_msg> req = cs_new<req_msg>(term, type, src, dst,
+                                     last_log_term, last_log_idx, commit_idx);
+
+// Send request - Asio layer adds group_id to message header
 ptr<resp_msg> resp = client->send(req);
 ```
+
+**Key Point**: The `req_msg` object does NOT contain `group_id`. The `asio_rpc_client` adds `group_id` to the network message header during serialization.
 
 ### 5.3 Dynamic Group Management
 
 ```cpp
 // Add new group at runtime
-ptr<raft_server> new_server = create_raft_server(...);
-launcher.add_group(6, new_server);
+ptr<raft_server> new_server = launcher.init_with_group_id(
+    6, sm6, smgr6, lg6, params6);
+
+if (new_server) {
+    std::cout << "Group 6 added successfully" << std::endl;
+}
 
 // Remove group at runtime
-launcher.remove_group(3);
+int ret = launcher.remove_group(3);
+if (ret == 0) {
+    std::cout << "Group 3 removed successfully" << std::endl;
+}
+
+// Get server instance for a group
+ptr<raft_server> server = launcher.get_server(1);
+if (server) {
+    // Use server instance
+    server->send_append_entries(...);
+}
 ```
 
 ---
 
 ## 6. Compatibility Strategy
 
-### 6.1 Version Negotiation
+### 6.1 Header Version Configuration
 
-**Capability Detection**:
+**Version Configuration**:
 ```cpp
-struct connection_capability {
-    bool support_group_id;
-    uint32 max_version;
+// In asio_service_options
+struct asio_service_options {
+    int32 header_version_;  // 0 = legacy, 1 = extended with group_id
+    // ... other options ...
 };
 ```
 
-**Handshake Flow**:
-1. Client sends handshake message after connection
-2. Server returns its capabilities
-3. Both parties negotiate to use extended or legacy format
+**Default Value**:
+- `header_version_ = 0` (legacy format) by default
+- Set to `1` to enable port sharing with group_id routing
 
-### 6.2 Smooth Upgrade
+### 6.2 Rolling Upgrade Strategy
 
-**Phase 1**: Deploy code supporting extended format, but default to legacy format
-**Phase 2**: Gradually migrate to extended format
-**Phase 3**: After all nodes upgrade, legacy format support can be removed
+**Phase 1**: Deploy new code with `header_version_ = 0`
+- Code supports both version 0 and version 1
+- Uses legacy format (39/43 bytes headers)
+- No group_id routing
 
-### 6.3 Fallback Strategy
+**Phase 2**: Enable `header_version_ = 1` gradually
+- Set `header_version_ = 1` in asio_service_options
+- New format (58/43 bytes headers) with group_id
+- Old clients can still connect (version detection via marker)
 
-If peer doesn't support extended format:
-- Use legacy 39-byte header
-- group_id defaults to 0
-- Functionality falls back to single-port single-group mode
+**Phase 3**: Full migration
+- All nodes using version 1
+- Full port sharing functionality enabled
+
+### 6.3 Marker-Based Version Detection
+
+**Version Markers**:
+```cpp
+// Request markers
+#define MARKER_REQ_V0  0x0  // Legacy
+#define MARKER_REQ_V1  0x2  // Extended with group_id
+
+// Response markers
+#define MARKER_RESP_V0 0x1  // Legacy
+#define MARKER_RESP_V1 0x3  // Extended with group_id
+```
+
+**Detection Logic**:
+```cpp
+// Server side (rpc_session)
+byte marker = header_->data();
+if (marker == MARKER_REQ_V1) {
+    // Version 1: read extended header
+    current_header_size_ = RPC_REQ_HEADER_SIZE_V1;
+} else {
+    // Version 0: read legacy header
+    current_header_size_ = RPC_REQ_HEADER_SIZE_V0;
+}
+```
+
+**Advantages**:
+- No additional handshake required
+- Backward compatible with old clients
+- Seamless version detection
 
 ---
 
@@ -534,25 +719,78 @@ If peer doesn't support extended format:
 
 ### 7.1 Network Overhead
 
-- **Message size increase**: 39 → 43 bytes (+4 bytes)
-- **Overhead ratio**: ~10% (more significant for small messages)
-- **Optimization suggestion**: Make extended format configurable
+**Version 0 (Legacy)**:
+- Request: 39 bytes
+- Response: 39 bytes
+
+**Version 1 (Extended)**:
+- Request: 58 bytes (+19 bytes, ~49% increase)
+- Response: 43 bytes (+4 bytes, ~10% increase)
+
+**Impact**:
+- More significant for small messages (e.g., heartbeat)
+- Negligible for large messages (e.g., log entries with data)
+- Configurable via `header_version_` option
+
+**Optimization**: Use version 0 for single-group deployments to minimize overhead
 
 ### 7.2 CPU Overhead
 
 - **Dispatcher lookup**: O(log N), where N is number of groups
-- **Actual impact**: Negligible (Map lookup is very fast)
+- **Actual impact**: Negligible (std::map lookup is very fast)
+- **No additional work** in Raft layer
 
 ### 7.3 Memory Overhead
 
 - **Dispatcher memory**: ~100 bytes per group (Map entry)
 - **1000 groups**: ~100 KB (negligible)
+- **asio_rpc_client**: +4 bytes per client (group_id_)
+- **rpc_session**: +4 bytes per session (current_group_id_)
 
 ---
 
-## 8. Future Extensions
+## 8. Architectural Benefits
 
-### 8.1 Possible Optimizations
+### 8.1 Clean Layer Separation
+
+**Before** (Coupled):
+```
+Network Message → Asio → req_msg (with group_id) → Raft Handler
+                                      ↑
+                                   (Raft knows about group_id)
+```
+
+**After** (Decoupled):
+```
+Network Message (with group_id) → Asio → req_msg (NO group_id) → Raft Handler
+                                      ↑
+                                   (Raft doesn't know about group_id)
+```
+
+**Benefits**:
+1. **Separation of Concerns**: Raft protocol logic is independent of transport details
+2. **Easier Testing**: Raft layer can be tested without Asio layer
+3. **Flexibility**: Can change transport layer without affecting Raft protocol
+4. **Maintainability**: Cleaner code, easier to understand and modify
+
+### 8.2 Simplified Raft Layer
+
+**What Changed**:
+- `req_msg` constructor: 7 parameters (was 8 with group_id)
+- `resp_msg` constructor: 5 parameters (was 6 with group_id)
+- `context`: No `group_id_` field
+- All `handle_*` functions: Don't need to pass `group_id`
+
+**Code Reduction**:
+- ~68 lines of code removed from Raft layer
+- No need to propagate `group_id` through call chains
+- Cleaner API interfaces
+
+---
+
+## 9. Future Extensions
+
+### 9.1 Possible Optimizations
 
 1. **Automatic Group ID Allocation**
    - Use UUID instead of int32
@@ -566,7 +804,7 @@ If peer doesn't support extended format:
    - Independent metrics per group
    - Request tracing
 
-### 8.2 Advanced Features
+### 9.2 Advanced Features
 
 1. **Hot Migration**
    - Dynamically migrate group to other port
@@ -578,13 +816,30 @@ If peer doesn't support extended format:
 
 ---
 
-## 9. Summary
+## 10. Summary
 
 This design enables port sharing in NuRaft by extending message headers and introducing a Dispatcher mechanism, effectively solving the port resource consumption problem in the current architecture. The design fully considers backward compatibility, performance, and extensibility, providing a solid foundation for multi-tenant and cloud-native deployments.
 
 **Key Advantages**:
 - ✅ Saves port resources (N groups → 1 port)
-- ✅ Backward compatible (gradual upgrade)
-- ✅ Minimal performance impact (+4 bytes)
-- ✅ Easy to use (clean and clear API)
+- ✅ Clean architecture (Asio vs Raft layer separation)
+- ✅ Backward compatible (version 0 and version 1)
+- ✅ Configurable (header_version_ option)
+- ✅ Easy to use (init_shared_port + init_with_group_id)
+- ✅ Each group has independent logger
+- ✅ Returns raft_server instance (better than error codes)
 - ✅ Highly extensible (supports future enhancements)
+
+**Architecture Highlight**:
+```
+The key innovation is keeping group_id ONLY in the Asio layer:
+- Network headers: YES (for routing)
+- asio_rpc_client: YES (for sending)
+- rpc_session: YES (for receiving and routing)
+- req_msg/resp_msg: NO (Raft layer doesn't know)
+- context: NO (Raft layer doesn't know)
+- Raft handlers: NO (Pure protocol logic)
+
+This ensures proper separation of concerns and makes the codebase
+more maintainable and testable.
+```
