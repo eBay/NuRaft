@@ -244,6 +244,9 @@ bool raft_launcher::shutdown(size_t time_limit_sec) {
         }
         asio_svc_.reset();
     }
+
+    if (asio_svc_->get_active_workers()) return false;
+    
     logger_.reset();
     return true;
 }

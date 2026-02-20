@@ -50,8 +50,5 @@ int main(int argc, char** argv) {
 
     ts.doTest("basic register/deregister test", basic_register_deregister_test);
 
-    _msg("NOTE: Full dispatcher tests require raft_server instances.\n");
-    _msg("      Basic structure tests passed. Integration tests will follow.\n");
-
     return 0;
 }

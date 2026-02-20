@@ -21,35 +21,12 @@ limitations under the License.
 #include <memory>
 #include <stdexcept>
 
-namespace nuraft {
-
-// Simple logger implementation for testing
-class simple_logger : public logger {
-public:
-    simple_logger() {}
-    virtual ~simple_logger() {}
-
-    void put_details(int level,
-                     const char* source_file,
-                     const char* func_name,
-                     size_t line_number,
-                     const std::string& log_message)
-    {
-        // Suppress output for cleaner test results
-    }
-
-    void set_level(int) {}
-    int get_level() { return 0; }
-};
-
-} // namespace nuraft
-
 using namespace nuraft;
 
 // Test functions
 static int test_init_shared_port_basic() {
     raft_launcher launcher;
-    ptr<logger> logger = cs_new<simple_logger>();
+    ptr<logger> logger = nullptr;
     asio_service::options asio_opts;
 
     bool result = launcher.init_shared_port(10001, logger, asio_opts);
@@ -68,7 +45,7 @@ static int test_init_shared_port_basic() {
 static int test_get_raft_server_null_in_shared_mode() {
     // Test that get_raft_server returns null in shared port mode
     raft_launcher launcher;
-    ptr<logger> logger = cs_new<simple_logger>();
+    ptr<logger> logger = nullptr;
     asio_service::options asio_opts;
 
     launcher.init_shared_port(10002, logger, asio_opts);
@@ -83,7 +60,7 @@ static int test_get_raft_server_null_in_shared_mode() {
 static int test_double_init_fails() {
     // Test that double initialization fails
     raft_launcher launcher;
-    ptr<logger> logger = cs_new<simple_logger>();
+    ptr<logger> logger = nullptr;
     asio_service::options asio_opts;
 
     // First init
@@ -101,7 +78,7 @@ static int test_double_init_fails() {
 static int test_get_server_null_before_add() {
     // Test that get_server returns null before adding any groups
     raft_launcher launcher;
-    ptr<logger> logger = cs_new<simple_logger>();
+    ptr<logger> logger = nullptr;
     asio_service::options asio_opts;
 
     launcher.init_shared_port(10005, logger, asio_opts);
@@ -116,7 +93,7 @@ static int test_get_server_null_before_add() {
 static int test_remove_nonexistent_group() {
     // Test that removing non-existent group fails
     raft_launcher launcher;
-    ptr<logger> logger = cs_new<simple_logger>();
+    ptr<logger> logger = nullptr;
     asio_service::options asio_opts;
 
     launcher.init_shared_port(10006, logger, asio_opts);
@@ -131,7 +108,7 @@ static int test_remove_nonexistent_group() {
 static int test_add_group_without_init_fails() {
     // Test that init_with_group_id fails without init_shared_port
     raft_launcher launcher;
-    ptr<logger> logger = cs_new<simple_logger>();
+    ptr<logger> logger = nullptr;
     asio_service::options asio_opts;
     raft_params params;
 

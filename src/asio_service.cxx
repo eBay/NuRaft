@@ -477,33 +477,35 @@ public:
 
             // Step 3: Read the rest of the header (excluding the already-read marker)
             size_t remaining_size = header_size - 1;
-            if (remaining_size > 0) {
-                auto continue_handler = [this, self, header_size, marker]
-                                       (const ERROR_CODE& err2, size_t) -> void
-                {
-                    if (err2) {
-                        p_er( "session %" PRIu64 " failed to read header remainder from socket %s:%u "
-                              "due to error %d, %s",
-                              session_id_,
-                              cached_address_.c_str(),
-                              cached_port_,
-                              err2.value(),
-                              err2.message().c_str() );
-                        this->stop();
-                        return;
-                    }
-                    // Process the complete header
-                    process_header(self, header_size, marker);
-                };
-
-                // Read remaining bytes starting from position 1 (after marker)
-                aa::read( ssl_enabled_, ssl_socket_, socket_,
-                          asio::buffer( header_->data() + 1, remaining_size ),
-                          continue_handler, use_strand_ ? &ssl_strand_ : nullptr );
-            } else {
-                // Process immediately (shouldn't happen for valid headers)
-                process_header(self, header_size, marker);
+            if (remaining_size == 0) {
+                p_er( "session %" PRIu64 " invalid header size (remaining_size == 0)",
+                      session_id_ );
+                this->stop();
+                return;
             }
+
+            auto continue_handler = [this, self, header_size, marker]
+                                    (const ERROR_CODE& err2, size_t) -> void
+            {
+                if (err2) {
+                    p_er( "session %" PRIu64 " failed to read header remainder from socket %s:%u "
+                            "due to error %d, %s",
+                            session_id_,
+                            cached_address_.c_str(),
+                            cached_port_,
+                            err2.value(),
+                            err2.message().c_str() );
+                    this->stop();
+                    return;
+                }
+                // Process the complete header
+                process_header(self, header_size, marker);
+            };
+
+            // Read remaining bytes starting from position 1 (after marker)
+            aa::read( ssl_enabled_, ssl_socket_, socket_,
+                        asio::buffer( header_->data() + 1, remaining_size ),
+                        continue_handler, use_strand_ ? &ssl_strand_ : nullptr );
         };
 
         // First read: only 1 byte (marker)
@@ -1042,6 +1044,7 @@ private:
                    [this, self, req, resp_buf]
                    (ERROR_CODE err_code, size_t bytes_written) -> void
         {
+            (void)bytes_written;
             // To avoid releasing `resp_buf` before the write is done.
             (void)resp_buf;
             if (!err_code) {
