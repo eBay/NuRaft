@@ -80,7 +80,7 @@ limitations under the License.
 // Note: both req & resp header structures have been modified by Jung-Sang Ahn.
 //       They MUST NOT be combined with the original code.
 
-// === Header Version 0 (Legacy Format) ===
+// === Header Version 0 ===
 // request header version 0:
 //     byte         marker (req = 0x0)  (1),
 //     msg_type     type                (1),
@@ -148,11 +148,8 @@ limitations under the License.
 #define MARKER_REQ_V1 0x2
 #define MARKER_RESP_V1 0x3
 
-// Legacy size defines for backward compatibility
-#define RPC_REQ_HEADER_SIZE RPC_REQ_HEADER_SIZE_V0
-#define RPC_RESP_HEADER_SIZE RPC_RESP_HEADER_SIZE_V0
-#define RPC_REQ_HEADER_EXT_SIZE RPC_REQ_HEADER_SIZE_V1
-#define RPC_RESP_HEADER_EXT_SIZE RPC_RESP_HEADER_SIZE_V1
+// Maximum header size for buffer allocation (version 1)
+#define RPC_REQ_HEADER_MAX_SIZE RPC_REQ_HEADER_SIZE_V1
 
 #define DATA_SIZE_LEN (4)
 #define CRC_FLAGS_LEN (8)
@@ -348,7 +345,7 @@ public:
         , use_strand_(ssl_enabled_ && impl_->get_options().streaming_mode_)
         , flags_(0x0)
         , log_data_()
-        , header_(buffer::alloc(RPC_REQ_HEADER_EXT_SIZE))
+        , header_(buffer::alloc(RPC_REQ_HEADER_MAX_SIZE))
         , l_(logger)
         , callback_(callback)
         , src_id_(-1)
@@ -463,7 +460,7 @@ public:
 
             size_t header_size;
             if (marker == MARKER_REQ_V0) {
-                // Legacy format (version 0)
+                // Version 0 format
                 header_size = RPC_REQ_HEADER_SIZE_V0;
             } else if (marker == MARKER_REQ_V1) {
                 // Extended format (version 1) with group_id
@@ -571,15 +568,8 @@ public:
             return;
         }
 
-        // For version 1, skip group_id to get to data_size
-        if (marker == MARKER_REQ_V1) {
-            // Version 1: after marker(1) + type(1) + src(4) + dst(4) + term(8) + last_log_term(8) + last_log_idx(8) + commit_idx(8)
-            // group_id comes next (4 bytes), then data_size (4 bytes)
-            h_bs.pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
-        } else {
-            // Version 0: data_size is at header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN
-            h_bs.pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
-        }
+        // Data size is always at the same relative position from the end
+        h_bs.pos(header_size - CRC_FLAGS_LEN - DATA_SIZE_LEN);
 
         int32 data_size = h_bs.get_i32();
         // Up to 1GB.
@@ -885,7 +875,7 @@ private:
                 return;
             }
         } else {
-            // Use traditional handler (backward compatibility)
+            // Use handler (backward compatibility)
             resp = raft_server_handler::process_req(handler_.get(), *req);
         }
 
@@ -978,16 +968,12 @@ private:
         int32 header_version = impl_->get_options().header_version_;
         int32 group_id = current_group_id_;  // Use group_id from request header
 
-        size_t header_size;
-        byte resp_marker;
+        size_t header_size = RPC_RESP_HEADER_SIZE_V0;
+        byte resp_marker = MARKER_RESP_V0;
         if (header_version >= 1) {
             // Version 1: extended header with group_id
             header_size = RPC_RESP_HEADER_SIZE_V1;
             resp_marker = MARKER_RESP_V1;
-        } else {
-            // Version 0: legacy header
-            header_size = RPC_RESP_HEADER_SIZE_V0;
-            resp_marker = MARKER_RESP_V0;
         }
 
         int buf_size = header_size + carried_data_size;
@@ -1607,16 +1593,12 @@ public:
         int32 header_version = impl_->get_options().header_version_;
         int32 group_id = group_id_;  // Use client's group_id instead of req's group_id
 
-        size_t header_size;
-        byte req_marker;
+        size_t header_size = RPC_RESP_HEADER_SIZE_V0;
+        byte resp_marker = MARKER_RESP_V0;
         if (header_version >= 1) {
             // Version 1: extended header with group_id
-            header_size = RPC_REQ_HEADER_SIZE_V1;
-            req_marker = MARKER_REQ_V1;
-        } else {
-            // Version 0: legacy header
-            header_size = RPC_REQ_HEADER_SIZE_V0;
-            req_marker = MARKER_REQ_V0;
+            header_size = RPC_RESP_HEADER_SIZE_V1;
+            resp_marker = MARKER_RESP_V1;
         }
 
         ptr<buffer> req_buf =
@@ -2658,7 +2640,7 @@ uint32_t asio_service::get_active_workers() {
 }
 
 ptr<rpc_client> asio_service::create_client(const std::string& endpoint) {
-    // Legacy API: delegate to the new API with default group_id = 0
+    // Delegate to the new API with default group_id = 0
     return create_client(endpoint, 0);
 }
 

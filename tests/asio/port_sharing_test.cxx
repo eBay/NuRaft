@@ -146,12 +146,10 @@ static int test_multi_group_shared_port() {
 
     // Create launchers with DIFFERENT ports (each launcher represents a physical node)
     for (int i = 0; i < NUM_SERVERS; i++) {
+        TestSuite::setInfo("i = %d", i);
         int port = BASE_PORT + i;
         ptr<raft_launcher> launcher = create_shared_port_launcher(port);
-        if (!launcher) {
-            TestSuite::Msg() << "Failed to create launcher " << i << std::endl;
-            return -1;
-        }
+        CHK_NONNULL(launcher.get());
         launchers.push_back(launcher);
     }
 
@@ -189,6 +187,7 @@ static int test_multi_group_shared_port() {
 
     for (int i = 0; i < NUM_SERVERS; i++) {
         for (int g = 0; g < NUM_GROUPS; g++) {
+            TestSuite::setInfo("i = %d, g = %d", i, g);
             int group_id = g + 1;
             raft_params params = create_default_raft_params();
 
@@ -199,15 +198,7 @@ static int test_multi_group_shared_port() {
                 loggers[g][i],
                 params);
 
-            if (!sv) {
-                TestSuite::Msg() << "Failed to add group " << group_id
-                                 << " to launcher " << i << std::endl;
-                // Cleanup
-                for (auto& l : launchers) {
-                    l->shutdown(1);
-                }
-                return -1;
-            }
+            CHK_NONNULL(sv.get());
         }
     }
 
@@ -308,16 +299,10 @@ static int test_multi_group_shared_port() {
         int group_id = g + 1;
         ptr<raft_server> leader = find_leader(launchers, group_id);
 
-        if (!leader) {
-            TestSuite::Msg() << "Failed to find leader for group " << group_id << std::endl;
-            // Cleanup
-            for (auto& l : launchers) {
-                l->shutdown(1);
-            }
-            return -1;
-        }
+        CHK_NONNULL(leader.get());
 
         for (int m = 0; m < NUM_MESSAGES; m++) {
+            TestSuite::setInfo("g = %d, m = %d", g, m);
             std::string msg_str = "group_" + std::to_string(group_id) +
                                   "_msg_" + std::to_string(m);
             ptr<buffer> msg = buffer::alloc(msg_str.size() + 1);
@@ -325,14 +310,7 @@ static int test_multi_group_shared_port() {
 
             ptr<cmd_result<ptr<buffer>>> result = leader->append_entries({msg});
 
-            if (!result->get_accepted()) {
-                TestSuite::Msg() << "Message not accepted by group " << group_id << std::endl;
-                // Cleanup
-                for (auto& l : launchers) {
-                    l->shutdown(1);
-                }
-                return -1;
-            }
+            CHK_TRUE(result->get_accepted());
         }
     }
 
@@ -345,6 +323,7 @@ static int test_multi_group_shared_port() {
     _msg("Verifying message commits...\n");
 
     for (int g = 0; g < NUM_GROUPS; g++) {
+        TestSuite::setInfo("g = %d", g);
         int group_id = g + 1;
         size_t min_commits = SIZE_MAX;
         size_t max_commits = 0;
@@ -362,15 +341,7 @@ static int test_multi_group_shared_port() {
            << min_commits << ", " << max_commits << "]" << std::endl;
 
         // All servers should have at least NUM_MESSAGES commits
-        if (min_commits < (size_t)NUM_MESSAGES) {
-            TestSuite::Msg() << "FAIL: Group " << group_id << " has only " << min_commits
-                             << " commits (expected " << NUM_MESSAGES << ")" << std::endl;
-            // Cleanup
-            for (auto& l : launchers) {
-                l->shutdown(1);
-            }
-            return -1;
-        }
+        CHK_GE(min_commits, (size_t)NUM_MESSAGES);
     }
 
     _msg("Verification passed: all groups committed messages independently\n");
