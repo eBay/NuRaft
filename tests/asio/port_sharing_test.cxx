@@ -15,6 +15,7 @@ limitations under the License.
 **************************************************************************/
 
 #include "launcher.hxx"
+#include "asio_service.hxx"
 #include "in_memory_log_store.hxx"
 #include "test_common.h"
 #include "raft_functional_common.hxx"
@@ -358,7 +359,71 @@ static int test_multi_group_shared_port() {
 }
 
 // ============================================================================
-// Test 2: Dynamic Group Management
+// Test 2: Client with Group ID
+// ============================================================================
+
+static int test_client_with_group_id() {
+    reset_port_sharing_test_logs();
+
+    const int BASE_PORT = 21051;
+    const int GROUP_ID = 1;
+
+    _msg("=== Test 2: Client with Group ID ===\n");
+
+    // Create a launcher with port sharing enabled
+    ptr<raft_launcher> launcher = create_shared_port_launcher(BASE_PORT);
+    CHK_NONNULL(launcher.get());
+
+    _msg("Launcher created on port %d\n", BASE_PORT);
+
+    // Create state machine and state manager for the group
+    std::string endpoint = "tcp://127.0.0.1:" + std::to_string(BASE_PORT);
+    ptr<TestSm> sm = create_state_machine(GROUP_ID, 1);
+    ptr<TestMgr> smgr = create_state_manager(GROUP_ID, 1, endpoint);
+    std::string log_file = "./port_sharing_client_test.log";
+    ptr<logger_wrapper> logger = cs_new<logger_wrapper>(log_file);
+
+    // Add the group to the launcher
+    raft_params params = create_default_raft_params();
+    ptr<raft_server> sv = launcher->init_with_group_id(
+        GROUP_ID, sm, smgr, logger, params);
+    CHK_NONNULL(sv.get());
+
+    _msg("Group %d added to launcher\n", GROUP_ID);
+
+    // Wait for leader election
+    TestSuite::sleep_sec(2, "wait for leader election");
+
+    // Now test the create_client(endpoint, group_id) API
+    // This is the API that the reviewer asked about
+    asio_service::options asio_opts;
+    asio_opts.header_version_ = 1;  // Required for port sharing
+
+    ptr<asio_service> asio_svc = cs_new<asio_service>(asio_opts, logger);
+
+    // Create client with group_id (non-zero)
+    std::string client_endpoint = "127.0.0.1:" + std::to_string(BASE_PORT);
+    ptr<rpc_client> client = asio_svc->create_client(client_endpoint, GROUP_ID);
+    CHK_NONNULL(client.get());
+
+    _msg("Client created with endpoint=%s, group_id=%d\n",
+         client_endpoint.c_str(), GROUP_ID);
+
+    // Verify client ID is assigned
+    uint64_t client_id = client->get_id();
+    _msg("Client ID: %lu\n", client_id);
+    CHK_TRUE(client_id > 0);
+
+    // Cleanup
+    launcher->shutdown(1);
+
+    _msg("Test 2 PASSED\n\n");
+
+    return 0;
+}
+
+// ============================================================================
+// Test 3: Dynamic Group Management
 // ============================================================================
 
 static int test_dynamic_group_management() {
@@ -626,6 +691,7 @@ int main(int argc, char** argv) {
     TestSuite ts;
 
     ts.doTest("multi-group shared port", test_multi_group_shared_port);
+    ts.doTest("client with group id", test_client_with_group_id);
     // ts.doTest("dynamic group management", test_dynamic_group_management);  // Temporarily disabled
 
     return 0;

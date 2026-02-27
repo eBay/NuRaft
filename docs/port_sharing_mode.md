@@ -121,10 +121,9 @@ asio_service::options asio_opts;
 asio_opts.header_version_ = 1;
 
 ptr<asio_service> asio_svc = cs_new<asio_service>(asio_opts);
-ptr<rpc_client> client = asio_svc->create_client("127.0.0.1:20000");
 
-// Set the group_id for this client
-client->set_group_id(1);  // Route to group 1
+// Create client with group_id for routing to specific Raft group
+ptr<rpc_client> client = asio_svc->create_client("127.0.0.1:20000", 1);
 ```
 
 ## Compatibility
