@@ -341,7 +341,7 @@ static int test_multi_group_shared_port() {
            << min_commits << ", " << max_commits << "]" << std::endl;
 
         // All servers should have at least NUM_MESSAGES commits
-        CHK_GE(min_commits, (size_t)NUM_MESSAGES);
+        CHK_GTEQ(min_commits, (size_t)NUM_MESSAGES);
     }
 
     _msg("Verification passed: all groups committed messages independently\n");

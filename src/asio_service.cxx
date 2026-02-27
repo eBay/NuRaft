@@ -1593,12 +1593,12 @@ public:
         int32 header_version = impl_->get_options().header_version_;
         int32 group_id = group_id_;  // Use client's group_id instead of req's group_id
 
-        size_t header_size = RPC_RESP_HEADER_SIZE_V0;
-        byte resp_marker = MARKER_RESP_V0;
+        size_t header_size = RPC_REQ_HEADER_SIZE_V0;
+        byte req_marker = MARKER_REQ_V0;
         if (header_version >= 1) {
             // Version 1: extended header with group_id
-            header_size = RPC_RESP_HEADER_SIZE_V1;
-            resp_marker = MARKER_RESP_V1;
+            header_size = RPC_REQ_HEADER_SIZE_V1;
+            req_marker = MARKER_REQ_V1;
         }
 
         ptr<buffer> req_buf =
