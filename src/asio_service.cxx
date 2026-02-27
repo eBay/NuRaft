@@ -875,7 +875,7 @@ private:
                 return;
             }
         } else {
-            // Use handler (backward compatibility)
+            // Use direct handler (non-port-sharing mode)
             resp = raft_server_handler::process_req(handler_.get(), *req);
         }
 
