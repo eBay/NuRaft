@@ -51,7 +51,7 @@ static int test_get_raft_server_null_in_shared_mode() {
     launcher.init_shared_port(10002, logger, asio_opts);
 
     ptr<raft_server> legacy_server = launcher.get_raft_server();
-    CHK_NULL(legacy_server);
+    CHK_NULL(legacy_server.get());
 
     launcher.shutdown(1);
     return 0;
@@ -84,7 +84,7 @@ static int test_get_server_null_before_add() {
     launcher.init_shared_port(10005, logger, asio_opts);
 
     ptr<raft_server> server = launcher.get_server(1);
-    CHK_NULL(server);
+    CHK_NULL(server.get());
 
     launcher.shutdown(1);
     return 0;
@@ -119,7 +119,7 @@ static int test_add_group_without_init_fails() {
     ptr<state_mgr> smgr = nullptr;
 
     ptr<raft_server> sv = launcher.init_with_group_id(1, sm, smgr, logger, params);
-    CHK_NULL(sv);
+    CHK_NULL(sv.get());
     return 0;
 }
 
