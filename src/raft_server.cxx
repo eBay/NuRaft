@@ -676,14 +676,18 @@ bool raft_server::is_excluded_from_quorum(const peer& pp,
         // Response time is within the expiry time.
 
         if (required_log_idx &&
-            pp.get_matched_idx() &&
-            pp.get_matched_idx() < required_log_idx) {
+            ((pp.get_matched_idx() &&
+              pp.get_matched_idx() < required_log_idx) ||
+             pp.get_snapshot_sync_ctx().get())) {
             // If the peer's matched index is less than the required log index,
             // it is considered as not responding for full consensus.
             //
-            // WARNING: Should exclude matched_idx = 0,
+            // WARNING: Should make exception for matched_idx = 0,
             //          which means the peer has not responded yet right after
             //          the new connection.
+            //
+            // WARNING: member receiving snapshot is also considered as not
+            //          responding for full consensus. It's matched_idx may be 0.
             excluded = true;
         }
 
