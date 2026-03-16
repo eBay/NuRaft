@@ -1549,12 +1549,18 @@ ulong raft_server::get_expected_committed_log_idx() {
                std::greater<ulong>() );
 
     size_t quorum_idx = get_quorum_for_commit();
-    if (ctx_->get_params()->use_full_consensus_among_healthy_members_) {
-        ptr<raft_params> params = ctx_->get_params();
+    ptr<raft_params> params = ctx_->get_params();
+
+    if (ctx_->get_params()->use_full_consensus_among_healthy_members_ &&
+        params->custom_commit_quorum_size_ == 0) {
         // In full consensus mode, a peer is considered unhealthy when
         //   1) it is not responding for 3 times of heartbeat interval, or
         //   2) its last log index is smaller (older) than
         //      the current committed log index - max batch size.
+        //
+        // WARNING: If custom quorum size is set, we should prioritize
+        //          the custom quorum size over full consensus mode.
+
         int32_t allowed_interval =
             params->heart_beat_interval_ *
             raft_server::raft_limits_.full_consensus_leader_limit_;;
