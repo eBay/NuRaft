@@ -585,6 +585,9 @@ uint64_t raft_server::find_sm_commit_idx_to_notify() {
         ? quick_commit_index_ - params->max_append_size_ : 0;
 
     uint64_t min_commit_idx = sm_commit_index_;
+    std::vector<uint64_t> commit_idx_list;
+    commit_idx_list.reserve(16);
+    commit_idx_list.push_back(sm_commit_index_);
 
     for (auto& pp: peers_) {
         uint64_t last_resp_time_ms = pp.second->get_resp_timer_us() / 1000;
@@ -595,8 +598,21 @@ uint64_t raft_server::find_sm_commit_idx_to_notify() {
         if (pp.second->get_sm_committed_idx() == 0) {
             continue;
         }
-        min_commit_idx = std::min(min_commit_idx, pp.second->get_sm_committed_idx());
+        commit_idx_list.push_back(pp.second->get_sm_committed_idx());
     }
+    // Sort it (decending order).
+    std::sort(commit_idx_list.begin(), commit_idx_list.end(),
+              std::greater<uint64_t>());
+
+    // Pick last one (== minimum).
+    size_t idx_to_pick = commit_idx_list.size() - 1;
+    if (params->custom_commit_quorum_size_ &&
+        params->custom_commit_quorum_size_ < (int)commit_idx_list.size()) {
+        // If custom quorum size is set, pick the index based on it.
+        idx_to_pick = params->custom_commit_quorum_size_ - 1;
+    }
+    min_commit_idx = commit_idx_list[idx_to_pick];
+
     return min_commit_idx;
 }
 
