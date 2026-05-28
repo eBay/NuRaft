@@ -1441,18 +1441,28 @@ void raft_server::yield_leadership(bool immediate_yield,
         p_in("got graceful re-elect request, pause write from now");
     }
 
+    // Pause write.
+    write_paused_ = true;
+
     if (candidate_id > -1) {
         p_in("next leader candidate: id %d endpoint %s priority %d "
              "last response %" PRIu64 " ms ago",
              candidate_id, candidate_endpoint.c_str(), max_priority,
              last_resp_ms);
         next_leader_candidate_ = candidate_id;;
+
+        // Send a dummy append entries request to the candidate to trigger its election.
+        auto pit = peers_.find(candidate_id);
+        if (pit != peers_.end()) {
+            p_in("send dummy append entries request to candidate %d", candidate_id);
+            request_append_entries(pit->second);
+        } else {
+            p_wn("could not find candidate %d in peers", candidate_id);
+        }
+
     } else {
         p_wn("cannot find valid candidate for next leader, will proceed anyway");
     }
-
-    // Reset reelection timer, and pause write.
-    write_paused_ = true;
 
     // Wait until election timeout upper bound.
     reelection_timer_.set_duration_ms
