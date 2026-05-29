@@ -147,6 +147,7 @@ private:
     // Hint for the leader about the next batch size (only when non-zero).
     int64 next_batch_size_hint_in_bytes_;
     bool accepted_;
+
     ptr<buffer> ctx_;
     ptr<peer> peer_;
     resp_cb cb_func_;
