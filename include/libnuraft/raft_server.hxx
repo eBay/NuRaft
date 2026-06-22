@@ -653,6 +653,7 @@ public:
         peer_info()
             : id_(-1)
             , last_log_idx_(0)
+            , last_committed_idx_(0)
             , last_succ_resp_us_(0)
             {}
 
@@ -665,6 +666,18 @@ public:
          * The last log index that the peer has, from this server's point of view.
          */
         ulong last_log_idx_;
+
+        /**
+         * The last committed log index of the peer's state machine,
+         * from this server's point of view. It can be smaller than
+         * `last_log_idx_` if the peer has appended the log but has not
+         * committed it yet (e.g., due to slow or deadlocked commit threads).
+         *
+         * NOTE: This field is meaningful only when
+         * `raft_params::track_peers_sm_commit_idx_` is enabled. Otherwise,
+         * it will always be 0.
+         */
+        ulong last_committed_idx_;
 
         /**
          * The elapsed time since the last successful response from this peer,
