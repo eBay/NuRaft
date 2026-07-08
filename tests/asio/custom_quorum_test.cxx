@@ -1385,7 +1385,7 @@ int full_consensus_with_snapshot_transfer_test() {
         CHK_GT(v_pi.size(), 0);
         for (auto& pi: v_pi) {
             CHK_GT(pi.last_log_idx_, 0);
-            CHK_GTEQ(leader_committed, pi.last_committed_idx_);
+            CHK_GTEQ(leader_committed, pi.last_sm_committed_idx_);
         }
     }
 

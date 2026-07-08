@@ -653,7 +653,7 @@ public:
         peer_info()
             : id_(-1)
             , last_log_idx_(0)
-            , last_committed_idx_(0)
+            , last_sm_committed_idx_(0)
             , last_succ_resp_us_(0)
             {}
 
@@ -677,7 +677,7 @@ public:
          * `raft_params::track_peers_sm_commit_idx_` is enabled. Otherwise,
          * it will always be 0.
          */
-        ulong last_committed_idx_;
+        ulong last_sm_committed_idx_;
 
         /**
          * The elapsed time since the last successful response from this peer,
