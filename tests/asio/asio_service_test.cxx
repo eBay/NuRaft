@@ -82,8 +82,13 @@ int make_group_test() {
         uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
         CHK_EQ(srv_id, pi.id_);
         CHK_EQ(last_log_idx, pi.last_log_idx_);
+        // `track_peers_sm_commit_idx_` is not enabled by default,
+        // so `last_sm_committed_idx_` should be 0.
+        CHK_EQ(0, pi.last_sm_committed_idx_);
         TestSuite::Msg mm;
-        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_ << ", responded " << std::fixed
+        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_
+           << ", committed " << pi.last_sm_committed_idx_
+           << ", responded " << std::fixed
            << std::setprecision(1) << pi.last_succ_resp_us_ / 1000.0 << " ms ago"
            << std::endl;
     }
@@ -96,8 +101,13 @@ int make_group_test() {
     for (raft_server::peer_info& pi: v_pi) {
         uint64_t last_log_idx = s1.raftServer->get_last_log_idx();
         CHK_EQ(last_log_idx, pi.last_log_idx_);
+        // `track_peers_sm_commit_idx_` is not enabled by default,
+        // so `last_sm_committed_idx_` should be 0.
+        CHK_EQ(0, pi.last_sm_committed_idx_);
         TestSuite::Msg mm;
-        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_ << ", responded " << std::fixed
+        mm << "srv " << pi.id_ << ": " << pi.last_log_idx_
+           << ", committed " << pi.last_sm_committed_idx_
+           << ", responded " << std::fixed
            << std::setprecision(1) << pi.last_succ_resp_us_ / 1000.0 << " ms ago"
            << std::endl;
     }

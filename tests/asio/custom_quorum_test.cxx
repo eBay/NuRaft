@@ -1377,6 +1377,18 @@ int full_consensus_with_snapshot_transfer_test() {
     do_async_append(s1, 5);
     TestSuite::sleep_ms(RaftAsioPkg::HEARTBEAT_MS * 2, "wait for replication of 5 msgs");
 
+    // Verify peer info exposes both log and committed indices when
+    // `track_peers_sm_commit_idx_` is enabled.
+    {
+        uint64_t leader_committed = s1.raftServer->get_committed_log_idx();
+        std::vector<raft_server::peer_info> v_pi = s1.raftServer->get_peer_info_all();
+        CHK_GT(v_pi.size(), 0);
+        for (auto& pi: v_pi) {
+            CHK_GT(pi.last_log_idx_, 0);
+            CHK_GTEQ(leader_committed, pi.last_sm_committed_idx_);
+        }
+    }
+
     // Bring down S3.
     s3.raftServer->shutdown();
     s3.stopAsio();
