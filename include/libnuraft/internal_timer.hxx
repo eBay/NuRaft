@@ -121,8 +121,12 @@ struct timer_helper {
     }
 
     static uint64_t get_timeofday_us() {
+        // WARNING:
+        //   The return value of this function should match the timestamp
+        //   from `gettimeofday` (i.e., microsecond precision) call.
+        //   Hence, we cannot use `steady_clock` here, and need to use `system_clock`.
         namespace sc = std::chrono;
-        sc::steady_clock::duration const d = sc::steady_clock::now().time_since_epoch();
+        sc::system_clock::duration const d = sc::system_clock::now().time_since_epoch();
         uint64_t const s = sc::duration_cast<sc::microseconds>(d).count();
         return s;
     }
