@@ -96,7 +96,7 @@ ptr< cmd_result< ptr<buffer> > > raft_server::append_entries_ext
 
     ptr<req_msg> req = cs_new<req_msg>
                        ( (ulong)0, msg_type::client_request, 0, 0,
-                         (ulong)0, (ulong)0, (ulong)0 ) ;
+                         (ulong)0, (ulong)0, (ulong)0 );
     for (auto it = logs.begin(); it != logs.end(); ++it) {
         ptr<buffer> buf = *it;
         // Just in case when user forgot to reset the position.
