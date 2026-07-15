@@ -64,6 +64,12 @@ raft_server::set_priority(const int srv_id,
         return PrioritySetResult::BROADCAST;
     }
 
+    if (config_changing_) {
+        // the previous config has not committed yet
+        p_wn("previous config has not committed yet");
+        return PrioritySetResult::IGNORED;
+    }
+
     // Clone current cluster config.
     ptr<cluster_config> cur_config = get_config();
 
