@@ -786,6 +786,10 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
         return nullptr;
     }
 
+    if (write_paused_.load(std::memory_order_relaxed)) {
+        check_resignation_timeout();
+    }
+
     if ( req.get_type() == msg_type::client_request ) {
         // Client request doesn't need to go through below process.
         return handle_cli_req_prelock(req, ext_params);
@@ -1202,7 +1206,10 @@ void raft_server::become_leader() {
     CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
     (void)rc; // nothing to do in this callback.
 
-    write_paused_ = false;
+    if (write_paused_) {
+        write_paused_ = false;
+        p_in(" --- WRITE RESUMED ---");
+    }
     next_leader_candidate_ = -1;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
@@ -1443,6 +1450,7 @@ void raft_server::yield_leadership(bool immediate_yield,
 
     // Pause write.
     write_paused_ = true;
+    p_in(" --- WRITE PAUSED ---");
 
     if (candidate_id > -1) {
         p_in("next leader candidate: id %d endpoint %s priority %d "
@@ -1468,6 +1476,21 @@ void raft_server::yield_leadership(bool immediate_yield,
     reelection_timer_.set_duration_ms
                       ( ctx_->get_params()->election_timeout_upper_bound_ );
     reelection_timer_.reset();
+}
+
+bool raft_server::check_resignation_timeout() {
+    if (write_paused_ && reelection_timer_.timeout()) {
+        p_in("resign by timeout, %" PRIu64 " us elapsed, resign now",
+             reelection_timer_.get_us());
+        leader_ = -1;
+        become_follower();
+
+        // Clear this flag to avoid pre-vote rejection.
+        hb_alive_ = false;
+        return true;
+    }
+
+    return false;
 }
 
 bool raft_server::request_leadership() {
@@ -1532,7 +1555,10 @@ void raft_server::become_follower() {
         param.ctx = &my_term;
         (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
 
-        write_paused_ = false;
+        if (write_paused_) {
+            write_paused_ = false;
+            p_in(" --- WRITE RESUMED ---");
+        }
         next_leader_candidate_ = -1;
         initialized_ = true;
         uncommitted_config_.reset();

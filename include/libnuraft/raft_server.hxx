@@ -1126,6 +1126,7 @@ protected:
     void become_leader();
     void become_follower();
     void check_srv_to_leave_timeout();
+    bool check_resignation_timeout();
     void enable_hb_for_peer(peer& p);
     void stop_election_timer();
     void handle_hb_timeout(int32 srv_id);

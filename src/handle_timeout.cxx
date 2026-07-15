@@ -59,14 +59,8 @@ void raft_server::handle_hb_timeout(int32 srv_id) {
 
     check_srv_to_leave_timeout();
 
-    if (write_paused_ && reelection_timer_.timeout()) {
-        p_in("resign by timeout, %" PRIu64 " us elapsed, resign now",
-             reelection_timer_.get_us());
-        leader_ = -1;
-        become_follower();
-
-        // Clear this flag to avoid pre-vote rejection.
-        hb_alive_ = false;
+    if (check_resignation_timeout()) {
+        // Resignation timed out, became follower.
         return;
     }
 
