@@ -644,17 +644,18 @@ int32 raft_server::get_leadership_expiry() {
     return expiry;
 }
 
-std::list<ptr<peer>> raft_server::get_not_responding_peers(int expiry) {
+std::list<ptr<peer>> raft_server::get_not_responding_peers(uint64_t expiry) {
     // Check if quorum nodes are not responding
     // (i.e., don't respond 20x heartbeat time long or expiry if sent as argument).
     // default argument for expiry is used in case user defines leadership_expiry_.
     ptr<raft_params> params = ctx_->get_params();
     if (expiry == 0) {
-        expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
+        expiry = (uint64_t)params->heart_beat_interval_ *
+                 raft_server::raft_limits_.response_limit_;
     }
 
     std::list<ptr<peer>> rs;
-    auto cb = [&rs, expiry](const ptr<peer>& peer_ptr, int32_t resp_elapsed_ms) {
+    auto cb = [&rs, expiry](const ptr<peer>& peer_ptr, uint64_t resp_elapsed_ms) {
         if (resp_elapsed_ms <= expiry) {
             // Response time is within the expiry time.
             return;
@@ -666,8 +667,8 @@ std::list<ptr<peer>> raft_server::get_not_responding_peers(int expiry) {
 }
 
 bool raft_server::is_excluded_from_quorum(const peer& pp,
-                                          int32_t resp_elapsed_ms,
-                                          int32_t expiry,
+                                          uint64_t resp_elapsed_ms,
+                                          uint64_t expiry,
                                           uint64_t required_log_idx,
                                           bool include_self_mark_down)
 {
@@ -715,7 +716,7 @@ size_t raft_server::get_not_responding_peers_count(
 
     size_t num_not_resp_nodes = 0;
     auto cb = [&num_not_resp_nodes, required_log_idx, expiry]
-        (const ptr<peer>& pp, int32_t resp_elapsed_ms)
+        (const ptr<peer>& pp, uint64_t resp_elapsed_ms)
     {
         bool non_responding_peer =
             is_excluded_from_quorum(*pp, resp_elapsed_ms, expiry, required_log_idx);
@@ -729,7 +730,7 @@ size_t raft_server::get_not_responding_peers_count(
 }
 
 void raft_server::for_each_voting_members(
-    const std::function<void(const ptr<peer>&, int32_t)>& callback) {
+    const std::function<void(const ptr<peer>&, uint64_t)>& callback) {
 
     // Check not responding peers.
     for (auto& entry: peers_) {
@@ -737,8 +738,7 @@ void raft_server::for_each_voting_members(
 
         if (!is_regular_member(peer_ptr)) continue;
 
-        const auto resp_elapsed_ms =
-            static_cast<int32>(peer_ptr->get_resp_timer_us() / 1000);
+        uint64_t resp_elapsed_ms = peer_ptr->get_resp_timer_us() / 1000;
         callback(peer_ptr, resp_elapsed_ms);
     }
 }

@@ -64,12 +64,12 @@ void raft_server::request_prevote() {
                 recreate = pp->need_to_reconnect();
 
                 // Or if it is not active long time, reconnect as well.
-                int32 last_active_time_ms = pp->get_active_timer_us() / 1000;
+                uint64_t last_active_time_ms = pp->get_active_timer_us() / 1000;
                 if ( last_active_time_ms >
-                         params->heart_beat_interval_ *
+                         (uint64_t)params->heart_beat_interval_ *
                              raft_server::raft_limits_.reconnect_limit_ ) {
-                    p_wn( "connection to peer %d is not active long time: %d ms, "
-                          "need reconnection for prevote",
+                    p_wn( "connection to peer %d is not active long time: "
+                          "%" PRIu64 " ms, need reconnection for prevote",
                           pp->get_id(),
                           last_active_time_ms );
                     recreate = true;
