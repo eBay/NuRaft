@@ -244,20 +244,20 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     }
 
     bool need_to_reconnect = p->need_to_reconnect();
-    int32 last_active_time_ms = p->get_active_timer_us() / 1000;
+    uint64_t last_active_time_ms = p->get_active_timer_us() / 1000;
     if ( last_active_time_ms >
-             params->heart_beat_interval_ *
+             (uint64_t)params->heart_beat_interval_ *
                  raft_server::raft_limits_.reconnect_limit_ ) {
         if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) {
             // We should not re-establish the connection to
             // to-be-removed server, as it will block removing it
             // from `peers_` list.
-            p_wn( "connection to peer %d is not active long time: %d ms, "
+            p_wn( "connection to peer %d is not active long time: %" PRIu64 " ms, "
                   "but this peer should be removed. do nothing",
                   p->get_id(),
                   last_active_time_ms );
         } else {
-            p_wn( "connection to peer %d is not active long time: %d ms, "
+            p_wn( "connection to peer %d is not active long time: %" PRIu64 " ms, "
                   "force re-connect",
                   p->get_id(),
                   last_active_time_ms );

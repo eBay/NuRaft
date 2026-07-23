@@ -1032,17 +1032,18 @@ protected:
     int32 get_quorum_for_election();
     int32 get_quorum_for_commit();
     int32 get_leadership_expiry();
-    std::list<ptr<peer>> get_not_responding_peers(int expiry = 0);
-    size_t get_not_responding_peers_count(int expiry = 0, uint64_t required_log_idx = 0);
+    std::list<ptr<peer>> get_not_responding_peers(uint64_t expiry = 0);
+    size_t get_not_responding_peers_count(uint64_t expiry = 0,
+                                          uint64_t required_log_idx = 0);
     size_t get_num_stale_peers();
     static bool is_excluded_from_quorum(const peer& pp,
-                                        int32_t resp_elapsed_ms,
-                                        int32_t expiry,
+                                        uint64_t resp_elapsed_ms,
+                                        uint64_t expiry,
                                         uint64_t required_log_idx,
                                         bool include_self_mark_down = true);
 
     void for_each_voting_members(
-        const std::function<void(const ptr<peer>&, int32_t)>& callback);
+        const std::function<void(const ptr<peer>&, uint64_t)>& callback);
 
     ptr<resp_msg> handle_append_entries(req_msg& req);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
