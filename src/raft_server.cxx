@@ -704,7 +704,7 @@ bool raft_server::is_excluded_from_quorum(const peer& pp,
 }
 
 size_t raft_server::get_not_responding_peers_count(
-    int expiry, uint64_t required_log_idx)
+    uint64_t expiry, uint64_t required_log_idx)
 {
     // Check if quorum nodes are not responding
     // (i.e., don't respond 20x heartbeat time long or expiry if sent as argument).

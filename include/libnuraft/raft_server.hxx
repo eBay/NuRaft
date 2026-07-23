@@ -1033,7 +1033,8 @@ protected:
     int32 get_quorum_for_commit();
     int32 get_leadership_expiry();
     std::list<ptr<peer>> get_not_responding_peers(uint64_t expiry = 0);
-    size_t get_not_responding_peers_count(int expiry = 0, uint64_t required_log_idx = 0);
+    size_t get_not_responding_peers_count(uint64_t expiry = 0,
+                                          uint64_t required_log_idx = 0);
     size_t get_num_stale_peers();
     static bool is_excluded_from_quorum(const peer& pp,
                                         uint64_t resp_elapsed_ms,
