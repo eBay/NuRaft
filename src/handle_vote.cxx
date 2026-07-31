@@ -436,6 +436,22 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
         next_idx_for_resp = std::numeric_limits<ulong>::max();
     }
 
+    if (hb_alive_) {
+        raft_params cur_params = get_current_params();
+        // This indicates the last received heartbeat.
+        int64_t last_election_reset_ms = last_election_timer_reset_.get_ms();
+        if (last_election_reset_ms > cur_params.heart_beat_interval_ * 2) {
+            // If heartbeat is not received for 2x interval,
+            // set `hb_alive_` to false even though its election timer
+            // is not fired yet.
+            p_in("election timer was reset %" PRIu64 " ms ago, "
+                 "greater than 2x heartbeat interval %d ms, "
+                 "set hb_alive_ to false",
+                 last_election_reset_ms, cur_params.heart_beat_interval_ * 2);
+            hb_alive_ = false;
+        }
+    }
+
     p_in("[PRE-VOTE REQ] my role %s, from peer %d, "
          "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "last idx: req %" PRIu64 " / mine %" PRIu64
