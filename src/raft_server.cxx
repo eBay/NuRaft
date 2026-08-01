@@ -1392,7 +1392,7 @@ void raft_server::yield_leadership(bool immediate_yield,
         leader_ = -1;
         become_follower();
         // Clear live flag to avoid pre-vote rejection.
-        hb_alive_ = false;
+        update_hb_alive_flag(false);
         return;
     }
 
@@ -1486,7 +1486,7 @@ bool raft_server::check_resignation_timeout() {
         become_follower();
 
         // Clear this flag to avoid pre-vote rejection.
-        hb_alive_ = false;
+        update_hb_alive_flag(false);
         return true;
     }
 

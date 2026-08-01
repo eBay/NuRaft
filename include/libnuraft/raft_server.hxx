@@ -1123,6 +1123,7 @@ protected:
     void reconfigure(const ptr<cluster_config>& new_config);
     void update_target_priority();
     void decay_target_priority();
+    void update_hb_alive_flag(bool to);
     bool reconnect_client(peer& p);
     void become_leader();
     void become_follower();

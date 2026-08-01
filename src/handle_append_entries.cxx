@@ -1463,7 +1463,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         update_rand_timeout();
 
         // Clear live flag to avoid pre-vote rejection.
-        hb_alive_ = false;
+        update_hb_alive_flag(false);
 
         // Send leadership takeover request to this follower.
         ptr<req_msg> req = cs_new<req_msg>
@@ -1630,7 +1630,7 @@ void raft_server::notify_log_append_completion(bool ok) {
             become_follower();
 
             // Clear this flag to avoid pre-vote rejection.
-            hb_alive_ = false;
+            update_hb_alive_flag(false);
             return;
         }
 

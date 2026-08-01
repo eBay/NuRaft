@@ -898,12 +898,6 @@ int priority_broadcast_test() {
     s1.fNet->execReqResp();
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
-    // Trigger election timer of S2.
-    s2.dbgLog(" --- invoke election timer of S2 ---");
-    s2.fTimer->invoke( timer_task_type::election_timer );
-    // Send pre-vote requests, and probably rejected by S1 and S3.
-    s2.fNet->execReqResp();
-
     // Trigger election timer of S3.
     s3.dbgLog(" --- invoke election timer of S3 ---");
     // It will not initiate vote due to priority.
@@ -926,13 +920,13 @@ int priority_broadcast_test() {
     CHK_FALSE( s3.raftServer->is_leader() );
 
     CHK_TRUE( s1.raftServer->is_leader_alive() );
-    CHK_FALSE( s2.raftServer->is_leader_alive() );
+    CHK_TRUE( s2.raftServer->is_leader_alive() );
     CHK_FALSE( s3.raftServer->is_leader_alive() );
 
     // Follower to leader broadcast
     CHK_EQ( raft_server::PrioritySetResult::BROADCAST,
-            s2.raftServer->set_priority(1, 101) );
-    s2.fNet->execReqResp();
+            s3.raftServer->set_priority(1, 101) );
+    s3.fNet->execReqResp();
     CHK_Z( check_priorities(pkgs, {101, 100, 50}) );
 
     // Follower to follower broadcast

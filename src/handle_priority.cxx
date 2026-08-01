@@ -262,10 +262,21 @@ void raft_server::update_target_priority() {
     }
     priority_change_timer_.reset();
 
-    hb_alive_ = true;
+    update_hb_alive_flag(true);
     pre_vote_.reset(state_->get_term());
     p_tr("(update) new target priority: %d", target_priority_);
 }
+
+void raft_server::update_hb_alive_flag(bool to) {
+    if (hb_alive_ == to) {
+        return;
+    }
+    p_in("update hb_alive_ flag: %s -> %s",
+         hb_alive_ ? "true" : "false",
+         to ? "true" : "false");
+    hb_alive_ = to;
+}
+
 
 } // namespace nuraft;
 
