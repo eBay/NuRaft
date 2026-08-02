@@ -437,7 +437,7 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
     }
 
     bool hb_alive_decision = hb_alive_;
-    if (hb_alive_decision) {
+    if (hb_alive_decision && !is_leader()) {
         raft_params cur_params = get_current_params();
         // This indicates the last received heartbeat.
         int64_t last_election_reset_ms = last_election_timer_reset_.get_ms();

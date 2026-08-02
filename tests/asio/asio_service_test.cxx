@@ -959,6 +959,12 @@ int enforced_state_machine_catchup_with_term_inc_test() {
     CHK_EQ( raft_server::PrioritySetResult::SET, s1.raftServer->set_priority(2, 0) );
     TestSuite::sleep_sec(1, "set S2's priority to zero");
 
+    // Set S2's `allow_temporary_zero_priority_leader_` to false,
+    // to avoid S2 becoming a leader even temporarily.
+    raft_params param = s2.raftServer->get_current_params();
+    param.allow_temporary_zero_priority_leader_ = false;
+    s2.raftServer->update_params(param);
+
     // Stop S3, delete data.
     uint64_t last_committed_idx = s3.raftServer->get_committed_log_idx();
     s3.raftServer->shutdown();
