@@ -16,6 +16,7 @@ ASIO_TESTS=(
     "./tests/asio_service_test"
     "./tests/req_resp_meta_test"
     "./tests/custom_quorum_test"
+    "./tests/priority_based_election_test"
     "./tests/stream_transport_layer_test"
     "./tests/raft_stream_mode_test"
 )

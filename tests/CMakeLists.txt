@@ -89,6 +89,15 @@ if(NOT DISABLE_ASIO)
         SKIP
     )
 
+    unit_test(NAME priority_based_election_test
+        SOURCES
+        asio/priority_based_election_test.cxx
+        ${EXAMPLES_SRC}/logger.cc
+        ${EXAMPLES_SRC}/in_memory_log_store.cxx
+        TIMEOUT 720
+        SKIP
+    )
+
     unit_test(NAME stream_transport_layer_test
         SOURCES
         asio/stream_transport_layer_test.cxx
