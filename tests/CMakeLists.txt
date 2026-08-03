@@ -92,6 +92,7 @@ if(NOT DISABLE_ASIO)
     unit_test(NAME priority_based_election_test
         SOURCES
         asio/priority_based_election_test.cxx
+        unit/fake_network.cxx
         ${EXAMPLES_SRC}/logger.cc
         ${EXAMPLES_SRC}/in_memory_log_store.cxx
         TIMEOUT 720
