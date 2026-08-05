@@ -213,37 +213,47 @@ void raft_server::handle_priority_change_resp(resp_msg& resp) {
 }
 
 void raft_server::decay_target_priority() {
-#if 0
-    // Gap should be bigger than 10.
-    int gap = std::max((int)10, target_priority_ / 5);
+    raft_params cur_params = get_current_params();
 
-    // Should be bigger than 0.
     int32 prev_priority = target_priority_;
-    target_priority_ = std::max(1, target_priority_ - gap);
-    p_in("[PRIORITY] decay, target %d -> %d, mine %d",
-         prev_priority, target_priority_, my_priority_);
+
+    if (cur_params.priority_decay_method_ == raft_params::arithmetic_decay) {
+        // --- arithmetic decay ---
+
+        // Gap should be bigger than 10.
+        int gap = std::max((int)10, target_priority_ / 5);
+
+        // Should be bigger than 0.
+        target_priority_ = std::max(1, target_priority_ - gap);
+        p_in("[PRIORITY] decay, target %d -> %d, mine %d",
+             prev_priority, target_priority_, my_priority_);
+
+    } else {
+        // --- tiered decay ---
+
+        // Find the biggest priority smaller than `target_priority_` among all peers.
+        // If `target_priority_` is already the smallest, it will be set to 1.
+        int32 new_target_priority = 1;
+        for (auto& entry: peers_) {
+            peer* peer_elem = entry.second.get();
+            const srv_config& s_conf = peer_elem->get_config();
+            int32 cur_priority = s_conf.get_priority();
+            if (cur_priority < target_priority_) {
+                new_target_priority = std::max(new_target_priority, cur_priority);
+            }
+        }
+        if (my_priority_ < target_priority_) {
+            new_target_priority = std::max(new_target_priority, my_priority_);
+        }
+        p_in("[PRIORITY] decay, target %d -> %d, mine %d",
+             target_priority_, new_target_priority, my_priority_);
+
+        target_priority_ = new_target_priority;
+    }
 
     // Once `target_priority_` becomes 1,
     // `priority_change_timer_` starts ticking.
     if (prev_priority > 1) priority_change_timer_.reset();
-#endif
-    // Find the biggest priority smaller than `target_priority_` among all peers.
-    int32 new_target_priority = 1;
-    for (auto& entry: peers_) {
-        peer* peer_elem = entry.second.get();
-        const srv_config& s_conf = peer_elem->get_config();
-        int32 cur_priority = s_conf.get_priority();
-        if (cur_priority < target_priority_) {
-            new_target_priority = std::max(new_target_priority, cur_priority);
-        }
-    }
-    if (my_priority_ < target_priority_) {
-        new_target_priority = std::max(new_target_priority, my_priority_);
-    }
-    p_in("[PRIORITY] decay, target %d -> %d, mine %d",
-         target_priority_, new_target_priority, my_priority_);
-
-    target_priority_ = new_target_priority;
 }
 
 void raft_server::update_target_priority() {
