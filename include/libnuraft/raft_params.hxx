@@ -65,6 +65,22 @@ struct raft_params {
         dual_rw_lock = 0x2,
     };
 
+    enum priority_decay_method {
+        /**
+         * Decay is calculated arithmetically based on the current priority.
+         * If there is a large priority gap between peers, leader election
+         * may have idle rounds.
+         */
+        arithmetic_decay = 0x0,
+
+        /**
+         * For decay, the priority is directly set to the highest priority
+         * among the peers that is still lower than the current priority.
+         * This makes leader election faster than using an arithmetic decay approach.
+         */
+        tiered_decay = 0x1,
+    };
+
     raft_params()
         : election_timeout_upper_bound_(500)
         , election_timeout_lower_bound_(250)
@@ -102,6 +118,7 @@ struct raft_params {
         , parallel_log_appending_(false)
         , max_log_gap_in_stream_(0)
         , max_bytes_in_flight_in_stream_(0)
+        , priority_decay_method_(arithmetic_decay)
         {}
 
     /**
@@ -668,6 +685,12 @@ public:
      * specified byte limit. This limitation is effective only in streaming mode.
      */
     int64_t max_bytes_in_flight_in_stream_;
+
+    /**
+     * This determines the priority decay method used in priority-based leader
+     * election. By default, it uses an arithmetic decay approach.
+     */
+    priority_decay_method priority_decay_method_;;
 };
 
 }

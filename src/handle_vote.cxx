@@ -123,7 +123,7 @@ void raft_server::request_prevote() {
         }
     }
 
-    hb_alive_ = false;
+    update_hb_alive_flag(false);
     leader_ = -1;
     role_ = srv_role::candidate;
     index_at_becoming_leader_ = 0;
@@ -251,7 +251,7 @@ void raft_server::initiate_vote(bool force_vote) {
     }
 
     if (role_ != srv_role::leader) {
-        hb_alive_ = false;
+        update_hb_alive_flag(false);
         leader_ = -1;
     }
 }
@@ -436,17 +436,36 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
         next_idx_for_resp = std::numeric_limits<ulong>::max();
     }
 
+    bool hb_alive_decision = hb_alive_;
+    if (hb_alive_decision && !is_leader()) {
+        raft_params cur_params = get_current_params();
+        // This indicates the last received heartbeat.
+        int64_t last_election_reset_ms = last_election_timer_reset_.get_ms();
+        if (last_election_reset_ms > cur_params.election_timeout_lower_bound_) {
+            // If heartbeat is not received for election timeout lower bound,
+            // set `hb_alive_` to false even though its election timer
+            // is not fired yet.
+            p_in("election timer was reset %" PRIi64 " ms ago, "
+                 "greater than election timeout lower bound %d ms, "
+                 "set hb_alive_decision to false",
+                 last_election_reset_ms, cur_params.election_timeout_lower_bound_);
+            hb_alive_decision = false;
+        }
+    }
+
     p_in("[PRE-VOTE REQ] my role %s, from peer %d, "
          "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "last idx: req %" PRIu64 " / mine %" PRIu64
          ", term: req %" PRIu64 " / mine %" PRIu64 "\n"
-         "%s",
+         "%s, %s",
          srv_role_to_string(role_).c_str(),
          req.get_src(), req.get_last_log_term(),
          log_store_->last_entry()->get_term(),
          req.get_last_log_idx(), log_store_->next_slot()-1,
          req.get_term(), state_->get_term(),
-         (hb_alive_) ? "HB alive" : "HB dead");
+         (hb_alive_) ? "HB alive" : "HB dead",
+         (hb_alive_decision) ? "HB alive (decision)" : "HB dead (decision)"
+         );
 
     ptr<resp_msg> resp
         ( cs_new<resp_msg>
@@ -464,7 +483,7 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
     if (state_->is_catching_up()) {
         p_in("this server is catching up, always accept pre-vote");
     }
-    if (!hb_alive_ || state_->is_catching_up()) {
+    if (!hb_alive_decision || state_->is_catching_up()) {
         p_in("pre-vote decision: O (grant)");
         resp->accept(log_store_->next_slot());
     } else {
