@@ -445,7 +445,7 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
             // If heartbeat is not received for election timeout lower bound,
             // set `hb_alive_` to false even though its election timer
             // is not fired yet.
-            p_in("election timer was reset %" PRIu64 " ms ago, "
+            p_in("election timer was reset %" PRIi64 " ms ago, "
                  "greater than election timeout lower bound %d ms, "
                  "set hb_alive_decision to false",
                  last_election_reset_ms, cur_params.election_timeout_lower_bound_);
