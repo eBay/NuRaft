@@ -60,6 +60,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , quick_commit_index_(ctx->state_machine_->last_commit_index())
     , sm_commit_index_(ctx->state_machine_->last_commit_index())
     , index_at_becoming_leader_(0)
+    , waiting_for_sm_catchup_(false)
     , initial_commit_index_(ctx->state_machine_->last_commit_index())
     , hb_alive_(false)
     , election_completed_(true)
@@ -420,7 +421,8 @@ void raft_server::apply_and_log_current_params() {
           "parallel log appending: %s, "
           "streaming mode max log gap %d, max bytes %" PRIu64 ", "
           "full consensus mode: %s, "
-          "tracking peer sm committed index: %s",
+          "tracking peer sm committed index: %s"
+          "waiting for state machine catchup on becoming leader: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -446,7 +448,8 @@ void raft_server::apply_and_log_current_params() {
           params->max_log_gap_in_stream_,
           params->max_bytes_in_flight_in_stream_,
           params->use_full_consensus_among_healthy_members_ ? "ON" : "OFF",
-          params->track_peers_sm_commit_idx_ ? "ON" : "OFF"
+          params->track_peers_sm_commit_idx_ ? "ON" : "OFF",
+          params->wait_for_sm_catchup_on_becoming_leader_ ? "YES" : "NO"
         );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
@@ -1195,16 +1198,34 @@ void raft_server::become_leader() {
                 log_val_type::conf,
                 timer_helper::get_timeofday_us() ) );
         index_at_becoming_leader_ = store_log_entry(entry);
-        p_in("[BECOME LEADER] appended new config at %" PRIu64,
-             index_at_becoming_leader_.load());
+        p_in("[BECOME LEADER] appended new config at %" PRIu64
+             ", current state machine commit index %" PRIu64
+             ", target index %" PRIu64,
+             index_at_becoming_leader_.load(),
+             sm_commit_index_.load(),
+             quick_commit_index_.load());
         config_changing_ = true;
     }
 
-    cb_func::Param param(id_, leader_);
-    ulong my_term = state_->get_term();
-    param.ctx = &my_term;
-    CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
-    (void)rc; // nothing to do in this callback.
+    // If `wait_for_sm_catchup_on_becoming_leader_` option is set,
+    // `BecomeLeader` will be invoked only when the state machine catches up
+    // with `index_at_becoming_leader_`.
+    if (!params->wait_for_sm_catchup_on_becoming_leader_ ||
+        sm_commit_index_ + 1 >= index_at_becoming_leader_) {
+        waiting_for_sm_catchup_ = false;
+
+        cb_func::Param param(id_, leader_);
+        ulong my_term = state_->get_term();
+        param.ctx = &my_term;
+        CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
+        (void)rc; // nothing to do in this callback.
+
+    } else {
+        waiting_for_sm_catchup_ = true;
+        p_in("[BECOME LEADER] waiting for state machine to catch up "
+             "to index %" PRIu64 ", current sm commit index %" PRIu64,
+             index_at_becoming_leader_.load() - 1, sm_commit_index_.load());
+    }
 
     if (write_paused_) {
         write_paused_ = false;
@@ -1564,6 +1585,7 @@ void raft_server::become_follower() {
         uncommitted_config_.reset();
         pre_vote_.quorum_reject_count_ = 0;
         pre_vote_.no_response_failure_count_ = 0;
+        waiting_for_sm_catchup_ = false;
 
         ptr<raft_params> params = ctx_->get_params();
         if ( params->auto_adjust_quorum_for_small_cluster_ &&
@@ -1840,6 +1862,15 @@ std::string raft_server::get_aux(int32 srv_id) const {
     if (!s_conf) return std::string();
 
     return s_conf->get_aux();
+}
+
+bool raft_server::is_leader() const {
+    if ( leader_ == id_ &&
+         role_ == srv_role::leader &&
+         waiting_for_sm_catchup_ == false ) {
+        return true;
+    }
+    return false;
 }
 
 ptr<srv_config> raft_server::get_srv_config(int32 srv_id) const {

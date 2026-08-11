@@ -267,6 +267,137 @@ int leader_election_test(bool crc_on_entire_message) {
     return 0;
 }
 
+int sm_catchup_on_new_leader_test() {
+    reset_log_files();
+
+    std::string s1_addr = "tcp://localhost:20010";
+    std::string s2_addr = "tcp://localhost:20020";
+    std::string s3_addr = "tcp://localhost:20030";
+
+    RaftAsioPkg* s1 = new RaftAsioPkg(1, s1_addr);
+    RaftAsioPkg* s2 = new RaftAsioPkg(2, s2_addr);
+    RaftAsioPkg* s3 = new RaftAsioPkg(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {s1, s2, s3};
+
+    std::atomic<bool> test_started = false;
+    std::atomic<bool> become_leader_called = false;
+    raft_server::init_options i_opt;
+    i_opt.raft_callback_ = [&](cb_func::Type type, cb_func::Param* param)
+        -> cb_func::ReturnCode {
+
+        if (test_started &&
+            type == cb_func::BecomeLeader &&
+            param && param->myId == 2) {
+            become_leader_called = true;
+            _msg("server %d got BecomeLeader callback\n", param->myId);
+            return cb_func::ReturnCode::Ok;
+        }
+        return cb_func::ReturnCode::Ok;
+    };
+
+    _msg("launching asio-raft servers\n");
+    CHK_Z( launch_servers(pkgs, false, false, true, i_opt) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    // Set `wait_for_sm_catchup_on_becoming_leader_` to true.
+    for (auto& pp: pkgs) {
+        raft_params param = pp->raftServer->get_current_params();
+        param.snapshot_distance_ = 100;
+        param.reserved_log_items_ = 100;
+        param.wait_for_sm_catchup_on_becoming_leader_ = true;
+        pp->raftServer->update_params(param);
+    }
+
+    CHK_TRUE( s1->raftServer->is_leader() );
+    CHK_EQ(1, s1->raftServer->get_leader());
+    CHK_EQ(1, s2->raftServer->get_leader());
+    CHK_EQ(1, s3->raftServer->get_leader());
+
+    std::list< ptr< cmd_result< ptr<buffer> > > > handlers;
+    std::list<ulong> idx_list;
+    std::mutex idx_list_lock;
+
+    auto do_async_append = [&](RaftAsioPkg& ss, size_t num) {
+        handlers.clear();
+        idx_list.clear();
+        for (size_t ii = 0; ii < num; ++ii) {
+            std::string test_msg = "test" + std::to_string(ii);
+            ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+            msg->put(test_msg);
+            ptr< cmd_result< ptr<buffer> > > ret =
+                ss.raftServer->append_entries( {msg} );
+
+            cmd_result< ptr<buffer> >::handler_type my_handler =
+                std::bind( async_handler,
+                           &idx_list,
+                           &idx_list_lock,
+                           std::placeholders::_1,
+                           std::placeholders::_2 );
+            ret->when_ready( my_handler );
+
+            handlers.push_back(ret);
+        }
+    };
+
+    // Insert some data.
+    do_async_append(*s1, 10);
+
+    // Stop S3, pause state machine of S2, and insert more data.
+    s3->raftServer->shutdown();
+    s3->stopAsio();
+    delete s3;
+
+    s2->raftServer->pause_state_machine_execution();
+    TestSuite::sleep_sec(1, "S3 shutdown, S2 state machine pause");
+
+    // Insert more data.
+    do_async_append(*s1, 5);
+
+    test_started = true;
+
+    // Now stop S1, restart S3.
+    s1->raftServer->shutdown();
+    s1->stopAsio();
+    delete s1;
+    s1 = nullptr;
+    _msg("S1 shutdown\n");
+
+    s3 = new RaftAsioPkg(1, s1_addr);
+    s3->initServer();
+    TestSuite::sleep_sec(1, "restart S3");
+
+    // Nobody should be a leader now.
+    CHK_FALSE( s2->raftServer->is_leader() );
+    CHK_FALSE( s3->raftServer->is_leader() );
+
+    // `BecomeLeader` callback should not have been called yet.
+    CHK_FALSE( become_leader_called.load() );
+
+    // Now resume state machine of S2.
+    s2->raftServer->resume_state_machine_execution();
+    TestSuite::sleep_sec(1, "S2 state machine resumed");
+
+    // Now S2 should be a leader.
+    CHK_TRUE( s2->raftServer->is_leader() );
+
+    // `BecomeLeader` callback should have been called.
+    CHK_TRUE( become_leader_called.load() );
+
+    s2->raftServer->shutdown();
+    s3->raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    s2->stopAsio();
+    s3->stopAsio();
+    delete s2;
+    delete s3;
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+
 int ssl_test() {
     reset_log_files();
 
@@ -2066,6 +2197,9 @@ int main(int argc, char** argv) {
     ts.doTest( "leader election test",
                leader_election_test,
                TestRange<bool>( {false, true} ) );
+
+    ts.doTest( "state machine catch-up on new leader test",
+               sm_catchup_on_new_leader_test );
 
 #if !SSL_LIBRARY_NOT_FOUND && (defined(__linux__) || defined(__APPLE__))
     ts.doTest( "ssl test",
