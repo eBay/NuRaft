@@ -279,9 +279,9 @@ int sm_catchup_on_new_leader_test() {
     RaftAsioPkg* s3 = new RaftAsioPkg(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {s1, s2, s3};
 
-    bool test_started = false;
-    bool become_leader_called = false;
-    bool leader_catchingup_called = false;
+    std::atomic<bool> test_started(false);
+    std::atomic<bool> become_leader_called(false);
+    std::atomic<bool> leader_catchingup_called(false);
     raft_server::init_options i_opt;
     i_opt.raft_callback_ = [&](cb_func::Type type, cb_func::Param* param)
         -> cb_func::ReturnCode {
@@ -374,7 +374,7 @@ int sm_catchup_on_new_leader_test() {
     s1 = nullptr;
     _msg("S1 shutdown\n");
 
-    s3 = new RaftAsioPkg(1, s1_addr);
+    s3 = new RaftAsioPkg(3, s3_addr);
     s3->initServer();
     TestSuite::sleep_sec(2, "restart S3");
 

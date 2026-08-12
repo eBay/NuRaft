@@ -351,22 +351,25 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
 
     ll.unlock(); // unlock --------------------------------------------------------
 
+    // NOTE: `index_at_becoming_leader_` itself is a conf log,
+    //       doesn't need to be committed to guarantee data freshness.
     if (role_ == srv_role::leader &&
         waiting_for_sm_catchup_ &&
-        index_at_becoming_leader_ > 0) {
-        // NOTE: `index_at_becoming_leader_` itself is a conf log,
-        //       doesn't need to be committed to guarantee data freshness.
-        if (sm_commit_index_ >= index_at_becoming_leader_ - 1) {
-            p_in("[BECOME LEADER] state machine caught up to index %" PRIu64
-                 ", current sm commit index %" PRIu64,
-                 index_at_becoming_leader_.load() - 1, sm_commit_index_.load());
-            waiting_for_sm_catchup_ = false;
-            cb_func::Param param(id_, leader_);
-            ulong my_term = state_->get_term();
-            param.ctx = &my_term;
-            CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
-            (void)rc; // nothing to do in this callback.
-        }
+        index_at_becoming_leader_ > 0 &&
+        sm_commit_index_ >= index_at_becoming_leader_ - 1) {
+
+        // `BecomeLeader` callback should be serialized, hence
+        // acquiring the lock.
+        recur_lock(lock_);
+        p_in("[BECOME LEADER] state machine caught up to index %" PRIu64
+             ", current sm commit index %" PRIu64,
+             index_at_becoming_leader_.load() - 1, sm_commit_index_.load());
+        waiting_for_sm_catchup_ = false;
+        cb_func::Param param(id_, leader_);
+        ulong my_term = state_->get_term();
+        param.ctx = &my_term;
+        CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
+        (void)rc; // nothing to do in this callback.
     }
 
     return finished_in_time;
