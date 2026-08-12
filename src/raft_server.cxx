@@ -421,7 +421,7 @@ void raft_server::apply_and_log_current_params() {
           "parallel log appending: %s, "
           "streaming mode max log gap %d, max bytes %" PRIu64 ", "
           "full consensus mode: %s, "
-          "tracking peer sm committed index: %s"
+          "tracking peer sm committed index: %s, "
           "waiting for state machine catchup on becoming leader: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
