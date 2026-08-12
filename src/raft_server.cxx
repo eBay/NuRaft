@@ -1207,6 +1207,10 @@ void raft_server::become_leader() {
         config_changing_ = true;
     }
 
+    cb_func::Param param(id_, leader_);
+    ulong my_term = state_->get_term();
+    param.ctx = &my_term;
+
     // If `wait_for_sm_catchup_on_becoming_leader_` option is set,
     // `BecomeLeader` will be invoked only when the state machine catches up
     // with `index_at_becoming_leader_`.
@@ -1214,9 +1218,6 @@ void raft_server::become_leader() {
         sm_commit_index_ + 1 >= index_at_becoming_leader_) {
         waiting_for_sm_catchup_ = false;
 
-        cb_func::Param param(id_, leader_);
-        ulong my_term = state_->get_term();
-        param.ctx = &my_term;
         CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
         (void)rc; // nothing to do in this callback.
 
@@ -1225,6 +1226,9 @@ void raft_server::become_leader() {
         p_in("[BECOME LEADER] waiting for state machine to catch up "
              "to index %" PRIu64 ", current sm commit index %" PRIu64,
              index_at_becoming_leader_.load() - 1, sm_commit_index_.load());
+
+         CbReturnCode rc = ctx_->cb_func_.call(cb_func::LeaderSmCatchingUp, &param);
+        (void)rc; // nothing to do in this callback.
     }
 
     if (write_paused_) {

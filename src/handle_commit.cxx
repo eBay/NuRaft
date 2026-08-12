@@ -161,23 +161,6 @@ void raft_server::commit_in_bg() {
         }
 
         commit_in_bg_exec();
-        if (role_ == srv_role::leader &&
-            waiting_for_sm_catchup_ &&
-            index_at_becoming_leader_ > 0) {
-            // NOTE: `index_at_becoming_leader_` itself is a conf log,
-            //       doesn't need to be committed to guarantee data freshness.
-            if (sm_commit_index_ >= index_at_becoming_leader_ - 1) {
-                p_in("[BECOME LEADER] state machine caught up to index %" PRIu64
-                     ", current sm commit index %" PRIu64,
-                     index_at_becoming_leader_.load() - 1, sm_commit_index_.load());
-                waiting_for_sm_catchup_ = false;
-                cb_func::Param param(id_, leader_);
-                ulong my_term = state_->get_term();
-                param.ctx = &my_term;
-                CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
-                (void)rc; // nothing to do in this callback.
-            }
-        }
 
         if (sm_commit_notifier_target_idx_ > sm_commit_notifier_notified_idx_) {
             uint64_t target_idx = sm_commit_notifier_target_idx_;
@@ -363,6 +346,26 @@ bool raft_server::commit_in_bg_exec(size_t timeout_ms) {
             p_tr("sm commit notify ready: %" PRIu64 ", target idx: %" PRIu64
                  ", notified idx: %" PRIu64,
                  target_idx, target_idx2, sm_commit_notifier_notified_idx_.load());
+        }
+    }
+
+    ll.unlock(); // unlock --------------------------------------------------------
+
+    if (role_ == srv_role::leader &&
+        waiting_for_sm_catchup_ &&
+        index_at_becoming_leader_ > 0) {
+        // NOTE: `index_at_becoming_leader_` itself is a conf log,
+        //       doesn't need to be committed to guarantee data freshness.
+        if (sm_commit_index_ >= index_at_becoming_leader_ - 1) {
+            p_in("[BECOME LEADER] state machine caught up to index %" PRIu64
+                 ", current sm commit index %" PRIu64,
+                 index_at_becoming_leader_.load() - 1, sm_commit_index_.load());
+            waiting_for_sm_catchup_ = false;
+            cb_func::Param param(id_, leader_);
+            ulong my_term = state_->get_term();
+            param.ctx = &my_term;
+            CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
+            (void)rc; // nothing to do in this callback.
         }
     }
 

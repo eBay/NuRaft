@@ -279,17 +279,27 @@ int sm_catchup_on_new_leader_test() {
     RaftAsioPkg* s3 = new RaftAsioPkg(3, s3_addr);
     std::vector<RaftAsioPkg*> pkgs = {s1, s2, s3};
 
-    std::atomic<bool> test_started = false;
-    std::atomic<bool> become_leader_called = false;
+    bool test_started = false;
+    bool become_leader_called = false;
+    bool leader_catchingup_called = false;
     raft_server::init_options i_opt;
     i_opt.raft_callback_ = [&](cb_func::Type type, cb_func::Param* param)
         -> cb_func::ReturnCode {
 
-        if (test_started &&
-            type == cb_func::BecomeLeader &&
+        if (!test_started) {
+            return cb_func::ReturnCode::Ok;
+        }
+
+        if (type == cb_func::BecomeLeader &&
             param && param->myId == 2) {
             become_leader_called = true;
             _msg("server %d got BecomeLeader callback\n", param->myId);
+            return cb_func::ReturnCode::Ok;
+        }
+        if (type == cb_func::LeaderSmCatchingUp &&
+            param && param->myId == 2) {
+            leader_catchingup_called = true;
+            _msg("server %d got LeaderSmCatchingUp callback\n", param->myId);
             return cb_func::ReturnCode::Ok;
         }
         return cb_func::ReturnCode::Ok;
@@ -366,14 +376,17 @@ int sm_catchup_on_new_leader_test() {
 
     s3 = new RaftAsioPkg(1, s1_addr);
     s3->initServer();
-    TestSuite::sleep_sec(1, "restart S3");
+    TestSuite::sleep_sec(2, "restart S3");
 
     // Nobody should be a leader now.
     CHK_FALSE( s2->raftServer->is_leader() );
     CHK_FALSE( s3->raftServer->is_leader() );
 
     // `BecomeLeader` callback should not have been called yet.
-    CHK_FALSE( become_leader_called.load() );
+    CHK_FALSE( become_leader_called );
+
+    // However, `LeaderSmCatchingUp` callback should have been called.
+    CHK_TRUE( leader_catchingup_called );
 
     // Now resume state machine of S2.
     s2->raftServer->resume_state_machine_execution();
@@ -383,7 +396,7 @@ int sm_catchup_on_new_leader_test() {
     CHK_TRUE( s2->raftServer->is_leader() );
 
     // `BecomeLeader` callback should have been called.
-    CHK_TRUE( become_leader_called.load() );
+    CHK_TRUE( become_leader_called );
 
     s2->raftServer->shutdown();
     s3->raftServer->shutdown();
