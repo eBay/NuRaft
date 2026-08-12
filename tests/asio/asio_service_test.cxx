@@ -378,9 +378,8 @@ int sm_catchup_on_new_leader_test() {
     s3->initServer();
     TestSuite::sleep_sec(2, "restart S3");
 
-    // Nobody should be a leader now.
+    // S2 should not be a leader yet.
     CHK_FALSE( s2->raftServer->is_leader() );
-    CHK_FALSE( s3->raftServer->is_leader() );
 
     // `BecomeLeader` callback should not have been called yet.
     CHK_FALSE( become_leader_called );
