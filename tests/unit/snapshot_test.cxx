@@ -26,12 +26,146 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <chrono>
+#include <thread>
+
 using namespace nuraft;
 using namespace raft_functional_common;
 
 using raft_result = cmd_result< ptr<buffer> >;
 
 namespace snapshot_test {
+
+static ptr<req_msg> make_final_snapshot_req(RaftPkg& src,
+                                            RaftPkg& dst,
+                                            ulong snapshot_idx) {
+    ptr<snapshot> snp = cs_new<snapshot>
+                        ( snapshot_idx,
+                          src.raftServer->get_term(),
+                          dst.raftServer->get_config() );
+    ptr<buffer> data = buffer::alloc(1);
+    data->put((byte)0);
+    data->pos(0);
+    ptr<snapshot_sync_req> sync_req = cs_new<snapshot_sync_req>
+                                      ( snp, 0, data, true );
+    ptr<log_entry> entry = cs_new<log_entry>
+                           ( src.raftServer->get_term(),
+                             sync_req->serialize(),
+                             log_val_type::snp_sync_req );
+    ptr<req_msg> req = cs_new<req_msg>
+                       ( src.raftServer->get_term(),
+                         msg_type::install_snapshot_request,
+                         src.myId,
+                         dst.myId,
+                         src.raftServer->get_last_log_term(),
+                         src.raftServer->get_last_log_idx(),
+                         src.raftServer->get_committed_log_idx() );
+    req->log_entries().push_back(entry);
+    return req;
+}
+
+int snapshot_overlapping_finalization_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    RaftPkg s1(f_base, 1, "S1");
+    RaftPkg s2(f_base, 2, "S2");
+    RaftPkg s3(f_base, 3, "S3");
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers(pkgs) );
+    CHK_Z( make_group(pkgs) );
+
+    ulong snapshot_idx = s2.raftServer->get_last_log_idx() + 1;
+    ptr<req_msg> first_req = make_final_snapshot_req(s1, s2, snapshot_idx);
+    ptr<req_msg> second_req = make_final_snapshot_req(s1, s2, snapshot_idx);
+    ptr<resp_msg> first_resp;
+
+    debugging_options::get_instance().snapshot_sync_req_sleep_ms_ = 500;
+    std::thread first_finalizer([&]() {
+        first_resp = s2.fNet->gotMsg(first_req);
+    });
+
+    size_t wait_count = 0;
+    while ( !s2.raftServer->is_receiving_snapshot() &&
+            wait_count++ < 100 ) {
+        TestSuite::sleep_ms(5);
+    }
+    bool first_finalizer_active = s2.raftServer->is_receiving_snapshot();
+
+    std::chrono::steady_clock::time_point begin =
+        std::chrono::steady_clock::now();
+    ptr<resp_msg> second_resp = s2.fNet->gotMsg(second_req);
+    size_t elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>
+                        ( std::chrono::steady_clock::now() - begin ).count();
+
+    CHK_NONNULL( second_resp.get() );
+    CHK_FALSE( second_resp->get_accepted() );
+    CHK_SM( elapsed_ms, (size_t)250 );
+
+    first_finalizer.join();
+    debugging_options::get_instance().snapshot_sync_req_sleep_ms_ = 0;
+
+    CHK_TRUE( first_finalizer_active );
+    CHK_NONNULL( first_resp.get() );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    f_base->destroy();
+
+    return 0;
+}
+
+int snapshot_stale_finalization_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    RaftPkg s1(f_base, 1, "S1");
+    RaftPkg s2(f_base, 2, "S2");
+    RaftPkg s3(f_base, 3, "S3");
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers(pkgs) );
+    CHK_Z( make_group(pkgs) );
+
+    ulong snapshot_idx = s2.raftServer->get_last_log_idx() + 1;
+    ptr<req_msg> req = make_final_snapshot_req(s1, s2, snapshot_idx);
+    ptr<resp_msg> resp;
+
+    debugging_options::get_instance().snapshot_sync_req_sleep_ms_ = 1000;
+    std::thread finalizer([&]() {
+        resp = s2.fNet->gotMsg(req);
+    });
+
+    size_t wait_count = 0;
+    while ( !s2.raftServer->is_receiving_snapshot() &&
+            wait_count++ < 100 ) {
+        TestSuite::sleep_ms(5);
+    }
+
+    bool takeover_requested = s2.raftServer->request_leadership();
+    s2.fNet->execReqResp();
+    s1.fTimer->invoke(timer_task_type::heartbeat_timer);
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    s2.fNet->execReqResp();
+
+    finalizer.join();
+    debugging_options::get_instance().snapshot_sync_req_sleep_ms_ = 0;
+
+    CHK_TRUE( takeover_requested );
+    CHK_TRUE( s2.raftServer->is_leader() );
+    CHK_NONNULL( resp.get() );
+    CHK_FALSE( resp->get_accepted() );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    f_base->destroy();
+
+    return 0;
+}
 
 int snapshot_basic_test() {
     reset_log_files();
@@ -857,6 +991,12 @@ int main(int argc, char* argv[]) {
 
     ts.doTest( "snapshot leader switch test",
                snapshot_leader_switch_test );
+
+    ts.doTest( "snapshot overlapping finalization test",
+               snapshot_overlapping_finalization_test );
+
+    ts.doTest( "snapshot stale finalization test",
+               snapshot_stale_finalization_test );
 
 #ifdef ENABLE_RAFT_STATS
     _msg("raft stats: ENABLED\n");
