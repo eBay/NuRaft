@@ -1542,6 +1542,14 @@ protected:
     std::atomic<ulong> et_cnt_receiving_snapshot_;
 
     /**
+     * Prevents more than one snapshot finalizer from crossing the unlocked
+     * state-machine pause boundary.
+     *
+     * Protected by `lock_`.
+     */
+    bool snapshot_finalization_in_progress_;
+
+    /**
      * (Read-only)
      * The first snapshot distance.
      */
