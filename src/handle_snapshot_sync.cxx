@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "cluster_config.hxx"
 #include "context.hxx"
+#include "debugging_options.hxx"
 #include "error_code.hxx"
 #include "event_awaiter.hxx"
 #include "exit_handler.hxx"
@@ -33,7 +34,9 @@ limitations under the License.
 #include "tracer.hxx"
 
 #include <cassert>
+#include <chrono>
 #include <sstream>
+#include <thread>
 
 namespace nuraft {
 
@@ -466,6 +469,14 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
     // if offset == 0, it is the first object.
     bool is_first_obj = (req.get_offset()) ? false : true;
     bool is_last_obj = req.is_done();
+    if (is_last_obj && snapshot_finalization_in_progress_) {
+        p_wn( "decline overlapping snapshot finalization (idx %" PRIu64
+              " term %" PRIu64 ", offset 0x%" PRIx64 ")",
+              req.get_snapshot().get_last_log_idx(),
+              req.get_snapshot().get_last_log_term(),
+              req.get_offset() );
+        return false;
+    }
     if (is_first_obj || is_last_obj) {
         // INFO level: log only first and last object.
         p_in("save snapshot (idx %" PRIu64 ", term %" PRIu64 ") offset 0x%" PRIx64
@@ -527,9 +538,17 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
     }
 
     if (is_last_obj) {
+        snapshot_finalization_in_progress_ = true;
+
         // let's pause committing in backgroud so it doesn't access logs
         // while they are being compacted
         guard.unlock();
+        size_t test_sleep_ms = debugging_options::get_instance()
+                               .snapshot_sync_req_sleep_ms_;
+        if (test_sleep_ms) {
+            std::this_thread::sleep_for
+                ( std::chrono::milliseconds(test_sleep_ms) );
+        }
         pause_state_machine_execution();
         size_t wait_count = 0;
         while (!wait_for_state_machine_pause(500)) {
@@ -537,6 +556,7 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
                  ++wait_count);
         }
         guard.lock();
+        snapshot_finalization_in_progress_ = false;
 
         struct ExecAutoResume {
             explicit ExecAutoResume(std::function<void()> func) : clean_func_(func) {}
@@ -544,18 +564,18 @@ bool raft_server::handle_snapshot_sync_req(snapshot_sync_req& req, std::unique_l
             std::function<void()> clean_func_;
         } exec_auto_resume([this](){ resume_state_machine_execution(); });
 
+        if (role_ != srv_role::follower) {
+            state_->set_receiving_snapshot(false);
+            ctx_->state_mgr_->save_state(*state_);
+            p_wn( "snapshot finalization became stale while waiting for the "
+                  "state machine to pause, role %d",
+                  static_cast<int>(role_.load()) );
+            return false;
+        }
+
         state_->set_receiving_snapshot(false);
         ctx_->state_mgr_->save_state(*state_);
         p_in("clear receiving snapshot flag");
-
-        // Only follower will run this piece of code, but let's check it again
-        if (role_ != srv_role::follower) {
-            // LCOV_EXCL_START
-            p_er("bad server role for applying a snapshot, exit for debugging");
-            ctx_->state_mgr_->system_exit(raft_err::N11_not_follower_for_snapshot);
-            _sys_exit(-1);
-            // LCOV_EXCL_STOP
-        }
 
         p_in( "successfully receive a snapshot (idx %" PRIu64 " term %" PRIu64
               ") from leader",
