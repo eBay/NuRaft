@@ -60,6 +60,14 @@ unit_test(NAME failure_test
     ${EXAMPLES_SRC}/logger.cc
     ${EXAMPLES_SRC}/in_memory_log_store.cxx)
 
+# === Bug reproduction: set_priority config_changing_ guard bypass ===
+unit_test(NAME test_bug8_config_guard
+    SOURCES
+    unit/test_bug8_config_guard.cxx
+    unit/fake_network.cxx
+    ${EXAMPLES_SRC}/logger.cc
+    ${EXAMPLES_SRC}/in_memory_log_store.cxx)
+
 # === ASIO network stuff test, only when ASIO is enabled ===
 if(NOT DISABLE_ASIO)
     unit_test(NAME asio_service_test
