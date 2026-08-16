@@ -137,6 +137,7 @@ struct asio_service_options {
         , corrupted_msg_handler_(nullptr)
         , streaming_mode_(false)
         , custom_io_context_(nullptr)
+        , header_version_(0)
         {}
 
     /**
@@ -306,6 +307,21 @@ struct asio_service_options {
 #else
     asio::io_context* custom_io_context_;
 #endif
+
+    /**
+     * RPC message header version.
+     * 0: Legacy format (54 bytes for request, 39 bytes for response)
+     * 1: Extended format with group_id support (58 bytes for request, 43 bytes for response)
+     *
+     * This option enables rolling upgrade compatibility. When set to 0 (default),
+     * only the legacy header format is used. When set to 1, the extended format
+     * with group_id is used for port sharing functionality.
+     *
+     * During rolling upgrade, old and new versions can coexist:
+     * - Old clients (version 0) can communicate with new servers (auto-detected by marker)
+     * - New clients (version 1) can communicate with old servers (marker 0x0/0x1)
+     */
+    int32_t header_version_;
 };
 
 }

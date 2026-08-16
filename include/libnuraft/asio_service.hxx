@@ -54,8 +54,24 @@ public:
                           int32 milliseconds)
                  __override__;
 
+    /**
+     * Create an RPC client for the given endpoint (legacy API).
+     * This overrides the base class method from rpc_client_factory.
+     *
+     * @param endpoint Target endpoint (e.g., "tcp://127.0.0.1:12345")
+     * @return RPC client instance
+     */
     virtual ptr<rpc_client> create_client(const std::string& endpoint)
                             __override__;
+
+    /**
+     * Create an RPC client for the given endpoint with group ID.
+     *
+     * @param endpoint Target endpoint (e.g., "tcp://127.0.0.1:12345")
+     * @param group_id Group ID for port sharing
+     * @return RPC client instance
+     */
+    virtual ptr<rpc_client> create_client(const std::string& endpoint, int32 group_id);
 
     ptr<rpc_listener> create_rpc_listener(ushort listening_port,
                                           ptr<logger>& l);
