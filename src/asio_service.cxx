@@ -1132,17 +1132,21 @@ public:
 #ifdef SSL_LIBRARY_NOT_FOUND
             assert(0); // Should not reach here.
 #else
-            if (_impl->get_options().skip_verification_) {
-                ssl_socket_.set_verify_mode(asio::ssl::verify_none);
-            } else {
-                ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
-            }
+            // Custom SSL context will likely have the verification
+            // mode and callback configured. Do not override that.
+            if (!_impl->get_options().ssl_context_provider_client_) {
+                if (_impl->get_options().skip_verification_) {
+                    ssl_socket_.set_verify_mode(asio::ssl::verify_none);
+                } else {
+                    ssl_socket_.set_verify_mode(asio::ssl::verify_peer);
+                }
 
-            ssl_socket_.set_verify_callback
-                        ( std::bind( &asio_rpc_client::verify_certificate,
-                                     this,
-                                     std::placeholders::_1,
-                                     std::placeholders::_2 ) );
+                ssl_socket_.set_verify_callback
+                            ( std::bind( &asio_rpc_client::verify_certificate,
+                                        this,
+                                        std::placeholders::_1,
+                                        std::placeholders::_2 ) );
+            }
 #endif
         }
         p_tr( "asio client created: %p. %s",
