@@ -33,6 +33,67 @@ using raft_result = cmd_result< ptr<buffer> >;
 
 namespace raft_server_test {
 
+class TimeoutCommitLogger : public logger {
+public:
+    std::function<void()> onTimeout;
+
+    void put_details(int, const char*, const char*, size_t,
+                     const std::string& log_line) override {
+        if (log_line.find("[NOT OK] commit_ret_cv") == 0 && onTimeout) {
+            auto callback = std::move(onTimeout);
+            callback();
+        }
+    }
+};
+
+int blocking_commit_timeout_result_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+    RaftPkg s1(f_base, 1, "S1");
+    RaftPkg s2(f_base, 2, "S2");
+    RaftPkg s3(f_base, 3, "S3");
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    auto timeout_logger = cs_new<TimeoutCommitLogger>();
+
+    CHK_Z( launch_servers(pkgs, nullptr, false, cb_default,
+                         [&](RaftPkg* pkg) {
+                             if (pkg->myId == 1) {
+                                 pkg->ctx->logger_ = timeout_logger;
+                             }
+                         }) );
+    CHK_Z( make_group(pkgs) );
+
+    raft_params params = s1.raftServer->get_current_params();
+    params.with_client_req_timeout(10);
+    s1.raftServer->update_params(params);
+
+    int commit_result = -1;
+    // Complete replication while the timeout callback is logging, after it
+    // has copied the return value and released commit_ret_elems_lock_. A
+    // late commit must not turn that timeout response into OK with no value.
+    timeout_logger->onTimeout = [&]() {
+        s1.fNet->execReqResp();
+        s1.fNet->execReqResp();
+        commit_result = wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC);
+    };
+
+    auto msg = buffer::alloc(5);
+    msg->put(std::string("test"));
+    auto result = s1.raftServer->append_entries({msg});
+    auto result_code = result->get_result_code();
+    auto result_value = result->get();
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    f_base->destroy();
+
+    CHK_Z(commit_result);
+    CHK_EQ(cmd_result_code::TIMEOUT, result_code);
+    CHK_NULL(result_value.get());
+    return 0;
+}
+
 int make_group_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -2040,6 +2101,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "make group test",
                make_group_test );
+
+    ts.doTest( "blocking commit timeout result test",
+               blocking_commit_timeout_result_test );
 
     ts.doTest( "init options test",
                init_options_test );
