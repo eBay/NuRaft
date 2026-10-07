@@ -57,3 +57,14 @@ jobs:
         with:
           verbose: true
           files: ./build/raft_cov.info.cleaned
+
+  build-without-asio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # pin@v2
+      - name: Build and test without Asio
+        run: |
+          cmake -S . -B build -DDISABLE_ASIO=ON -DBUILD_EXAMPLES=OFF
+          cmake --build build --parallel 2
+          ctest --test-dir build --output-on-failure

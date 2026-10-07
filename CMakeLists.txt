@@ -104,14 +104,14 @@ else()
         message(STATUS "ASIO is disabled and will not be included")
     endif()
 
-    if(NOT ASIO_INCLUDE_DIR)
-        message(FATAL_ERROR "Can't find ASIO header files")
-    else()
-        message(STATUS "ASIO include path: " ${ASIO_INCLUDE_DIR})
+    if(NOT DISABLE_ASIO)
+        if(NOT ASIO_INCLUDE_DIR)
+            message(FATAL_ERROR "Can't find ASIO header files")
+        else()
+            message(STATUS "ASIO include path: " ${ASIO_INCLUDE_DIR})
+        endif()
+        include_directories(BEFORE ${ASIO_INCLUDE_DIR})
     endif()
-
-    # === Includes ===
-    include_directories(BEFORE ${ASIO_INCLUDE_DIR})
 
     if(DEPS_PREFIX)
         message(STATUS "deps prefix: " ${DEPS_PREFIX})
