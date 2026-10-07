@@ -355,9 +355,10 @@ int sm_catchup_on_new_leader_test() {
     do_async_append(*s1, 10);
 
     // Stop S3, pause state machine of S2, and insert more data.
+    // NOTE: Do not delete S3, to keep its log store, config, and state
+    //       for the restart below.
     s3->raftServer->shutdown();
     s3->stopAsio();
-    delete s3;
 
     s2->raftServer->pause_state_machine_execution();
     TestSuite::sleep_sec(1, "S3 shutdown, S2 state machine pause");
@@ -374,9 +375,14 @@ int sm_catchup_on_new_leader_test() {
     s1 = nullptr;
     _msg("S1 shutdown\n");
 
-    s3 = new RaftAsioPkg(3, s3_addr);
-    s3->initServer();
+    // Restart S3 with its previous data. If S3 is re-created from scratch,
+    // it forms a single-node cluster and may elect itself before S2's
+    // pre-vote arrives, so that S2 can never be elected.
+    s3->restartServer();
     TestSuite::sleep_sec(2, "restart S3");
+
+    // S2 should have been elected, but is waiting for state machine catch-up.
+    CHK_EQ(2, s2->raftServer->get_leader());
 
     // S2 should not be a leader yet.
     CHK_FALSE( s2->raftServer->is_leader() );
