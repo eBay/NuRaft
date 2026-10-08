@@ -229,6 +229,18 @@ public:
          * ctx: pointer to `ReqResp` instance.
          */
         ReceivedMisbehavingMessage = 29,
+
+        /**
+         * The node has become the leader, but its state machine is still
+         * behind the latest log, so it starts catching up before reporting
+         * itself as the leader.
+         *
+         * `BecomeLeader` callback will be invoked once the state machine catches
+         * up to the latest log index.
+         *
+         * ctx: pointer to term number.
+         */
+        LeaderSmCatchingUp = 30,
     };
 
     struct Param {

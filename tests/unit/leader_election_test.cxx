@@ -104,6 +104,57 @@ int leader_election_basic_test() {
     return 0;
 }
 
+int vote_log_freshness_after_compaction_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Compact all logs of S2 into a snapshot, so that its log store
+    // becomes empty and `last_entry()` returns a dummy entry with term 0.
+    raft_params param = s2.raftServer->get_current_params();
+    param.reserved_log_items_ = 0;
+    s2.raftServer->update_params(param);
+
+    ptr<log_store> store = s2.sMgr->load_log_store();
+    const ulong last_idx = store->next_slot() - 1;
+    raft_server::create_snapshot_options opt;
+    opt.serialize_commit_ = true;
+    CHK_EQ( last_idx, s2.raftServer->create_snapshot(opt) );
+    CHK_EQ( store->start_index(), store->next_slot() );
+    const ulong last_term = s2.sm->last_snapshot()->get_last_log_term();
+
+    auto vote = [&](ulong log_term, ulong log_idx) -> bool {
+        ptr<req_msg> req = cs_new<req_msg>
+                           ( s2.raftServer->get_term() + 1,
+                             msg_type::request_vote_request,
+                             3, 2, log_term, log_idx, 0 );
+        return s2.fNet->gotMsg(req)->get_accepted();
+    };
+    // Candidates whose log is older than S2's snapshot should be rejected.
+    CHK_FALSE( vote(last_term, last_idx - 1) );
+    CHK_FALSE( vote(last_term - 1, last_idx + 1) );
+    // Candidate whose log is as up-to-date as S2's snapshot should be granted.
+    CHK_TRUE( vote(last_term, last_idx) );
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    f_base->destroy();
+
+    return 0;
+}
+
 int leader_election_priority_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -925,6 +976,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "leader election basic test",
                leader_election_basic_test );
+
+    ts.doTest( "vote log freshness after compaction test",
+               vote_log_freshness_after_compaction_test );
 
     ts.doTest( "leader election priority test",
                leader_election_priority_test );

@@ -60,6 +60,7 @@ raft_server::raft_server(context* ctx, const init_options& opt)
     , quick_commit_index_(ctx->state_machine_->last_commit_index())
     , sm_commit_index_(ctx->state_machine_->last_commit_index())
     , index_at_becoming_leader_(0)
+    , waiting_for_sm_catchup_(false)
     , initial_commit_index_(ctx->state_machine_->last_commit_index())
     , hb_alive_(false)
     , election_completed_(true)
@@ -420,7 +421,8 @@ void raft_server::apply_and_log_current_params() {
           "parallel log appending: %s, "
           "streaming mode max log gap %d, max bytes %" PRIu64 ", "
           "full consensus mode: %s, "
-          "tracking peer sm committed index: %s",
+          "tracking peer sm committed index: %s, "
+          "waiting for state machine catchup on becoming leader: %s",
           params->election_timeout_lower_bound_,
           params->election_timeout_upper_bound_,
           params->heart_beat_interval_,
@@ -446,7 +448,8 @@ void raft_server::apply_and_log_current_params() {
           params->max_log_gap_in_stream_,
           params->max_bytes_in_flight_in_stream_,
           params->use_full_consensus_among_healthy_members_ ? "ON" : "OFF",
-          params->track_peers_sm_commit_idx_ ? "ON" : "OFF"
+          params->track_peers_sm_commit_idx_ ? "ON" : "OFF",
+          params->wait_for_sm_catchup_on_becoming_leader_ ? "YES" : "NO"
         );
 
     status_check_timer_.set_duration_ms(params->heart_beat_interval_);
@@ -644,17 +647,18 @@ int32 raft_server::get_leadership_expiry() {
     return expiry;
 }
 
-std::list<ptr<peer>> raft_server::get_not_responding_peers(int expiry) {
+std::list<ptr<peer>> raft_server::get_not_responding_peers(uint64_t expiry) {
     // Check if quorum nodes are not responding
     // (i.e., don't respond 20x heartbeat time long or expiry if sent as argument).
     // default argument for expiry is used in case user defines leadership_expiry_.
     ptr<raft_params> params = ctx_->get_params();
     if (expiry == 0) {
-        expiry = params->heart_beat_interval_ * raft_server::raft_limits_.response_limit_;
+        expiry = (uint64_t)params->heart_beat_interval_ *
+                 raft_server::raft_limits_.response_limit_;
     }
 
     std::list<ptr<peer>> rs;
-    auto cb = [&rs, expiry](const ptr<peer>& peer_ptr, int32_t resp_elapsed_ms) {
+    auto cb = [&rs, expiry](const ptr<peer>& peer_ptr, uint64_t resp_elapsed_ms) {
         if (resp_elapsed_ms <= expiry) {
             // Response time is within the expiry time.
             return;
@@ -666,8 +670,8 @@ std::list<ptr<peer>> raft_server::get_not_responding_peers(int expiry) {
 }
 
 bool raft_server::is_excluded_from_quorum(const peer& pp,
-                                          int32_t resp_elapsed_ms,
-                                          int32_t expiry,
+                                          uint64_t resp_elapsed_ms,
+                                          uint64_t expiry,
                                           uint64_t required_log_idx,
                                           bool include_self_mark_down)
 {
@@ -703,7 +707,7 @@ bool raft_server::is_excluded_from_quorum(const peer& pp,
 }
 
 size_t raft_server::get_not_responding_peers_count(
-    int expiry, uint64_t required_log_idx)
+    uint64_t expiry, uint64_t required_log_idx)
 {
     // Check if quorum nodes are not responding
     // (i.e., don't respond 20x heartbeat time long or expiry if sent as argument).
@@ -715,7 +719,7 @@ size_t raft_server::get_not_responding_peers_count(
 
     size_t num_not_resp_nodes = 0;
     auto cb = [&num_not_resp_nodes, required_log_idx, expiry]
-        (const ptr<peer>& pp, int32_t resp_elapsed_ms)
+        (const ptr<peer>& pp, uint64_t resp_elapsed_ms)
     {
         bool non_responding_peer =
             is_excluded_from_quorum(*pp, resp_elapsed_ms, expiry, required_log_idx);
@@ -729,7 +733,7 @@ size_t raft_server::get_not_responding_peers_count(
 }
 
 void raft_server::for_each_voting_members(
-    const std::function<void(const ptr<peer>&, int32_t)>& callback) {
+    const std::function<void(const ptr<peer>&, uint64_t)>& callback) {
 
     // Check not responding peers.
     for (auto& entry: peers_) {
@@ -737,8 +741,7 @@ void raft_server::for_each_voting_members(
 
         if (!is_regular_member(peer_ptr)) continue;
 
-        const auto resp_elapsed_ms =
-            static_cast<int32>(peer_ptr->get_resp_timer_us() / 1000);
+        uint64_t resp_elapsed_ms = peer_ptr->get_resp_timer_us() / 1000;
         callback(peer_ptr, resp_elapsed_ms);
     }
 }
@@ -784,6 +787,10 @@ ptr<resp_msg> raft_server::process_req(req_msg& req,
         // Shutting down, ignore all incoming messages.
         p_wn("stopping, return null");
         return nullptr;
+    }
+
+    if (write_paused_.load(std::memory_order_relaxed)) {
+        check_resignation_timeout();
     }
 
     if ( req.get_type() == msg_type::client_request ) {
@@ -1191,18 +1198,43 @@ void raft_server::become_leader() {
                 log_val_type::conf,
                 timer_helper::get_timeofday_us() ) );
         index_at_becoming_leader_ = store_log_entry(entry);
-        p_in("[BECOME LEADER] appended new config at %" PRIu64,
-             index_at_becoming_leader_.load());
+        p_in("[BECOME LEADER] appended new config at %" PRIu64
+             ", current state machine commit index %" PRIu64
+             ", target index %" PRIu64,
+             index_at_becoming_leader_.load(),
+             sm_commit_index_.load(),
+             quick_commit_index_.load());
         config_changing_ = true;
     }
 
     cb_func::Param param(id_, leader_);
     ulong my_term = state_->get_term();
     param.ctx = &my_term;
-    CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
-    (void)rc; // nothing to do in this callback.
 
-    write_paused_ = false;
+    // If `wait_for_sm_catchup_on_becoming_leader_` option is set,
+    // `BecomeLeader` will be invoked only when the state machine catches up
+    // with `index_at_becoming_leader_`.
+    if (!params->wait_for_sm_catchup_on_becoming_leader_ ||
+        sm_commit_index_ + 1 >= index_at_becoming_leader_) {
+        waiting_for_sm_catchup_ = false;
+
+        CbReturnCode rc = ctx_->cb_func_.call(cb_func::BecomeLeader, &param);
+        (void)rc; // nothing to do in this callback.
+
+    } else {
+        waiting_for_sm_catchup_ = true;
+        p_in("[BECOME LEADER] waiting for state machine to catch up "
+             "to index %" PRIu64 ", current sm commit index %" PRIu64,
+             index_at_becoming_leader_.load() - 1, sm_commit_index_.load());
+
+         CbReturnCode rc = ctx_->cb_func_.call(cb_func::LeaderSmCatchingUp, &param);
+        (void)rc; // nothing to do in this callback.
+    }
+
+    if (write_paused_) {
+        write_paused_ = false;
+        p_in(" --- WRITE RESUMED ---");
+    }
     next_leader_candidate_ = -1;
     initialized_ = true;
     pre_vote_.quorum_reject_count_ = 0;
@@ -1385,7 +1417,7 @@ void raft_server::yield_leadership(bool immediate_yield,
         leader_ = -1;
         become_follower();
         // Clear live flag to avoid pre-vote rejection.
-        hb_alive_ = false;
+        update_hb_alive_flag(false);
         return;
     }
 
@@ -1441,23 +1473,49 @@ void raft_server::yield_leadership(bool immediate_yield,
         p_in("got graceful re-elect request, pause write from now");
     }
 
+    // Pause write.
+    write_paused_ = true;
+    p_in(" --- WRITE PAUSED ---");
+
     if (candidate_id > -1) {
         p_in("next leader candidate: id %d endpoint %s priority %d "
              "last response %" PRIu64 " ms ago",
              candidate_id, candidate_endpoint.c_str(), max_priority,
              last_resp_ms);
         next_leader_candidate_ = candidate_id;;
+
+        // Send a dummy append entries request to the candidate to trigger its election.
+        auto pit = peers_.find(candidate_id);
+        if (pit != peers_.end()) {
+            p_in("send dummy append entries request to candidate %d", candidate_id);
+            request_append_entries(pit->second);
+        } else {
+            p_wn("could not find candidate %d in peers", candidate_id);
+        }
+
     } else {
         p_wn("cannot find valid candidate for next leader, will proceed anyway");
     }
-
-    // Reset reelection timer, and pause write.
-    write_paused_ = true;
 
     // Wait until election timeout upper bound.
     reelection_timer_.set_duration_ms
                       ( ctx_->get_params()->election_timeout_upper_bound_ );
     reelection_timer_.reset();
+}
+
+bool raft_server::check_resignation_timeout() {
+    if (write_paused_ && reelection_timer_.timeout()) {
+        p_in("resign by timeout, %" PRIu64 " us elapsed, resign now",
+             reelection_timer_.get_us());
+        leader_ = -1;
+        become_follower();
+
+        // Clear this flag to avoid pre-vote rejection.
+        update_hb_alive_flag(false);
+        return true;
+    }
+
+    return false;
 }
 
 bool raft_server::request_leadership() {
@@ -1522,12 +1580,16 @@ void raft_server::become_follower() {
         param.ctx = &my_term;
         (void) ctx_->cb_func_.call(cb_func::BecomeFollower, &param);
 
-        write_paused_ = false;
+        if (write_paused_) {
+            write_paused_ = false;
+            p_in(" --- WRITE RESUMED ---");
+        }
         next_leader_candidate_ = -1;
         initialized_ = true;
         uncommitted_config_.reset();
         pre_vote_.quorum_reject_count_ = 0;
         pre_vote_.no_response_failure_count_ = 0;
+        waiting_for_sm_catchup_ = false;
 
         ptr<raft_params> params = ctx_->get_params();
         if ( params->auto_adjust_quorum_for_small_cluster_ &&
@@ -1806,6 +1868,15 @@ std::string raft_server::get_aux(int32 srv_id) const {
     return s_conf->get_aux();
 }
 
+bool raft_server::is_leader() const {
+    if ( leader_ == id_ &&
+         role_ == srv_role::leader &&
+         waiting_for_sm_catchup_ == false ) {
+        return true;
+    }
+    return false;
+}
+
 ptr<srv_config> raft_server::get_srv_config(int32 srv_id) const {
     ptr<cluster_config> c_conf = get_config();
     return c_conf->get_server(srv_id);
@@ -1895,6 +1966,7 @@ raft_server::peer_info raft_server::get_peer_info(int32 srv_id) const {
     ptr<peer> pp = entry->second;
     ret.id_ = pp->get_id();
     ret.last_log_idx_ = pp->get_last_accepted_log_idx();
+    ret.last_sm_committed_idx_ = pp->get_sm_committed_idx();
     ret.last_succ_resp_us_ = pp->get_resp_timer_us();
     return ret;
 }
@@ -1909,6 +1981,7 @@ std::vector<raft_server::peer_info> raft_server::get_peer_info_all() const {
         ptr<peer> pp = entry.second;
         pi.id_ = pp->get_id();
         pi.last_log_idx_ = pp->get_last_accepted_log_idx();
+        pi.last_sm_committed_idx_ = pp->get_sm_committed_idx();
         pi.last_succ_resp_us_ = pp->get_resp_timer_us();
         ret.push_back(pi);
     }

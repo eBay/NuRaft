@@ -64,12 +64,12 @@ void raft_server::request_prevote() {
                 recreate = pp->need_to_reconnect();
 
                 // Or if it is not active long time, reconnect as well.
-                int32 last_active_time_ms = pp->get_active_timer_us() / 1000;
+                uint64_t last_active_time_ms = pp->get_active_timer_us() / 1000;
                 if ( last_active_time_ms >
-                         params->heart_beat_interval_ *
+                         (uint64_t)params->heart_beat_interval_ *
                              raft_server::raft_limits_.reconnect_limit_ ) {
-                    p_wn( "connection to peer %d is not active long time: %d ms, "
-                          "need reconnection for prevote",
+                    p_wn( "connection to peer %d is not active long time: "
+                          "%" PRIu64 " ms, need reconnection for prevote",
                           pp->get_id(),
                           last_active_time_ms );
                     recreate = true;
@@ -123,7 +123,7 @@ void raft_server::request_prevote() {
         }
     }
 
-    hb_alive_ = false;
+    update_hb_alive_flag(false);
     leader_ = -1;
     role_ = srv_role::candidate;
     index_at_becoming_leader_ = 0;
@@ -251,7 +251,7 @@ void raft_server::initiate_vote(bool force_vote) {
     }
 
     if (role_ != srv_role::leader) {
-        hb_alive_ = false;
+        update_hb_alive_flag(false);
         leader_ = -1;
     }
 }
@@ -314,14 +314,21 @@ void raft_server::request_vote(bool force_vote) {
 }
 
 ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
+    const ulong last_log_idx = log_store_->next_slot() - 1;
+    // An empty, fully compacted log store returns a dummy entry with
+    // term zero. Its logical last index is still the snapshot boundary.
+    // Use the same snapshot-aware lookup as outgoing RequestVote so
+    // compaction cannot make an older candidate appear more up to date.
+    const ulong last_log_term = term_for_log(last_log_idx);
+
     p_in("[VOTE REQ] my role %s, from peer %d, "
          "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "last idx: req %" PRIu64 " / mine %" PRIu64
          ", term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "priority: target %d / mine %d, voted_for %d",
          srv_role_to_string(role_).c_str(),
-         req.get_src(), req.get_last_log_term(), log_store_->last_entry()->get_term(),
-         req.get_last_log_idx(), log_store_->next_slot()-1,
+         req.get_src(), req.get_last_log_term(), last_log_term,
+         req.get_last_log_idx(), last_log_idx,
          req.get_term(), state_->get_term(),
          target_priority_, my_priority_, state_->get_voted_for());
 
@@ -332,9 +339,9 @@ ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
                           req.get_src() ) );
 
     bool log_okay =
-        req.get_last_log_term() > log_store_->last_entry()->get_term() ||
-        ( req.get_last_log_term() == log_store_->last_entry()->get_term() &&
-          log_store_->next_slot() - 1 <= req.get_last_log_idx() );
+        req.get_last_log_term() > last_log_term ||
+        ( req.get_last_log_term() == last_log_term &&
+          last_log_idx <= req.get_last_log_idx() );
 
     bool grant =
         req.get_term() == state_->get_term() &&
@@ -436,17 +443,36 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
         next_idx_for_resp = std::numeric_limits<ulong>::max();
     }
 
+    bool hb_alive_decision = hb_alive_;
+    if (hb_alive_decision && !is_leader()) {
+        raft_params cur_params = get_current_params();
+        // This indicates the last received heartbeat.
+        int64_t last_election_reset_ms = last_election_timer_reset_.get_ms();
+        if (last_election_reset_ms > cur_params.election_timeout_lower_bound_) {
+            // If heartbeat is not received for election timeout lower bound,
+            // set `hb_alive_` to false even though its election timer
+            // is not fired yet.
+            p_in("election timer was reset %" PRIi64 " ms ago, "
+                 "greater than election timeout lower bound %d ms, "
+                 "set hb_alive_decision to false",
+                 last_election_reset_ms, cur_params.election_timeout_lower_bound_);
+            hb_alive_decision = false;
+        }
+    }
+
     p_in("[PRE-VOTE REQ] my role %s, from peer %d, "
          "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "last idx: req %" PRIu64 " / mine %" PRIu64
          ", term: req %" PRIu64 " / mine %" PRIu64 "\n"
-         "%s",
+         "%s, %s",
          srv_role_to_string(role_).c_str(),
          req.get_src(), req.get_last_log_term(),
          log_store_->last_entry()->get_term(),
          req.get_last_log_idx(), log_store_->next_slot()-1,
          req.get_term(), state_->get_term(),
-         (hb_alive_) ? "HB alive" : "HB dead");
+         (hb_alive_) ? "HB alive" : "HB dead",
+         (hb_alive_decision) ? "HB alive (decision)" : "HB dead (decision)"
+         );
 
     ptr<resp_msg> resp
         ( cs_new<resp_msg>
@@ -464,7 +490,7 @@ ptr<resp_msg> raft_server::handle_prevote_req(req_msg& req) {
     if (state_->is_catching_up()) {
         p_in("this server is catching up, always accept pre-vote");
     }
-    if (!hb_alive_ || state_->is_catching_up()) {
+    if (!hb_alive_decision || state_->is_catching_up()) {
         p_in("pre-vote decision: O (grant)");
         resp->accept(log_store_->next_slot());
     } else {

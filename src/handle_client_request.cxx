@@ -217,12 +217,14 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
     uint64_t idx = 0;
     uint64_t elapsed_us = 0;
     ptr<buffer> ret_value = nullptr;
+    cmd_result_code result_code = cmd_result_code::TIMEOUT;
     {   auto_lock(commit_ret_elems_lock_);
         idx = elem->idx_;
         elapsed_us = elem->timer_.get_us();
         ret_value = elem->ret_value_;
+        result_code = elem->result_code_;
         elem->callback_invoked_ = true;
-        if (elem->result_code_ != cmd_result_code::TIMEOUT) {
+        if (result_code != cmd_result_code::TIMEOUT) {
             commit_ret_elems_.erase(elem->idx_);
         } else {
             p_dv("Client timeout leave commit thread to remove commit_ret_elem %" PRIu64,
@@ -231,14 +233,14 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
         p_dv("remaining elems in waiting queue: %zu", commit_ret_elems_.size());
     }
 
-    if (elem->result_code_ == cmd_result_code::OK) {
+    if (result_code == cmd_result_code::OK) {
         p_dv( "[OK] commit_ret_cv %" PRIu64 " wake up (%" PRIu64 " us), return value %p",
               idx, elapsed_us, ret_value.get() );
     } else {
         // Null `ret_value`, most likely timeout.
         p_wn( "[NOT OK] commit_ret_cv %" PRIu64 " wake up (%" PRIu64 " us), "
               "return value %p, result code %d",
-              idx, elapsed_us, ret_value.get(), elem->result_code_ );
+              idx, elapsed_us, ret_value.get(), result_code );
         bool valid_leader = check_leadership_validity();
         if (valid_leader) {
             p_in("leadership is still valid");
@@ -247,7 +249,7 @@ ptr<resp_msg> raft_server::handle_cli_req_callback(ptr<commit_ret_elem> elem,
         }
     }
     resp->set_ctx(ret_value);
-    resp->set_result_code(elem->result_code_);
+    resp->set_result_code(result_code);
 
     return resp;
 }

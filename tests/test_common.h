@@ -873,15 +873,15 @@ public:
     };
 
     static void sleep_us(size_t us, const std::string& msg = std::string()) {
-        if (!msg.empty()) TestSuite::_msg("%s (%zu us)\n", msg.c_str(), us);
+        if (!msg.empty()) TestSuite::_msgt("%s (%zu us)\n", msg.c_str(), us);
         std::this_thread::sleep_for(std::chrono::microseconds(us));
     }
     static void sleep_ms(size_t ms, const std::string& msg = std::string()) {
-        if (!msg.empty()) TestSuite::_msg("%s (%zu ms)\n", msg.c_str(), ms);
+        if (!msg.empty()) TestSuite::_msgt("%s (%zu ms)\n", msg.c_str(), ms);
         std::this_thread::sleep_for(std::chrono::milliseconds(ms));
     }
     static void sleep_sec(size_t sec, const std::string& msg = std::string()) {
-        if (!msg.empty()) TestSuite::_msg("%s (%zu s)\n", msg.c_str(), sec);
+        if (!msg.empty()) TestSuite::_msgt("%s (%zu s)\n", msg.c_str(), sec);
         std::this_thread::sleep_for(std::chrono::seconds(sec));
     }
     static std::string lzStr(size_t digit, uint64_t num) {

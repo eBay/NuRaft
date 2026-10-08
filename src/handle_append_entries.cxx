@@ -244,20 +244,20 @@ bool raft_server::request_append_entries(ptr<peer> p) {
     }
 
     bool need_to_reconnect = p->need_to_reconnect();
-    int32 last_active_time_ms = p->get_active_timer_us() / 1000;
+    uint64_t last_active_time_ms = p->get_active_timer_us() / 1000;
     if ( last_active_time_ms >
-             params->heart_beat_interval_ *
+             (uint64_t)params->heart_beat_interval_ *
                  raft_server::raft_limits_.reconnect_limit_ ) {
         if (srv_to_leave_ && srv_to_leave_->get_id() == p->get_id()) {
             // We should not re-establish the connection to
             // to-be-removed server, as it will block removing it
             // from `peers_` list.
-            p_wn( "connection to peer %d is not active long time: %d ms, "
+            p_wn( "connection to peer %d is not active long time: %" PRIu64 " ms, "
                   "but this peer should be removed. do nothing",
                   p->get_id(),
                   last_active_time_ms );
         } else {
-            p_wn( "connection to peer %d is not active long time: %d ms, "
+            p_wn( "connection to peer %d is not active long time: %" PRIu64 " ms, "
                   "force re-connect",
                   p->get_id(),
                   last_active_time_ms );
@@ -1345,6 +1345,10 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
                     do_log_rewind = false;
                 } else if (appendix->extra_order_ == resp_appendix::RECEIVING_SNAPSHOT) {
                     p->set_snapshot_sync_is_needed(true);
+                    if (resp.get_next_idx() > 0) {
+                        p->set_next_log_idx(resp.get_next_idx());
+                    }
+                    do_log_rewind = false;
                     p_in("peer %d was in snapshot sync mode, re-sending a snapshot. "
                          "peers next log idx: %" PRIu64 ", resp next idx: %" PRIu64,
                          p->get_id(), prev_next_log, resp.get_next_idx());
@@ -1459,7 +1463,7 @@ void raft_server::handle_append_entries_resp(resp_msg& resp) {
         update_rand_timeout();
 
         // Clear live flag to avoid pre-vote rejection.
-        hb_alive_ = false;
+        update_hb_alive_flag(false);
 
         // Send leadership takeover request to this follower.
         ptr<req_msg> req = cs_new<req_msg>
@@ -1626,7 +1630,7 @@ void raft_server::notify_log_append_completion(bool ok) {
             become_follower();
 
             // Clear this flag to avoid pre-vote rejection.
-            hb_alive_ = false;
+            update_hb_alive_flag(false);
             return;
         }
 
