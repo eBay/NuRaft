@@ -314,14 +314,21 @@ void raft_server::request_vote(bool force_vote) {
 }
 
 ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
+    const ulong last_log_idx = log_store_->next_slot() - 1;
+    // An empty, fully compacted log store returns a dummy entry with
+    // term zero. Its logical last index is still the snapshot boundary.
+    // Use the same snapshot-aware lookup as outgoing RequestVote so
+    // compaction cannot make an older candidate appear more up to date.
+    const ulong last_log_term = term_for_log(last_log_idx);
+
     p_in("[VOTE REQ] my role %s, from peer %d, "
          "log term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "last idx: req %" PRIu64 " / mine %" PRIu64
          ", term: req %" PRIu64 " / mine %" PRIu64 "\n"
          "priority: target %d / mine %d, voted_for %d",
          srv_role_to_string(role_).c_str(),
-         req.get_src(), req.get_last_log_term(), log_store_->last_entry()->get_term(),
-         req.get_last_log_idx(), log_store_->next_slot()-1,
+         req.get_src(), req.get_last_log_term(), last_log_term,
+         req.get_last_log_idx(), last_log_idx,
          req.get_term(), state_->get_term(),
          target_priority_, my_priority_, state_->get_voted_for());
 
@@ -332,9 +339,9 @@ ptr<resp_msg> raft_server::handle_vote_req(req_msg& req) {
                           req.get_src() ) );
 
     bool log_okay =
-        req.get_last_log_term() > log_store_->last_entry()->get_term() ||
-        ( req.get_last_log_term() == log_store_->last_entry()->get_term() &&
-          log_store_->next_slot() - 1 <= req.get_last_log_idx() );
+        req.get_last_log_term() > last_log_term ||
+        ( req.get_last_log_term() == last_log_term &&
+          last_log_idx <= req.get_last_log_idx() );
 
     bool grant =
         req.get_term() == state_->get_term() &&

@@ -104,6 +104,383 @@ int leader_election_basic_test() {
     return 0;
 }
 
+int vote_log_freshness_retained_logs_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    TestSuite::GcFunc cleanup([&]() {
+        for (RaftPkg* pkg: pkgs) {
+            if (pkg->raftServer) pkg->raftServer->shutdown();
+        }
+        f_base->destroy();
+    });
+
+    CHK_Z( launch_servers( pkgs ) );
+    for (auto& pp: pkgs) {
+        raft_params param = pp->raftServer->get_current_params();
+        // Keep snapshot creation explicit so the log layout is controlled.
+        param.snapshot_distance_ = 0;
+        param.reserved_log_items_ = 0;
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+    CHK_Z( make_group( pkgs ) );
+    CHK_TRUE( s1.raftServer->is_leader() );
+    const ulong stale_index = s3.raftServer->get_last_log_idx();
+
+    // S3 retains its older log while S1 and S2 commit new entries.
+    for (size_t ii = 0; ii < 2; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr<raft_result> ret = s1.raftServer->append_entries( {msg} );
+        CHK_TRUE( ret->get_accepted() );
+
+        s1.fNet->execReqResp(s2_addr);
+        s1.fNet->execReqResp(s2_addr);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+        CHK_TRUE( ret->has_result() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+    }
+
+    ptr<log_store> store = s2.sMgr->load_log_store();
+    ulong last_index = store->next_slot() - 1;
+    const ulong last_term = store->last_entry()->get_term();
+    CHK_GT( last_index, stale_index );
+    CHK_GT( last_term, 0 );
+
+    auto check_vote = [&](ulong candidate_term, ulong candidate_index,
+                          bool expected_grant) -> int {
+        // A fresh election term prevents a previous voted_for value from
+        // masking the log-freshness decision. No fake timer is advanced.
+        ptr<req_msg> req = cs_new<req_msg>
+                          ( s2.raftServer->get_term() + 1,
+                            msg_type::request_vote_request,
+                            3, 2, candidate_term, candidate_index, 0 );
+        ptr<resp_msg> resp = s2.fNet->gotMsg(req);
+        CHK_NONNULL( resp );
+        CHK_EQ( expected_grant, resp->get_accepted() );
+        CHK_EQ( expected_grant ? 3 : -1,
+                s2.sMgr->read_state()->get_voted_for() );
+        return 0;
+    };
+    // Term takes precedence over index, and equal terms require a log at
+    // least as long. A snapshot must not make an older candidate eligible.
+    CHK_Z( check_vote(last_term, stale_index, false) );
+    CHK_Z( check_vote(last_term, last_index - 1, false) );
+    CHK_Z( check_vote(last_term - 1, last_index + 1, false) );
+    CHK_Z( check_vote(last_term, last_index, true) );
+    CHK_Z( check_vote(last_term, last_index + 1, true) );
+    CHK_Z( check_vote(last_term + 1, stale_index, true) );
+
+    return 0;
+}
+
+int vote_log_freshness_snapshot_compaction_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    TestSuite::GcFunc cleanup([&]() {
+        for (RaftPkg* pkg: pkgs) {
+            if (pkg->raftServer) pkg->raftServer->shutdown();
+        }
+        f_base->destroy();
+    });
+
+    CHK_Z( launch_servers( pkgs ) );
+    for (auto& pp: pkgs) {
+        raft_params param = pp->raftServer->get_current_params();
+        // Keep snapshot creation explicit so the log layout is controlled.
+        param.snapshot_distance_ = 0;
+        param.reserved_log_items_ = 0;
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+    CHK_Z( make_group( pkgs ) );
+    CHK_TRUE( s1.raftServer->is_leader() );
+    const ulong stale_index = s3.raftServer->get_last_log_idx();
+
+    // S3 retains its older log while S1 and S2 commit new entries.
+    for (size_t ii = 0; ii < 2; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr<raft_result> ret = s1.raftServer->append_entries( {msg} );
+        CHK_TRUE( ret->get_accepted() );
+
+        s1.fNet->execReqResp(s2_addr);
+        s1.fNet->execReqResp(s2_addr);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+        CHK_TRUE( ret->has_result() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+    }
+
+    ptr<log_store> store = s2.sMgr->load_log_store();
+    ulong last_index = store->next_slot() - 1;
+    const ulong last_term = store->last_entry()->get_term();
+    CHK_GT( last_index, stale_index );
+    CHK_GT( last_term, 0 );
+
+    raft_server::create_snapshot_options options;
+    options.serialize_commit_ = true;
+    CHK_EQ( last_index, s2.raftServer->create_snapshot(options) );
+    CHK_EQ( last_index, s2.sm->last_snapshot()->get_last_log_idx() );
+    CHK_EQ( last_term, s2.sm->last_snapshot()->get_last_log_term() );
+    CHK_EQ( last_index + 1, store->start_index() );
+    CHK_EQ( store->start_index(), store->next_slot() );
+    // This is the log_store contract, also used by inmem_log_store:
+    // an empty store returns a dummy entry, not the snapshot boundary.
+    CHK_Z( store->last_entry()->get_term() );
+
+    auto check_vote = [&](ulong candidate_term, ulong candidate_index,
+                          bool expected_grant) -> int {
+        // A fresh election term prevents a previous voted_for value from
+        // masking the log-freshness decision. No fake timer is advanced.
+        ptr<req_msg> req = cs_new<req_msg>
+                          ( s2.raftServer->get_term() + 1,
+                            msg_type::request_vote_request,
+                            3, 2, candidate_term, candidate_index, 0 );
+        ptr<resp_msg> resp = s2.fNet->gotMsg(req);
+        CHK_NONNULL( resp );
+        CHK_EQ( expected_grant, resp->get_accepted() );
+        CHK_EQ( expected_grant ? 3 : -1,
+                s2.sMgr->read_state()->get_voted_for() );
+        return 0;
+    };
+    // Term takes precedence over index, and equal terms require a log at
+    // least as long. A snapshot must not make an older candidate eligible.
+    CHK_Z( check_vote(last_term, stale_index, false) );
+    CHK_Z( check_vote(last_term, last_index - 1, false) );
+    CHK_Z( check_vote(last_term - 1, last_index + 1, false) );
+    CHK_Z( check_vote(last_term, last_index, true) );
+    CHK_Z( check_vote(last_term, last_index + 1, true) );
+    CHK_Z( check_vote(last_term + 1, stale_index, true) );
+
+    return 0;
+}
+
+int vote_log_freshness_snapshot_restart_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    TestSuite::GcFunc cleanup([&]() {
+        for (RaftPkg* pkg: pkgs) {
+            if (pkg->raftServer) pkg->raftServer->shutdown();
+        }
+        f_base->destroy();
+    });
+
+    CHK_Z( launch_servers( pkgs ) );
+    for (auto& pp: pkgs) {
+        raft_params param = pp->raftServer->get_current_params();
+        // Keep snapshot creation explicit so the log layout is controlled.
+        param.snapshot_distance_ = 0;
+        param.reserved_log_items_ = 0;
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+    CHK_Z( make_group( pkgs ) );
+    CHK_TRUE( s1.raftServer->is_leader() );
+    const ulong stale_index = s3.raftServer->get_last_log_idx();
+
+    // S3 retains its older log while S1 and S2 commit new entries.
+    for (size_t ii = 0; ii < 2; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr<raft_result> ret = s1.raftServer->append_entries( {msg} );
+        CHK_TRUE( ret->get_accepted() );
+
+        s1.fNet->execReqResp(s2_addr);
+        s1.fNet->execReqResp(s2_addr);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+        CHK_TRUE( ret->has_result() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+    }
+
+    ptr<log_store> store = s2.sMgr->load_log_store();
+    ulong last_index = store->next_slot() - 1;
+    const ulong last_term = store->last_entry()->get_term();
+    CHK_GT( last_index, stale_index );
+    CHK_GT( last_term, 0 );
+
+    raft_server::create_snapshot_options options;
+    options.serialize_commit_ = true;
+    CHK_EQ( last_index, s2.raftServer->create_snapshot(options) );
+    CHK_EQ( last_index, s2.sm->last_snapshot()->get_last_log_idx() );
+    CHK_EQ( last_term, s2.sm->last_snapshot()->get_last_log_term() );
+    CHK_EQ( last_index + 1, store->start_index() );
+    CHK_EQ( store->start_index(), store->next_slot() );
+    // This is the log_store contract, also used by inmem_log_store:
+    // an empty store returns a dummy entry, not the snapshot boundary.
+    CHK_Z( store->last_entry()->get_term() );
+
+    raft_params param = s2.raftServer->get_current_params();
+    s2.raftServer->shutdown();
+    // Reconstruct the core from the same log store, state and snapshot.
+    s2.restartServer(&param);
+    s2.fNet->listen(s2.raftServer);
+    CHK_EQ( last_index, s2.raftServer->get_last_log_idx() );
+
+    auto check_vote = [&](ulong candidate_term, ulong candidate_index,
+                          bool expected_grant) -> int {
+        // A fresh election term prevents a previous voted_for value from
+        // masking the log-freshness decision. No fake timer is advanced.
+        ptr<req_msg> req = cs_new<req_msg>
+                          ( s2.raftServer->get_term() + 1,
+                            msg_type::request_vote_request,
+                            3, 2, candidate_term, candidate_index, 0 );
+        ptr<resp_msg> resp = s2.fNet->gotMsg(req);
+        CHK_NONNULL( resp );
+        CHK_EQ( expected_grant, resp->get_accepted() );
+        CHK_EQ( expected_grant ? 3 : -1,
+                s2.sMgr->read_state()->get_voted_for() );
+        return 0;
+    };
+    // Term takes precedence over index, and equal terms require a log at
+    // least as long. A snapshot must not make an older candidate eligible.
+    CHK_Z( check_vote(last_term, stale_index, false) );
+    CHK_Z( check_vote(last_term, last_index - 1, false) );
+    CHK_Z( check_vote(last_term - 1, last_index + 1, false) );
+    CHK_Z( check_vote(last_term, last_index, true) );
+    CHK_Z( check_vote(last_term, last_index + 1, true) );
+    CHK_Z( check_vote(last_term + 1, stale_index, true) );
+
+    return 0;
+}
+
+int vote_log_freshness_post_snapshot_logs_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+    TestSuite::GcFunc cleanup([&]() {
+        for (RaftPkg* pkg: pkgs) {
+            if (pkg->raftServer) pkg->raftServer->shutdown();
+        }
+        f_base->destroy();
+    });
+
+    CHK_Z( launch_servers( pkgs ) );
+    for (auto& pp: pkgs) {
+        raft_params param = pp->raftServer->get_current_params();
+        // Keep snapshot creation explicit so the log layout is controlled.
+        param.snapshot_distance_ = 0;
+        param.reserved_log_items_ = 0;
+        param.return_method_ = raft_params::async_handler;
+        pp->raftServer->update_params(param);
+    }
+    CHK_Z( make_group( pkgs ) );
+    CHK_TRUE( s1.raftServer->is_leader() );
+    const ulong stale_index = s3.raftServer->get_last_log_idx();
+
+    // S3 retains its older log while S1 and S2 commit new entries.
+    for (size_t ii = 0; ii < 2; ++ii) {
+        std::string test_msg = "test" + std::to_string(ii);
+        ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+        msg->put(test_msg);
+        ptr<raft_result> ret = s1.raftServer->append_entries( {msg} );
+        CHK_TRUE( ret->get_accepted() );
+
+        s1.fNet->execReqResp(s2_addr);
+        s1.fNet->execReqResp(s2_addr);
+        CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+        CHK_TRUE( ret->has_result() );
+        CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+    }
+
+    ptr<log_store> store = s2.sMgr->load_log_store();
+    ulong last_index = store->next_slot() - 1;
+    const ulong last_term = store->last_entry()->get_term();
+    CHK_GT( last_index, stale_index );
+    CHK_GT( last_term, 0 );
+
+    raft_server::create_snapshot_options options;
+    options.serialize_commit_ = true;
+    CHK_EQ( last_index, s2.raftServer->create_snapshot(options) );
+    CHK_EQ( last_index, s2.sm->last_snapshot()->get_last_log_idx() );
+    CHK_EQ( last_term, s2.sm->last_snapshot()->get_last_log_term() );
+    CHK_EQ( last_index + 1, store->start_index() );
+    CHK_EQ( store->start_index(), store->next_slot() );
+    // This is the log_store contract, also used by inmem_log_store:
+    // an empty store returns a dummy entry, not the snapshot boundary.
+    CHK_Z( store->last_entry()->get_term() );
+
+    // The retained suffix now determines freshness, beyond the snapshot.
+    std::string test_msg = "after snapshot";
+    ptr<buffer> msg = buffer::alloc(test_msg.size() + 1);
+    msg->put(test_msg);
+    ptr<raft_result> ret = s1.raftServer->append_entries( {msg} );
+    CHK_TRUE( ret->get_accepted() );
+
+    s1.fNet->execReqResp(s2_addr);
+    s1.fNet->execReqResp(s2_addr);
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+    CHK_TRUE( ret->has_result() );
+    CHK_EQ( cmd_result_code::OK, ret->get_result_code() );
+
+    last_index = store->next_slot() - 1;
+    CHK_GT( last_index, s2.sm->last_snapshot()->get_last_log_idx() );
+    CHK_EQ( last_term, store->last_entry()->get_term() );
+
+    auto check_vote = [&](ulong candidate_term, ulong candidate_index,
+                          bool expected_grant) -> int {
+        // A fresh election term prevents a previous voted_for value from
+        // masking the log-freshness decision. No fake timer is advanced.
+        ptr<req_msg> req = cs_new<req_msg>
+                          ( s2.raftServer->get_term() + 1,
+                            msg_type::request_vote_request,
+                            3, 2, candidate_term, candidate_index, 0 );
+        ptr<resp_msg> resp = s2.fNet->gotMsg(req);
+        CHK_NONNULL( resp );
+        CHK_EQ( expected_grant, resp->get_accepted() );
+        CHK_EQ( expected_grant ? 3 : -1,
+                s2.sMgr->read_state()->get_voted_for() );
+        return 0;
+    };
+    // Term takes precedence over index, and equal terms require a log at
+    // least as long. A snapshot must not make an older candidate eligible.
+    CHK_Z( check_vote(last_term, stale_index, false) );
+    CHK_Z( check_vote(last_term, last_index - 1, false) );
+    CHK_Z( check_vote(last_term - 1, last_index + 1, false) );
+    CHK_Z( check_vote(last_term, last_index, true) );
+    CHK_Z( check_vote(last_term, last_index + 1, true) );
+    CHK_Z( check_vote(last_term + 1, stale_index, true) );
+
+    return 0;
+}
+
 int leader_election_priority_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -925,6 +1302,18 @@ int main(int argc, char** argv) {
 
     ts.doTest( "leader election basic test",
                leader_election_basic_test );
+
+    ts.doTest( "vote log freshness with retained logs test",
+               vote_log_freshness_retained_logs_test );
+
+    ts.doTest( "vote log freshness after snapshot compaction test",
+               vote_log_freshness_snapshot_compaction_test );
+
+    ts.doTest( "vote log freshness after snapshot restart test",
+               vote_log_freshness_snapshot_restart_test );
+
+    ts.doTest( "vote log freshness with post-snapshot logs test",
+               vote_log_freshness_post_snapshot_logs_test );
 
     ts.doTest( "leader election priority test",
                leader_election_priority_test );
