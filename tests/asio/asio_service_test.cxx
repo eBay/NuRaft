@@ -37,6 +37,16 @@ limitations under the License.
 
 #include <stdio.h>
 
+// Same condition as `CUSTOM_SSL_CTX_SUPPORTED` in `asio_service.cxx`.
+#if !SSL_LIBRARY_NOT_FOUND && (defined(__linux__) || defined(__APPLE__))
+    #include <openssl/ssl.h>
+    #if (ASIO_VERSION >= 101601) && \
+        (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
+        !defined(LIBRESSL_VERSION_NUMBER)
+        #define CUSTOM_SSL_CTX_TEST (1)
+    #endif
+#endif
+
 using namespace nuraft;
 using namespace raft_functional_common;
 
@@ -451,6 +461,64 @@ int ssl_test() {
     SimpleLogger::shutdown();
     return 0;
 }
+
+#ifdef CUSTOM_SSL_CTX_TEST
+static std::atomic<size_t> custom_verify_cb_count(0);
+
+static int custom_verify_cb(int preverified, X509_STORE_CTX*) {
+    custom_verify_cb_count++;
+    return preverified;
+}
+
+int custom_ssl_ctx_test() {
+    reset_log_files();
+
+    std::string s1_addr = "localhost:20010";
+    std::string s2_addr = "localhost:20020";
+    std::string s3_addr = "localhost:20030";
+
+    RaftAsioPkg s1(1, s1_addr);
+    RaftAsioPkg s2(2, s2_addr);
+    RaftAsioPkg s3(3, s3_addr);
+    std::vector<RaftAsioPkg*> pkgs = {&s1, &s2, &s3};
+
+    // Custom client context with its own verify callback.
+    custom_verify_cb_count = 0;
+    for (RaftAsioPkg* pp: pkgs) {
+        pp->sslClientCtxProvider = []() {
+            SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
+            SSL_CTX_load_verify_locations(ctx, "./cert.pem", nullptr);
+            SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, custom_verify_cb);
+            return ctx;
+        };
+    }
+
+    _msg("launching asio-raft servers with custom SSL context\n");
+    CHK_Z( launch_servers(pkgs, true) );
+
+    _msg("organizing raft group\n");
+    CHK_Z( make_group(pkgs) );
+
+    CHK_TRUE( s1.raftServer->is_leader() );
+    CHK_EQ(1, s2.raftServer->get_leader());
+    CHK_EQ(1, s3.raftServer->get_leader());
+
+    // The callback of the custom context should not be overridden.
+    CHK_GT(custom_verify_cb_count.load(), 0);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    TestSuite::sleep_sec(1, "shutting down");
+
+    s1.stopAsio();
+    s2.stopAsio();
+    s3.stopAsio();
+
+    SimpleLogger::shutdown();
+    return 0;
+}
+#endif
 
 int async_append_handler_test() {
     reset_log_files();
@@ -2222,6 +2290,11 @@ int main(int argc, char** argv) {
 #if !SSL_LIBRARY_NOT_FOUND && (defined(__linux__) || defined(__APPLE__))
     ts.doTest( "ssl test",
                ssl_test );
+#endif
+
+#ifdef CUSTOM_SSL_CTX_TEST
+    ts.doTest( "custom ssl context test",
+               custom_ssl_ctx_test );
 #endif
 
     ts.doTest( "async append handler test",
