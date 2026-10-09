@@ -21,6 +21,21 @@ using namespace nuraft;
 
 using raft_result = cmd_result< ptr<buffer> >;
 
+// Global flag to enable persistent storage.
+// If true, file-based storage will be used instead of in-memory.
+static bool USE_PERSISTENT_STORAGE = false;
+
+// Directory for persistent storage.
+static std::string PERSISTENT_STORAGE_DIR = "./nuraft_data";
+
+// Helper to set persistent storage options.
+inline void set_persistent_storage(bool enable, const std::string& dir = "./nuraft_data") {
+    USE_PERSISTENT_STORAGE = enable;
+    if (enable) {
+        PERSISTENT_STORAGE_DIR = dir;
+    }
+}
+
 struct server_stuff {
     server_stuff()
         : server_id_(1)
@@ -155,10 +170,18 @@ void init_raft(ptr<state_machine> sm_instance) {
     ptr<logger_wrapper> log_wrap = cs_new<logger_wrapper>( log_file_name, 4 );
     stuff.raft_logger_ = log_wrap;
 
+    // State manager: use persistent or in-memory based on flag.
+    if (USE_PERSISTENT_STORAGE) {
+        std::cout << "using persistent storage: " << PERSISTENT_STORAGE_DIR << std::endl;
+        stuff.smgr_ = cs_new<file_based_state_mgr>( stuff.server_id_,
+                                                     stuff.endpoint_,
+                                                     PERSISTENT_STORAGE_DIR );
+    } else {
+        std::cout << "using in-memory storage" << std::endl;
+        stuff.smgr_ = cs_new<inmem_state_mgr>( stuff.server_id_,
+                                               stuff.endpoint_ );
+    }
     // State machine.
-    stuff.smgr_ = cs_new<inmem_state_mgr>( stuff.server_id_,
-                                           stuff.endpoint_ );
-    // State manager.
     stuff.sm_ = sm_instance;
 
     // ASIO options.

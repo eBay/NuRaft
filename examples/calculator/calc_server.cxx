@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "calc_state_machine.hxx"
 #include "in_memory_state_mgr.hxx"
+#include "file_based_state_mgr.hxx"
 #include "logger_wrapper.hxx"
 
 #include "nuraft.hxx"
@@ -220,6 +221,11 @@ void check_additional_flags(int argc, char** argv) {
             CALL_TYPE = raft_params::async_handler;
         } else if (strcmp(argv[ii], "--async-snapshot-creation") == 0) {
             ASYNC_SNAPSHOT_CREATION = true;
+        } else if (strcmp(argv[ii], "--persistent") == 0) {
+            set_persistent_storage(true);
+        } else if (strncmp(argv[ii], "--persistent-dir=", 17) == 0) {
+            std::string dir = argv[ii] + 17;
+            set_persistent_storage(true, dir);
         }
     }
 }
@@ -231,8 +237,11 @@ void calc_usage(int argc, char** argv) {
     ss << std::endl << std::endl;
     ss << "    options:" << std::endl;
     ss << "      --async-handler: use async type handler." << std::endl;
-    ss << "      --async-snapshot-creation: create snapshots asynchronously."
-       << std::endl << std::endl;
+    ss << "      --async-snapshot-creation: create snapshots asynchronously." << std::endl;
+    ss << "      --persistent: enable file-based persistent storage." << std::endl;
+    ss << "      --persistent-dir=<dir>: specify directory for persistent storage" << std::endl;
+    ss << "                           (default: ./nuraft_data)." << std::endl
+       << std::endl;
 
     std::cout << ss.str();
     exit(0);
