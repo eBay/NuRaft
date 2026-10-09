@@ -167,6 +167,7 @@ ptr<resp_msg> raft_server::handle_join_cluster_req(req_msg& req) {
     }
 
     ptr<cluster_config> cur_config = get_config();
+
     if (cur_config->get_servers().size() > 1) {
         // This server is already in a cluster.
         // Validate that the request is from the same cluster by comparing

@@ -26,6 +26,9 @@ limitations under the License.
 
 namespace nuraft {
 
+// Forward declaration
+class raft_group_dispatcher;
+
 // for backward compatibility
 class raft_server;
 typedef raft_server msg_handler;
@@ -36,6 +39,9 @@ public:
     virtual void listen(ptr<msg_handler>& handler) = 0;
     virtual void stop() = 0;
     virtual void shutdown() {}
+
+    // Set dispatcher for port sharing (optional)
+    virtual void set_dispatcher(const ptr<raft_group_dispatcher>& dispatcher) {}
 };
 
 }
