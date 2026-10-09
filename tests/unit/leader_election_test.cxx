@@ -33,7 +33,7 @@ using raft_result = cmd_result< ptr<buffer> >;
 
 namespace leader_election_test {
 
-int leader_election_basic_test() {
+int leader_election_basic_test(bool change_priority) {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
 
@@ -67,6 +67,14 @@ int leader_election_basic_test() {
     s3.fNet->execReqResp();
     // Send vote requests, S3 will be elected as a leader.
     s3.fNet->execReqResp();
+    if (change_priority) {
+        CHK_TRUE( s3.raftServer->is_leader() );
+        CHK_GT( s3.raftServer->get_log_idx_at_becoming_leader(),
+                s3.raftServer->get_committed_log_idx() );
+        // A pending election config must not block a priority change.
+        CHK_EQ( raft_server::PrioritySetResult::SET,
+                s3.raftServer->set_priority(2, 100) );
+    }
     // Wait for bg commit for configuration change.
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
@@ -74,6 +82,10 @@ int leader_election_basic_test() {
     s3.fNet->execReqResp();
     // Follow-up: commit.
     s3.fNet->execReqResp();
+    if (change_priority) {
+        // Notify followers that the additional priority config is committed.
+        s3.fNet->execReqResp();
+    }
     // Wait for bg commit for configuration change.
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
@@ -92,6 +104,15 @@ int leader_election_basic_test() {
     CHK_FALSE( s1.raftServer->is_leader() );
     CHK_FALSE( s2.raftServer->is_leader() );
     CHK_TRUE( s3.raftServer->is_leader() );
+
+    if (change_priority) {
+        for (RaftPkg* pkg: pkgs) {
+            ptr<cluster_config> config = pkg->raftServer->get_config();
+            CHK_EQ( 3, config->get_servers().size() );
+            CHK_NONNULL( config->get_server(2).get() );
+            CHK_EQ( 100, config->get_server(2)->get_priority() );
+        }
+    }
 
     print_stats(pkgs);
 
@@ -975,7 +996,8 @@ int main(int argc, char** argv) {
     debugging_options::get_instance().disable_reconn_backoff_ = true;
 
     ts.doTest( "leader election basic test",
-               leader_election_basic_test );
+               leader_election_basic_test,
+               TestRange<bool>({false, true}) );
 
     ts.doTest( "vote log freshness after compaction test",
                vote_log_freshness_after_compaction_test );

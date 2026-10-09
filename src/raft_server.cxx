@@ -1206,6 +1206,7 @@ void raft_server::become_leader() {
              sm_commit_index_.load(),
              quick_commit_index_.load());
         config_changing_ = true;
+        uncommitted_config_ = last_config_cloned;
     }
 
     cb_func::Param param(id_, leader_);

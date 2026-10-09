@@ -360,7 +360,7 @@ int force_log_compaction_test() {
     return 0;
 }
 
-int uncommitted_conf_new_leader_test() {
+int uncommitted_conf_new_leader_test(bool change_priority) {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
 
@@ -434,6 +434,17 @@ int uncommitted_conf_new_leader_test() {
     s1.dbgLog(" --- send config change (removing S2) to S3 ---");
     s1.fNet->execReqResp(s3_addr);
 
+    // S3 has the removal in its log, but still uses the committed config.
+    const ulong removal_idx = s3.raftServer->get_last_log_idx();
+    CHK_GT( removal_idx, s3.raftServer->get_committed_log_idx() );
+    ptr<log_entry> removal_entry = s3.raftServer->get_log_store()->entry_at(removal_idx);
+    CHK_EQ( log_val_type::conf, removal_entry->get_val_type() );
+    removal_entry->get_buf().pos(0);
+    ptr<cluster_config> removal_config =
+        cluster_config::deserialize(removal_entry->get_buf());
+    CHK_NULL( removal_config->get_server(2).get() );
+    CHK_NONNULL( s3.raftServer->get_config()->get_server(2).get() );
+
     // Invoke election timer of S4 and S5 (to make pre-vote of S3 succeed).
     s4.fTimer->invoke( timer_task_type::election_timer );
     s4.fNet->execReqResp();
@@ -442,6 +453,35 @@ int uncommitted_conf_new_leader_test() {
 
     // Now S3's vote should succeed.
     s3.fTimer->invoke( timer_task_type::election_timer );
+    s3.fNet->execReqResp();
+    s3.fNet->execReqResp();
+    CHK_TRUE( s3.raftServer->is_leader() );
+
+    if (change_priority) {
+        // Change priority before the new leader's config is committed.
+        // It must retain the inherited removal of S2.
+        CHK_GT( s3.raftServer->get_log_idx_at_becoming_leader(),
+                s3.raftServer->get_committed_log_idx() );
+        CHK_NONNULL( s3.raftServer->get_config()->get_server(2).get() );
+        CHK_EQ( raft_server::PrioritySetResult::SET,
+                s3.raftServer->set_priority(4, 100) );
+        ptr<log_entry> priority_entry = s3.raftServer->get_log_store()->entry_at
+                                        (s3.raftServer->get_last_log_idx());
+        CHK_EQ( log_val_type::conf, priority_entry->get_val_type() );
+        priority_entry->get_buf().pos(0);
+        ptr<cluster_config> priority_config =
+            cluster_config::deserialize(priority_entry->get_buf());
+        CHK_NULL( priority_config->get_server(2).get() );
+        CHK_EQ( removal_config->get_servers().size(),
+                priority_config->get_servers().size() );
+        for (auto& srv: removal_config->get_servers()) {
+            ptr<srv_config> updated = priority_config->get_server(srv->get_id());
+            CHK_NONNULL( updated.get() );
+            CHK_EQ( srv->get_id() == 4 ? 100 : srv->get_priority(),
+                    updated->get_priority() );
+        }
+    }
+
     for (size_t ii = 0; ii < 10; ++ii) {
         s3.fNet->execReqResp();
     }
@@ -456,6 +496,17 @@ int uncommitted_conf_new_leader_test() {
     // Removing S2 should be in the latest config.
     ptr<cluster_config> c_config = s3.raftServer->get_config();
     CHK_NULL(c_config->get_server(2).get());
+
+    if (change_priority) {
+        // Both the removal and the priority change must survive commit.
+        for (RaftPkg* pkg: std::vector<RaftPkg*>{&s1, &s3, &s4, &s5}) {
+            ptr<cluster_config> committed = pkg->raftServer->get_config();
+            CHK_NULL( committed->get_server(2).get() );
+            CHK_EQ( 4, committed->get_servers().size() );
+            CHK_NONNULL( committed->get_server(4).get() );
+            CHK_EQ( 100, committed->get_server(4)->get_priority() );
+        }
+    }
 
     print_stats( pkgs );
 
@@ -618,7 +669,8 @@ int main(int argc, char** argv) {
                force_log_compaction_test );
 
     ts.doTest( "uncommitted config for new leader test",
-               uncommitted_conf_new_leader_test );
+               uncommitted_conf_new_leader_test,
+               TestRange<bool>({false, true}) );
 
     ts.doTest( "removed server late step down test",
                removed_server_late_step_down_test );
