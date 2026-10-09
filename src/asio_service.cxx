@@ -76,6 +76,14 @@ limitations under the License.
     using ssl_context = asio::ssl::context;
 #endif
 
+// `ssl_context` constructor with `SSL_CTX*` is supported by ASIO later than 1.16.1.
+#if !defined(SSL_LIBRARY_NOT_FOUND) && \
+    (ASIO_VERSION >= 101601) && \
+    (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
+    !defined(LIBRESSL_VERSION_NUMBER)
+    #define CUSTOM_SSL_CTX_SUPPORTED (1)
+#endif
+
 // Note: both req & resp header structures have been modified by Jung-Sang Ahn.
 //       They MUST NOT be combined with the original code.
 
@@ -245,6 +253,23 @@ public:
         return *io_svc_;
     }
     uint64_t assign_client_id() { return client_id_counter_.fetch_add(1); }
+
+    // `true` if the SSL context given by the provider is used.
+    // Providers are ignored if this build does not support them.
+    bool use_custom_server_ctx() const {
+#ifdef CUSTOM_SSL_CTX_SUPPORTED
+        return (bool)my_opt_.ssl_context_provider_server_;
+#else
+        return false;
+#endif
+    }
+    bool use_custom_client_ctx() const {
+#ifdef CUSTOM_SSL_CTX_SUPPORTED
+        return (bool)my_opt_.ssl_context_provider_client_;
+#else
+        return false;
+#endif
+    }
 
 private:
 #ifndef SSL_LIBRARY_NOT_FOUND
@@ -1134,7 +1159,7 @@ public:
 #else
             // Custom SSL context will likely have the verification
             // mode and callback configured. Do not override that.
-            if (!_impl->get_options().ssl_context_provider_client_) {
+            if (!_impl->use_custom_client_ctx()) {
                 if (_impl->get_options().skip_verification_) {
                     ssl_socket_.set_verify_mode(asio::ssl::verify_none);
                 } else {
@@ -1143,9 +1168,9 @@ public:
 
                 ssl_socket_.set_verify_callback
                             ( std::bind( &asio_rpc_client::verify_certificate,
-                                        this,
-                                        std::placeholders::_1,
-                                        std::placeholders::_2 ) );
+                                         this,
+                                         std::placeholders::_1,
+                                         std::placeholders::_2 ) );
             }
 #endif
         }
@@ -2093,10 +2118,7 @@ void _timer_handler_(ptr<delayed_task>& task, ERROR_CODE err) {
     }
 }
 
-// `ssl_context` constructor with `SSL_CTX*` is supported by ASIO later than 1.16.1.
-#if (ASIO_VERSION >= 101601) && \
-    (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
-    !defined(LIBRESSL_VERSION_NUMBER)
+#ifdef CUSTOM_SSL_CTX_SUPPORTED
 
 #define DEFAULT_SERVER_CTX ssl_context::tlsv12_server
 #define DEFAULT_CLIENT_CTX ssl_context::tlsv12_client
@@ -2125,9 +2147,7 @@ ssl_context get_or_create_ssl_context(std::function<SSL_CTX* (void)> ctx_provide
 asio_service_impl::asio_service_impl(const asio_service::options& opt,
                                      ptr<logger> l)
     : io_svc_(opt.custom_io_context_ ? nullptr : (new asio::io_context()))
-#if (ASIO_VERSION >= 101601) && \
-    (OPENSSL_VERSION_NUMBER >= 0x10100000L) && \
-    !defined(LIBRESSL_VERSION_NUMBER)
+#ifdef CUSTOM_SSL_CTX_SUPPORTED
     , ssl_server_ctx_(get_or_create_ssl_context(opt.ssl_context_provider_server_,
                                                 DEFAULT_SERVER_CTX))
     , ssl_client_ctx_(get_or_create_ssl_context(opt.ssl_context_provider_client_,
@@ -2151,9 +2171,17 @@ asio_service_impl::asio_service_impl(const asio_service::options& opt,
 #ifdef SSL_LIBRARY_NOT_FOUND
         assert(0); // Should not reach here.
 #else
+#ifndef CUSTOM_SSL_CTX_SUPPORTED
+        if ( my_opt_.ssl_context_provider_server_ ||
+             my_opt_.ssl_context_provider_client_ ) {
+            p_wn("custom SSL context is not supported by this build "
+                 "(requires ASIO 1.16.1+ and OpenSSL 1.1.0+), "
+                 "the provider will be ignored");
+        }
+#endif
 
         // Provider gives properly configured server contex
-        if (!my_opt_.ssl_context_provider_server_) {
+        if (!use_custom_server_ctx()) {
             p_in("server SSL context method %d", DEFAULT_SERVER_CTX);
 
             // For server (listener)
@@ -2174,13 +2202,18 @@ asio_service_impl::asio_service_impl(const asio_service::options& opt,
         }
 
         // Provider gives properly configured client contex
-        if (!my_opt_.ssl_context_provider_client_) {
+        if (!use_custom_client_ctx()) {
             p_in("client SSL context method %d", DEFAULT_CLIENT_CTX);
 
             // For client
             ssl_client_ctx_.load_verify_file(my_opt_.root_cert_file_);
         } else {
             p_in("custom client SSL context is given");
+            if (my_opt_.skip_verification_ || my_opt_.verify_sn_) {
+                p_wn("`skip_verification_` and `verify_sn_` are ignored, "
+                     "certificate verification of the custom client SSL "
+                     "context will be used instead");
+            }
         }
 #endif
     }

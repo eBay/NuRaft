@@ -162,21 +162,25 @@ struct asio_service_options {
 
     /**
      * If `true`, skip certificate verification.
+     * Ignored if `ssl_context_provider_client_` is given.
      */
     bool skip_verification_;
 
     /**
      * Path to server certificate file.
+     * Ignored if `ssl_context_provider_server_` is given.
      */
     std::string server_cert_file_;
 
     /**
      * Path to server key file.
+     * Ignored if `ssl_context_provider_server_` is given.
      */
     std::string server_key_file_;
 
     /**
      * Path to root certificate file.
+     * Ignored if `ssl_context_provider_client_` is given.
      */
     std::string root_cert_file_;
 
@@ -219,6 +223,7 @@ struct asio_service_options {
     /**
      * Callback function for verifying certificate subject name.
      * If not given, subject name will not be verified.
+     * Ignored if `ssl_context_provider_client_` is given.
      */
     std::function< bool(const std::string&) > verify_sn_;
 
@@ -229,6 +234,12 @@ struct asio_service_options {
      *
      * No configuration changes are applied to the provided context,
      * so callback must return properly configured and operational SSL_CTX.
+     * For the client context, that includes certificate verification
+     * (e.g., `SSL_CTX_set_verify`). Note that the default verify mode
+     * of OpenSSL is `SSL_VERIFY_NONE`, which accepts any certificate.
+     *
+     * Requires ASIO 1.16.1+ and OpenSSL 1.1.0+ (not LibreSSL).
+     * Otherwise, the providers are ignored.
      *
      * Note that it might be unsafe to share SSL_CTX with other threads,
      * consult with your OpenSSL library documentation/guidelines.
