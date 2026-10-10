@@ -86,7 +86,7 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         // Adding server is already in progress.
 
         // Check the last active time of that server.
-        ulong last_active_ms = srv_to_join_->get_active_timer_us() / 1000;
+        uint64_t last_active_ms = srv_to_join_->get_active_timer_us() / 1000;
         p_wn("previous adding server (%d) is in progress, "
              "last activity: %" PRIu64 " ms ago",
              srv_to_join_->get_id(),
@@ -95,10 +95,10 @@ ptr<resp_msg> raft_server::handle_add_srv_req(req_msg& req) {
         // NOTE:
         //   If snapshot transmission was in progress, we will follow the
         //   snapshot timeout. Otherwise, we will follow the response timeout.
-        ulong sync_timeout = (ulong)raft_limits_.response_limit_ *
-                             ctx_->get_params()->heart_beat_interval_;
+        uint64_t sync_timeout = (uint64_t)raft_limits_.response_limit_ *
+                                ctx_->get_params()->heart_beat_interval_;
         if (srv_to_join_->get_snapshot_sync_ctx()) {
-            sync_timeout = (ulong)get_snapshot_sync_ctx_timeout();
+            sync_timeout = (uint64_t)get_snapshot_sync_ctx_timeout();
         }
 
         if (last_active_ms <= sync_timeout) {

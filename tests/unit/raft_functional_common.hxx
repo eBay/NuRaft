@@ -33,7 +33,7 @@ limitations under the License.
 #define INT_UNUSED      int ATTR_UNUSED
 #define VOID_UNUSED     void ATTR_UNUSED
 #define STR_UNUSED      std::string ATTR_UNUSED
-#define _msg(...)       TestSuite::_msg(__VA_ARGS__);
+#define _msg(...)       TestSuite::_msgt(__VA_ARGS__);
 
 using namespace nuraft;
 

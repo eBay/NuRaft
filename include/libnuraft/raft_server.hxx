@@ -541,6 +541,21 @@ public:
     }
 
     /**
+     * Check whether the state machine is fully caught up with the latest log
+     * at becoming leader, ensuring that the new leader does not return stale data.
+     *
+     * @return `true` if this server is a leader and its state machine is
+     *         fully caught up with the latest log.
+     */
+    bool is_leader_sm_fully_caught_up() const {
+        // NOTE: `index_at_becoming_leader_` itself is a conf log,
+        //       doesn't need to be committed to guarantee data freshness.
+        return is_leader() &&
+               index_at_becoming_leader_ > 0 &&
+               get_committed_log_idx() >= index_at_becoming_leader_ - 1;
+    }
+
+    /**
      * Calculate the log index to be committed
      * from current peers' matched indexes.
      *
@@ -598,11 +613,7 @@ public:
      *
      * @return `true` if it is leader.
      */
-    bool is_leader() const {
-        if ( leader_ == id_ &&
-             role_ == srv_role::leader ) return true;
-        return false;
-    }
+    bool is_leader() const;
 
     /**
      * Check if there is live leader in the current cluster.
@@ -653,6 +664,7 @@ public:
         peer_info()
             : id_(-1)
             , last_log_idx_(0)
+            , last_sm_committed_idx_(0)
             , last_succ_resp_us_(0)
             {}
 
@@ -665,6 +677,18 @@ public:
          * The last log index that the peer has, from this server's point of view.
          */
         ulong last_log_idx_;
+
+        /**
+         * The last committed log index of the peer's state machine,
+         * from this server's point of view. It can be smaller than
+         * `last_log_idx_` if the peer has appended the log but has not
+         * committed it yet (e.g., due to slow or deadlocked commit threads).
+         *
+         * NOTE: This field is meaningful only when
+         * `raft_params::track_peers_sm_commit_idx_` is enabled. Otherwise,
+         * it will always be 0.
+         */
+        ulong last_sm_committed_idx_;
 
         /**
          * The elapsed time since the last successful response from this peer,
@@ -1019,17 +1043,18 @@ protected:
     int32 get_quorum_for_election();
     int32 get_quorum_for_commit();
     int32 get_leadership_expiry();
-    std::list<ptr<peer>> get_not_responding_peers(int expiry = 0);
-    size_t get_not_responding_peers_count(int expiry = 0, uint64_t required_log_idx = 0);
+    std::list<ptr<peer>> get_not_responding_peers(uint64_t expiry = 0);
+    size_t get_not_responding_peers_count(uint64_t expiry = 0,
+                                          uint64_t required_log_idx = 0);
     size_t get_num_stale_peers();
     static bool is_excluded_from_quorum(const peer& pp,
-                                        int32_t resp_elapsed_ms,
-                                        int32_t expiry,
+                                        uint64_t resp_elapsed_ms,
+                                        uint64_t expiry,
                                         uint64_t required_log_idx,
                                         bool include_self_mark_down = true);
 
     void for_each_voting_members(
-        const std::function<void(const ptr<peer>&, int32_t)>& callback);
+        const std::function<void(const ptr<peer>&, uint64_t)>& callback);
 
     ptr<resp_msg> handle_append_entries(req_msg& req);
     ptr<resp_msg> handle_prevote_req(req_msg& req);
@@ -1109,10 +1134,12 @@ protected:
     void reconfigure(const ptr<cluster_config>& new_config);
     void update_target_priority();
     void decay_target_priority();
+    void update_hb_alive_flag(bool to);
     bool reconnect_client(peer& p);
     void become_leader();
     void become_follower();
     void check_srv_to_leave_timeout();
+    bool check_resignation_timeout();
     void enable_hb_for_peer(peer& p);
     void stop_election_timer();
     void handle_hb_timeout(int32 srv_id);
@@ -1300,6 +1327,12 @@ protected:
      * Otherwise (if non-leader), the value will be 0.
      */
     std::atomic<uint64_t> index_at_becoming_leader_;
+
+    /**
+     * `true` if this server is waiting for state machine to catch up.
+     * Used only when `wait_for_sm_catchup_on_becoming_leader_` option is enabled.
+     */
+    std::atomic<bool> waiting_for_sm_catchup_;
 
     /**
      * (Read-only)
@@ -1524,6 +1557,14 @@ protected:
      * so that cannot send message before election timeout.
      */
     std::atomic<ulong> et_cnt_receiving_snapshot_;
+
+    /**
+     * Prevents more than one snapshot finalizer from crossing the unlocked
+     * state-machine pause boundary.
+     *
+     * Protected by `lock_`.
+     */
+    bool snapshot_finalization_in_progress_;
 
     /**
      * (Read-only)

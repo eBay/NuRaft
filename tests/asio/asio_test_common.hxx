@@ -43,7 +43,7 @@ inline int make_group(const std::vector<RaftAsioPkg*>& pkgs) {
         leader->raftServer->add_srv( *(ff->getTestMgr()->get_srv_config()) );
 
         // Wait longer than upper timeout.
-        TestSuite::sleep_sec(1);
+        TestSuite::sleep_ms(600);
     }
     return 0;
 }

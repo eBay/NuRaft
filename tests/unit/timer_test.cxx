@@ -23,6 +23,7 @@ limitations under the License.
 #include "test_common.h"
 
 #include <atomic>
+#include <sys/time.h>
 
 using namespace nuraft;
 
@@ -91,6 +92,33 @@ int timer_cancel_test() {
     return 0;
 }
 
+int internal_timer_test() {
+    // Get timestamp from `gettimeofday`.
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+    uint64_t start_time_us = tv.tv_sec * 1000000 + tv.tv_usec;
+
+    timer_helper::sleep_ms(1);
+
+    // Get timestamp from `timer_helper`.
+    uint64_t middle_time_us = timer_helper::get_timeofday_us();
+
+    timer_helper::sleep_ms(1);
+
+    // Get timestamp from `gettimeofday` again.
+    gettimeofday(&tv, nullptr);
+    uint64_t end_time_us = tv.tv_sec * 1000000 + tv.tv_usec;
+
+    TestSuite::Msg mm;
+    mm << "start_time_us: " << start_time_us << std::endl
+       << "middle_time_us: " << middle_time_us << std::endl
+       << "end_time_us: " << end_time_us << std::endl;
+
+    CHK_GT(middle_time_us, start_time_us);
+    CHK_GT(end_time_us, middle_time_us);
+    return 0;
+}
+
 }  // namespace timer_test;
 using namespace timer_test;
 
@@ -104,6 +132,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "timer cancel test",
                timer_cancel_test );
+
+    ts.doTest( "internal timer test",
+               internal_timer_test );
 
     return 0;
 }

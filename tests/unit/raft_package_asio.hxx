@@ -114,6 +114,7 @@ public:
             asio_opt.server_cert_file_  = "./cert.pem";
             asio_opt.root_cert_file_    = "./cert.pem"; // self-signed.
             asio_opt.server_key_file_   = "./key.pem";
+            asio_opt.ssl_context_provider_client_ = sslClientCtxProvider;
         }
 
         if (useCustomResolver) {
@@ -288,6 +289,9 @@ public:
     bool useLogTimestamp;
 
     bool useCrcOnEntireMessage;
+
+    // If given, used as `ssl_context_provider_client_`.
+    std::function<SSL_CTX* (void)> sslClientCtxProvider;
 
 #ifdef USE_BOOST_ASIO
     boost::asio::io_context* customIoContext;
