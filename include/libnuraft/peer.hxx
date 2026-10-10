@@ -241,8 +241,6 @@ public:
 
     void shutdown();
 
-    void reopen(context& ctx, timer_task<int32>::executor& hb_exec);
-
     bool is_abandoned() const { return abandoned_; }
 
     // Time that sent the last request.
@@ -629,7 +627,6 @@ private:
      * If `true`, this peer marks itself down.
      */
     std::atomic<bool> self_mark_down_;
-
 
     /**
      * Logger instance.

@@ -933,6 +933,21 @@ void raft_server::reconfigure(const ptr<cluster_config>& new_config) {
     std::vector<int32> srvs_removed;
     std::vector< ptr<srv_config> > srvs_added;
     std::list< ptr<srv_config> >& new_srvs(new_config->get_servers());
+
+    // If this server rejoins the cluster after being removed, its peers
+    // were shut down (abandoned) and cannot send any requests anymore.
+    // Drop them here so that they are re-created as new peers below.
+    if (!stopping_ && new_config->get_server(id_)) {
+        for (peer_itor it = peers_.begin(); it != peers_.end(); ) {
+            if (it->second->is_abandoned()) {
+                p_in("peer %d was shut down, will re-create it", it->first);
+                it = peers_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
+
     for ( std::list<ptr<srv_config>>::const_iterator it = new_srvs.begin();
           it != new_srvs.end(); ++it ) {
         peer_itor pit = peers_.find((*it)->get_id());
