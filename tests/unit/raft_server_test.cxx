@@ -842,6 +842,105 @@ int remove_and_then_add_test() {
     return 0;
 }
 
+int remove_and_then_rejoin_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Remove S3 from leader.
+    s1.dbgLog(" --- remove ---");
+    s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+
+    // Leave req/resp.
+    s1.fNet->execReqResp();
+    // Leave done, notify to peers.
+    s1.fNet->execReqResp();
+    // Notify new commit.
+    s1.fNet->execReqResp();
+    // Wait for bg commit for configuration change.
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Invoke election timer for S3, to make it step down.
+    // All peers of S3 will be shut down (abandoned).
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    CHK_Z( s3.fTimer->getNumPendingTasks() );
+
+    // Add S3 back to the cluster.
+    s1.dbgLog(" --- rejoin ---");
+    s1.raftServer->add_srv( *(s3.getTestMgr()->get_srv_config()) );
+
+    // Join req/resp.
+    s1.fNet->execReqResp();
+    // Add new server, notify existing peers.
+    s1.fNet->execReqResp();
+    // Notify new commit.
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // Heartbeat, S3 receives the commit of the new config.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // One more heartbeat, S3 will clear the catch-up flag.
+    s1.fTimer->invoke( timer_task_type::heartbeat_timer );
+    s1.fNet->execReqResp();
+    s1.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    // All servers should see S1, S2, and S3.
+    for (auto& entry: pkgs) {
+        RaftPkg* pkg = entry;
+        std::vector< ptr<srv_config> > configs;
+        pkg->raftServer->get_srv_config_all(configs);
+
+        TestSuite::setInfo("id = %d", pkg->myId);
+        CHK_EQ(3, configs.size());
+    }
+
+    // Trigger election timer of S2, so that it accepts pre-vote from S3.
+    s2.dbgLog(" --- invoke election timer of S2 ---");
+    s2.fTimer->invoke( timer_task_type::election_timer );
+    s2.fNet->execReqResp();
+
+    // Trigger election timer of S3. Its peers were abandoned before rejoining,
+    // they should have been re-created so that S3 can send requests.
+    s3.dbgLog(" --- invoke election timer of S3 ---");
+    s3.fTimer->invoke( timer_task_type::election_timer );
+    CHK_GT( s3.fNet->getNumPendingReqs(s2_addr), 0 );
+
+    // Pre-vote and then vote, S3 will be elected as a leader.
+    s3.fNet->execReqResp();
+    s3.fNet->execReqResp();
+    CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
+
+    CHK_FALSE( s1.raftServer->is_leader() );
+    CHK_FALSE( s2.raftServer->is_leader() );
+    CHK_TRUE( s3.raftServer->is_leader() );
+
+    print_stats(pkgs);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+
+    f_base->destroy();
+
+    return 0;
+}
+
 int multiple_config_change_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -2125,6 +2224,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "remove and then add test",
                remove_and_then_add_test );
+
+    ts.doTest( "remove and then rejoin test",
+               remove_and_then_rejoin_test );
 
     ts.doTest( "multiple config change test",
                multiple_config_change_test );
