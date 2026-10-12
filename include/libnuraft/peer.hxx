@@ -241,6 +241,8 @@ public:
 
     void shutdown();
 
+    bool is_abandoned() const { return abandoned_; }
+
     // Time that sent the last request.
     void reset_ls_timer()       { last_sent_timer_.reset(); }
     uint64_t get_ls_timer_us()  { return last_sent_timer_.get_us(); }
