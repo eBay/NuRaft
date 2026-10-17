@@ -1167,13 +1167,14 @@ bool raft_server::try_update_precommit_index(ulong desired, const size_t MAX_ATT
 }
 
 void raft_server::handle_append_entries_resp(resp_msg& resp) {
+    check_srv_to_leave_timeout();
+
     peer_itor it = peers_.find(resp.get_src());
     if (it == peers_.end()) {
         p_in("the response is from an unknown peer %d", resp.get_src());
         return;
     }
 
-    check_srv_to_leave_timeout();
     if ( srv_to_leave_ &&
          srv_to_leave_->get_id() == resp.get_src() &&
          srv_to_leave_->is_stepping_down() &&
