@@ -941,6 +941,48 @@ int remove_and_then_rejoin_test() {
     return 0;
 }
 
+int remove_srv_timeout_append_entries_resp_test() {
+    reset_log_files();
+    ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
+
+    std::string s1_addr = "S1";
+    std::string s2_addr = "S2";
+    std::string s3_addr = "S3";
+
+    RaftPkg s1(f_base, 1, s1_addr);
+    RaftPkg s2(f_base, 2, s2_addr);
+    RaftPkg s3(f_base, 3, s3_addr);
+    std::vector<RaftPkg*> pkgs = {&s1, &s2, &s3};
+
+    CHK_Z( launch_servers( pkgs ) );
+    CHK_Z( make_group( pkgs ) );
+
+    // Remove S3 from leader S1.
+    s1.raftServer->remove_srv( s3.getTestMgr()->get_srv_config()->get_id() );
+
+    // Process leave req/resp.
+    s1.fNet->execReqResp();
+
+    // Verify late append entries response from S3 after removal/timeout
+    // does not cause iterator invalidation or segfault.
+    ptr<resp_msg> late_resp = cs_new<resp_msg>(
+        s1.raftServer->get_term(),
+        msg_type::append_entries_response,
+        s3.myId,
+        s1.myId,
+        0,
+        false
+    );
+    s1.raftServer->handle_peer_resp(late_resp, nullptr);
+
+    s1.raftServer->shutdown();
+    s2.raftServer->shutdown();
+    s3.raftServer->shutdown();
+    f_base->destroy();
+
+    return 0;
+}
+
 int multiple_config_change_test() {
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
@@ -2227,6 +2269,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "remove and then rejoin test",
                remove_and_then_rejoin_test );
+
+    ts.doTest( "remove srv timeout append entries resp test",
+               remove_srv_timeout_append_entries_resp_test );
 
     ts.doTest( "multiple config change test",
                multiple_config_change_test );
