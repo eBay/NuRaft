@@ -53,7 +53,7 @@ jobs:
         run: ./github_action_build.sh
 
       - name: Code Coverage Metrics
-        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2 # pin@v3
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # pin@v3
         with:
           verbose: true
           files: ./build/raft_cov.info.cleaned
