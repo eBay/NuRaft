@@ -1199,6 +1199,7 @@ int custom_user_context_test() {
 }
 
 int follower_reconnect_test() {
+    FakeClock::Guard fake_clock;
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
 
@@ -1218,7 +1219,7 @@ int follower_reconnect_test() {
     s2.raftServer->send_reconnect_request();
     s2.fNet->execReqResp();
     // Wait for reconnect timer.
-    TestSuite::sleep_ms(3500, "wait for reconnect");
+    FakeClock::advance_ms(3500);
 
     // Now leader send heartbeat.
     s1.fTimer->invoke( timer_task_type::heartbeat_timer );

@@ -190,5 +190,34 @@ private:
     SimpleLogger* myLog;
 };
 
+/**
+ * Virtual clock for `timer_helper`. While installed, time does not pass
+ * on its own: it starts at the real time of `install()` and only moves
+ * forward by `advance_ms()`, so time-based logic (heartbeat expiry,
+ * reconnection timers, leadership transfer, ...) can be tested without
+ * sleeping.
+ *
+ * `FakeClock::Guard` installs the clock and restores the real clock when
+ * it goes out of scope.
+ */
+class FakeClock {
+public:
+    struct Guard {
+        Guard() { FakeClock::install(); }
+        ~Guard() { FakeClock::uninstall(); }
+    };
+
+    static void install();
+
+    static void uninstall();
+
+    static void advance_ms(uint64_t ms);
+
+    static timer_helper::time_point now();
+
+private:
+    static std::atomic<int64_t> curUs;
+};
+
 }  // namespace nuraft;
 
