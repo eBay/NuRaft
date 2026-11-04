@@ -751,6 +751,7 @@ int leadership_takeover_by_request_test() {
 }
 
 int leadership_takeover_offline_candidate_test() {
+    FakeClock::Guard fake_clock;
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
 
@@ -787,7 +788,7 @@ int leadership_takeover_offline_candidate_test() {
     CHK_Z( wait_for_sm_exec(pkgs, COMMIT_TIMEOUT_SEC) );
 
     // Wait longer than heartbeat.
-    TestSuite::sleep_ms(600);
+    FakeClock::advance_ms(600);
 
     // Now S2 is offline.
     s2.fNet->goesOffline();
@@ -860,6 +861,7 @@ int leadership_takeover_offline_candidate_test() {
 }
 
 int temporary_leader_test() {
+    FakeClock::Guard fake_clock;
     reset_log_files();
     ptr<FakeNetworkBase> f_base = cs_new<FakeNetworkBase>();
 
@@ -942,9 +944,8 @@ int temporary_leader_test() {
         s3.fNet->execReqResp();
         s3.fNet->execReqResp();
 
-        // Sleep.
         attempts++;
-        TestSuite::sleep_ms(custom_params.heart_beat_interval_);
+        FakeClock::advance_ms(custom_params.heart_beat_interval_);
 
         // Repeat until S3 becomes (temporary) leader.
     } while (!s3.raftServer->is_leader() && attempts < MAX_ATTEMPTS);

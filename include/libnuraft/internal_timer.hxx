@@ -17,6 +17,7 @@ limitations under the License.
 
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <mutex>
 #include <thread>
@@ -24,6 +25,34 @@ limitations under the License.
 namespace nuraft {
 
 struct timer_helper {
+    using time_point = std::chrono::steady_clock::time_point;
+
+    /**
+     * Function that returns the current time for every `timer_helper`.
+     * `nullptr` (default) means `std::chrono::steady_clock::now()`.
+     */
+    using clock_func = time_point (*)();
+
+    /**
+     * Replace the clock used by all `timer_helper` instances in this process,
+     * e.g., with a virtual clock so that tests can control timeouts
+     * deterministically instead of sleeping. Pass `nullptr` to restore
+     * `std::chrono::steady_clock`.
+     *
+     * Sleep functions and `get_timeofday_us()` are not affected.
+     */
+    static void set_clock(clock_func func) {
+        clock_ref().store(func, std::memory_order_release);
+    }
+
+    /**
+     * Current time of the clock used by `timer_helper`.
+     */
+    static time_point now() {
+        clock_func func = clock_ref().load(std::memory_order_acquire);
+        return func ? func() : std::chrono::steady_clock::now();
+    }
+
     timer_helper(size_t duration_us = 0, bool fire_first_event = false)
         : duration_us_(duration_us)
         , first_event_fired_(!fire_first_event)
@@ -45,8 +74,7 @@ struct timer_helper {
 
     void reset(int64_t offset_ms = 0) {
         std::lock_guard<std::mutex> l(lock_);
-        t_created_ =
-            std::chrono::steady_clock::now() + std::chrono::milliseconds(offset_ms);
+        t_created_ = now() + std::chrono::milliseconds(offset_ms);
     }
 
     size_t get_duration_us() const {
@@ -69,27 +97,27 @@ struct timer_helper {
 
     uint64_t get_us() {
         std::lock_guard<std::mutex> l(lock_);
-        auto cur = std::chrono::steady_clock::now();
+        auto cur = now();
         std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)(1000000 * elapsed.count());
     }
 
     uint64_t get_ms() {
         std::lock_guard<std::mutex> l(lock_);
-        auto cur = std::chrono::steady_clock::now();
+        auto cur = now();
         std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)(1000 * elapsed.count());
     }
 
     uint64_t get_sec() {
         std::lock_guard<std::mutex> l(lock_);
-        auto cur = std::chrono::steady_clock::now();
+        auto cur = now();
         std::chrono::duration<double> elapsed = cur - t_created_;
         return (uint64_t)elapsed.count();
     }
 
     bool timeout() {
-        auto cur = std::chrono::steady_clock::now();
+        auto cur = now();
 
         std::lock_guard<std::mutex> l(lock_);
         if (!first_event_fired_) {
@@ -103,7 +131,7 @@ struct timer_helper {
     }
 
     bool timeout_and_reset() {
-        auto cur = std::chrono::steady_clock::now();
+        auto cur = now();
 
         std::lock_guard<std::mutex> l(lock_);
         if (!first_event_fired_) {
@@ -129,6 +157,11 @@ struct timer_helper {
         sc::system_clock::duration const d = sc::system_clock::now().time_since_epoch();
         uint64_t const s = sc::duration_cast<sc::microseconds>(d).count();
         return s;
+    }
+
+    static std::atomic<clock_func>& clock_ref() {
+        static std::atomic<clock_func> func(nullptr);
+        return func;
     }
 
     std::chrono::time_point<std::chrono::steady_clock> t_created_;

@@ -119,6 +119,59 @@ int internal_timer_test() {
     return 0;
 }
 
+
+static std::atomic<int64_t> test_clock_us(0);
+
+static timer_helper::time_point test_clock() {
+    return timer_helper::time_point( std::chrono::microseconds( test_clock_us.load() ) );
+}
+
+int internal_timer_custom_clock_test() {
+    test_clock_us = 1000000;
+    timer_helper::set_clock(&test_clock);
+
+    timer_helper tt(100 * 1000);
+    CHK_EQ(0, tt.get_us());
+    CHK_FALSE(tt.timeout());
+
+    // Real time passing has no effect on a custom clock.
+    timer_helper::sleep_ms(5);
+    CHK_EQ(0, tt.get_us());
+    CHK_FALSE(tt.timeout());
+
+    test_clock_us += 100 * 1000;
+    CHK_EQ(100, tt.get_ms());
+    CHK_FALSE(tt.timeout());
+    CHK_FALSE(tt.timeout_and_reset());
+
+    test_clock_us += 1;
+    CHK_TRUE(tt.timeout());
+    CHK_TRUE(tt.timeout_and_reset());
+    // Reset to the custom clock's current time.
+    CHK_EQ(0, tt.get_us());
+    CHK_FALSE(tt.timeout());
+
+    test_clock_us += 2500 * 1000;
+    CHK_EQ(2, tt.get_sec());
+    CHK_EQ(2500, tt.get_ms());
+
+    // `reset()` with an offset is relative to the custom clock.
+    tt.reset(-50);
+    CHK_EQ(50, tt.get_ms());
+
+    // `fire_first_event` still fires immediately.
+    timer_helper first(1000 * 1000, true);
+    CHK_TRUE(first.timeout());
+    CHK_FALSE(first.timeout());
+
+    // Restore the real clock.
+    timer_helper::set_clock(nullptr);
+    timer_helper real_tt(1000);
+    timer_helper::sleep_ms(5);
+    CHK_TRUE(real_tt.timeout());
+    return 0;
+}
+
 }  // namespace timer_test;
 using namespace timer_test;
 
@@ -135,6 +188,9 @@ int main(int argc, char** argv) {
 
     ts.doTest( "internal timer test",
                internal_timer_test );
+
+    ts.doTest( "internal timer custom clock test",
+               internal_timer_custom_clock_test );
 
     return 0;
 }

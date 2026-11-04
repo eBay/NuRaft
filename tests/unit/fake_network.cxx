@@ -456,5 +456,29 @@ void FakeTimer::cancel_impl(ptr<delayed_task>& task) {
     }
 }
 
+
+// === FakeClock
+
+std::atomic<int64_t> FakeClock::curUs(0);
+
+void FakeClock::install() {
+    int64_t real_us = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch() ).count();
+    curUs.store(real_us);
+    timer_helper::set_clock(&FakeClock::now);
+}
+
+void FakeClock::uninstall() {
+    timer_helper::set_clock(nullptr);
+}
+
+void FakeClock::advance_ms(uint64_t ms) {
+    curUs.fetch_add( (int64_t)ms * 1000 );
+}
+
+timer_helper::time_point FakeClock::now() {
+    return timer_helper::time_point( std::chrono::microseconds( curUs.load() ) );
+}
+
 }  // namespace nuraft;
 
